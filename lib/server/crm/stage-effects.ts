@@ -3,6 +3,8 @@ import { dispatchLeadConversionEvents } from "@/lib/server/pixels/conversions";
 import { trackLeadStageOutcome } from "@/lib/server/ai/learning-outcomes";
 import { mapPipelineStageToConversionStep, recordLeadConversionStep } from "@/lib/server/conversion-trail";
 import { normalizePipelineStageId } from "@/lib/pipeline";
+import type { StageAutomationSource } from "@/lib/server/automation-stage-delivery";
+import type { StageHookName } from "@/lib/server/crm/stage-hook-progress";
 
 function clean(value: unknown, max = 160) {
   if (typeof value !== "string") return "";
@@ -28,6 +30,11 @@ export async function runPipelineStageSideEffects(input: {
   forced?: boolean;
   metadata?: Record<string, unknown>;
   skipConversionDispatch?: boolean;
+  strict?: boolean;
+  beforeEffect?: () => Promise<void>;
+  automationSource?: StageAutomationSource;
+  skipAutomations?: boolean;
+  runHook?: (name: StageHookName, effect: () => Promise<unknown>) => Promise<void>;
 }) {
   const tenantId = clean(input.tenantId, 180);
   const leadId = clean(input.leadId, 180);
@@ -41,8 +48,7 @@ export async function runPipelineStageSideEffects(input: {
     return { ok: true, skipped: true };
   }
 
-  await Promise.all([
-    runLeadAutomations({
+  const automate = () => input.skipAutomations ? Promise.resolve() : runLeadAutomations({
       tenantId,
       trigger: "lead_stage_changed",
       leadId,
@@ -50,34 +56,48 @@ export async function runPipelineStageSideEffects(input: {
       actorName,
       previousStage,
       nextStage,
-    }).catch((error) => {
-      console.error("Falha ao rodar automacoes por mudanca de etapa:", error);
-    }),
-    trackLeadStageOutcome({
+      strictErrors: input.strict === true,
+      stageSource: input.automationSource,
+    });
+  const learn = () => trackLeadStageOutcome({
       tenantId,
       leadId,
       previousStage,
       nextStage,
-    }).catch((error) => {
-      console.error("Falha ao registrar aprendizado de etapa:", error);
-    }),
+    });
+  const execute = async (name: StageHookName, effect: () => Promise<unknown>) => {
+    const checked = async () => { if (input.strict) await input.beforeEffect?.(); return effect(); };
+    if (input.strict && input.runHook) await input.runHook(name, checked);
+    else await checked();
+  };
+  if (input.strict) {
+    await execute("automations", automate);
+    await execute("learning", learn);
+  } else await Promise.all([
+    automate().catch(error => console.error("Falha ao rodar automacoes por mudanca de etapa:", error)),
+    learn().catch(error => console.error("Falha ao registrar aprendizado de etapa:", error)),
   ]);
 
   if (nextStage === "qualificacao" && !input.skipConversionDispatch) {
-    await dispatchLeadConversionEvents({ tenantId, leadId, reason: "lead_qualified" }).catch((error) => {
+    if (!input.strict) await input.beforeEffect?.();
+    await execute("conversion", () => dispatchLeadConversionEvents({ tenantId, leadId, reason: "lead_qualified" })).catch((error) => {
+      if (input.strict) throw error;
       console.error("Falha ao disparar conversao de lead qualificado:", error);
     });
   }
 
   if (nextStage === "ganho" && !input.skipConversionDispatch) {
-    await dispatchLeadConversionEvents({ tenantId, leadId, reason: "sale_won" }).catch((error) => {
+    if (!input.strict) await input.beforeEffect?.();
+    await execute("conversion", () => dispatchLeadConversionEvents({ tenantId, leadId, reason: "sale_won" })).catch((error) => {
+      if (input.strict) throw error;
       console.error("Falha ao disparar conversao de venda:", error);
     });
   }
 
   const conversionStep = mapPipelineStageToConversionStep(nextStage);
   if (conversionStep) {
-    await recordLeadConversionStep({
+    if (!input.strict) await input.beforeEffect?.();
+    await execute("trail", () => recordLeadConversionStep({
       tenantId,
       leadId,
       step: conversionStep,
@@ -85,13 +105,15 @@ export async function runPipelineStageSideEffects(input: {
       actorId,
       actorName,
       detail: conversionDetail(conversionStep, nextStage),
+      stageSource: input.runHook ? input.automationSource : undefined,
       metadata: {
         previousStage,
         nextStage,
         forced: input.forced === true,
         ...(input.metadata || {}),
       },
-    }).catch((error) => {
+    })).catch((error) => {
+      if (input.strict) throw error;
       console.error("Falha ao registrar trilha de conversao por etapa:", error);
     });
   }

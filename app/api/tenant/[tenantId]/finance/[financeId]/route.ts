@@ -1,10 +1,10 @@
-﻿import { NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { FieldValue } from "firebase-admin/firestore";
 import { adminDb } from "@/app/lib/server/firebase-admin";
 import { requireRequestUser, RouteAuthError } from "@/app/lib/server/route-auth";
 import { assertTenantAccess, assertTenantCapability, TenantAccessError } from "@/lib/server/tenant";
-import { runLeadAutomations } from "@/lib/server/automations";
-import { setLeadPipelineStageWithEffects } from "@/lib/server/crm/stage-transition";
+import { commitManualFinanceMutation, FinanceMutationConflict, processFinancePaidOccurrence } from "@/lib/server/crm/finance-paid-occurrence";
+import { processFinanceStageTransition } from "@/lib/server/crm/finance-stage-transition";
 import { assertTenantModule } from "@/lib/server/tenant-entitlements";
 import { assertLeadCommercialAccess } from "@/lib/server/commercial-access";
 
@@ -19,11 +19,6 @@ type Body = {
 function clean(value: unknown, max = 240) {
   if (typeof value !== "string") return "";
   return value.trim().slice(0, max);
-}
-
-function isPaidStatus(value: unknown) {
-  const status = clean(value, 50).toLowerCase();
-  return status === "pago" || status === "paid" || status === "recebido" || status === "confirmado";
 }
 
 export async function PATCH(
@@ -95,53 +90,14 @@ export async function PATCH(
       return NextResponse.json({ ok: true, tenantId, financeId, unchanged: true });
     }
 
-    await ref.set(patch, { merge: true });
-
-    const leadId = clean(current.leadId, 140);
-    if (leadId) {
-      await adminDb.collection("leads").doc(leadId).collection("events").add({
-        type: "finance_updated",
-        title: "Financeiro atualizado",
-        detail: changes.join(" | "),
-        financeId,
-        actorId: user.uid,
-        actorName: user.name,
-        createdAt: FieldValue.serverTimestamp(),
-      });
-    }
-
-    const becamePaid = patch.status !== undefined && isPaidStatus(patch.status) && !isPaidStatus(current.status);
-    if (leadId && becamePaid) {
-      await setLeadPipelineStageWithEffects({
-        tenantId,
-        leadId,
-        nextStage: "ganho",
-        actorId: user.uid,
-        actorName: user.name,
-        source: "finance_paid",
-        metadata: {
-          financeId,
-          financeStatus: patch.status,
-          financeValue: current.valor ?? null,
-          paymentMethod: patch.meioPagamento ?? current.meioPagamento ?? null,
-        },
-        patch: {
-          paymentStatus: patch.status,
-          paidAt: FieldValue.serverTimestamp(),
-        },
-      });
-
-      await runLeadAutomations({
-        tenantId,
-        trigger: "finance_paid",
-        leadId,
-        actorId: user.uid,
-        actorName: user.name,
-      });
-    }
+    const mutation = await commitManualFinanceMutation({ tenantId, financeId, expectedVersion: snap.updateTime!, patch, changes,
+      actorId: user.uid, actorName: user.name });
+    if (mutation.financeStageTransitionId) await processFinanceStageTransition(mutation.financeStageTransitionId, tenantId);
+    if (mutation.financePaidOccurrenceId) await processFinancePaidOccurrence(mutation.financePaidOccurrenceId, tenantId);
 
     return NextResponse.json({ ok: true, tenantId, financeId });
   } catch (error) {
+    if (error instanceof FinanceMutationConflict) return NextResponse.json({ error: error.message, code: "FINANCE_MUTATION_CONFLICT" }, { status: 409 });
     if (error instanceof RouteAuthError) {
       return NextResponse.json({ error: error.message, code: error.code }, { status: error.status });
     }

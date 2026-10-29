@@ -1,4 +1,5 @@
 "use client";
+import {AppointmentTimeDialog} from "../components/appointment-time-dialog";
 
 import Link from "next/link";
 import { FormEvent, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
@@ -20,7 +21,11 @@ import {
   XCircle,
 } from "lucide-react";
 import { authedFetch } from "@/app/lib/authed-fetch";
+import { CrmDetailRequests, crmDetailScope } from "@/lib/crm-detail-refresh";
+import { fetchInboxJson } from "@/lib/inbox-request";
 import { useClienteTenant } from "@/app/cliente/ClientePanelGuard";
+import { CommercialActivities } from "@/app/cliente/painel/components/commercial-activities";
+import { PanelCard } from "@/app/cliente/painel/components/ui";
 import {
   CrmAvatar,
   CrmBadge,
@@ -48,6 +53,8 @@ type LeadItem = {
 };
 
 type AppointmentItem = {
+  version?: number;
+  expectedRevision?: string;
   id: string;
   leadId?: string | null;
   leadName?: string | null;
@@ -55,7 +62,7 @@ type AppointmentItem = {
   title?: string;
   type?: string;
   status?: string;
-  startAt?: string;
+  startAt?: string | null;
   endAt?: string | null;
   location?: string | null;
   meetingUrl?: string | null;
@@ -85,7 +92,7 @@ function makeDefaultStart() {
   const date = new Date();
   date.setMinutes(date.getMinutes() + 60);
   date.setSeconds(0, 0);
-  return date.toISOString().slice(0, 16);
+  return new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
 }
 
 function isOpen(item: AppointmentItem) {
@@ -120,11 +127,25 @@ function statusLabel(status?: string) {
 }
 
 export default function ClienteAgendaPage() {
+  const { tenant } = useClienteTenant();
+  const params = useSearchParams();
+  const scope = JSON.stringify([tenant?.tenantId, tenant?.userId, params.get("leadId"), tenant?.tenantRole, [...(tenant?.capabilities || [])].sort()]);
+  return <ScopedAgendaPage key={scope} />;
+}
+
+function ScopedAgendaPage() {
   const searchParams = useSearchParams();
   const leadIdFromQuery = searchParams.get("leadId") || "";
   const { tenant, hasCapability } = useClienteTenant();
   const canOperate = hasCapability("edit_leads");
+  const [activityView, setActivityView] = useState<"returns" | "appointments">(searchParams.get("view") === "appointments" ? "appointments" : searchParams.get("view") === "returns" ? "returns" : leadIdFromQuery ? "appointments" : "returns");
+  const [returnsVisited, setReturnsVisited] = useState(activityView === "returns");
   const createFormRef = useRef<HTMLDivElement>(null);
+  const createRequest = useRef<{payload: string; key: string} | null>(null);
+  const requests = useRef(new CrmDetailRequests());
+  const active = useRef(false), writeLock = useRef(false);
+  const writeController = useRef<AbortController | null>(null);
+  const scope = crmDetailScope(tenant?.tenantId, tenant?.userId, leadIdFromQuery || null);
 
   const [appointments, setAppointments] = useState<AppointmentItem[]>([]);
   const [leads, setLeads] = useState<LeadItem[]>([]);
@@ -135,6 +156,7 @@ export default function ClienteAgendaPage() {
   const [saving, setSaving] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [mobileCreateOpen, setMobileCreateOpen] = useState(false);
+  const [scheduleDraft, setScheduleDraft] = useState<AppointmentItem | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [form, setForm] = useState<AppointmentForm>({
@@ -148,37 +170,48 @@ export default function ClienteAgendaPage() {
   });
 
   const loadData = useCallback(async () => {
-    if (!tenant?.tenantId) return;
+    if (!tenant?.tenantId || !active.current) return;
+    const ticket = requests.current.begin(scope)!;
+    const current = () => requests.current.accepts(ticket, scope);
     setLoading(true);
     setError(null);
     try {
-      const [appointmentsRes, leadsRes] = await Promise.all([
-        authedFetch(`/api/tenant/${tenant.tenantId}/appointments`),
-        authedFetch(`/api/tenant/${tenant.tenantId}/leads`),
+      const [appointmentResult, leadResult] = await Promise.all([
+        fetchInboxJson<{ items?: AppointmentItem[]; error?: string }>(signal => authedFetch(`/api/tenant/${tenant.tenantId}/appointments`, { signal: AbortSignal.any([signal, ticket.controller.signal]) }), 15000),
+        fetchInboxJson<{ items?: LeadItem[]; error?: string }>(signal => authedFetch(`/api/tenant/${tenant.tenantId}/leads`, { signal: AbortSignal.any([signal, ticket.controller.signal]) }), 15000),
       ]);
-      const appointmentsPayload = (await appointmentsRes.json()) as { items?: AppointmentItem[]; error?: string };
-      const leadsPayload = (await leadsRes.json()) as { items?: LeadItem[]; error?: string };
+      if (!current()) return;
+      const { response: appointmentsRes, payload: appointmentsPayload } = appointmentResult;
+      const { response: leadsRes, payload: leadsPayload } = leadResult;
       if (!appointmentsRes.ok || !leadsRes.ok || appointmentsPayload.error || leadsPayload.error) {
+        if ([appointmentsRes.status, leadsRes.status].some(status => [401,403,404].includes(status))) { setAppointments([]); setLeads([]); }
         throw new Error(appointmentsPayload.error || leadsPayload.error || "Falha ao carregar agenda.");
       }
       setAppointments(appointmentsPayload.items || []);
       setLeads(leadsPayload.items || []);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Falha ao carregar agenda.");
+      if (current()) setError(err instanceof Error ? err.message : "Falha ao carregar agenda.");
     } finally {
-      setLoading(false);
+      if (current()) setLoading(false);
+      requests.current.finish(ticket);
     }
-  }, [tenant?.tenantId]);
+  }, [tenant?.tenantId, scope]);
 
   useEffect(() => {
-    loadData();
-  }, [loadData]);
+    active.current = true;
+    const manager = requests.current;
+    return () => { active.current = false; manager.cancelScope(scope); writeController.current?.abort(); };
+  }, [scope]);
+  useEffect(() => {
+    const manager = requests.current;
+    if (activityView === "appointments") void loadData();
+    return () => manager.cancelScope(scope);
+  }, [loadData, scope, activityView]);
 
   useEffect(() => {
     if (leadIdFromQuery) setForm((current) => ({ ...current, leadId: leadIdFromQuery }));
   }, [leadIdFromQuery]);
 
-  const selectedLead = useMemo(() => leads.find((lead) => lead.id === form.leadId), [form.leadId, leads]);
   const upcoming = appointments.filter(isOpen);
   const todayCount = appointments.filter((item) => isOpen(item) && isToday(item.startAt)).length;
   const completedCount = appointments.filter((item) => item.status === "completed").length;
@@ -203,58 +236,66 @@ export default function ClienteAgendaPage() {
 
   async function createAppointment(event: FormEvent) {
     event.preventDefault();
-    if (!tenant?.tenantId || !canOperate) return;
+    if (!tenant?.tenantId || !canOperate || writeLock.current) return;
+    writeLock.current = true;
+    const controller = new AbortController(); writeController.current = controller;
     setSaving(true);
     setError(null);
     setNotice(null);
     try {
-      const res = await authedFetch(`/api/tenant/${tenant.tenantId}/appointments`, {
+      const body = {leadId: form.leadId || null, title: form.title.trim(), type: form.type, status: "scheduled",
+        startAt: new Date(form.startAt).toISOString(), endAt: null, location: form.location || null,
+        meetingUrl: form.meetingUrl || null, notes: form.notes || null};
+      const signature = JSON.stringify([tenant.tenantId, body]);
+      if (createRequest.current?.payload !== signature) createRequest.current = {payload: signature, key: crypto.randomUUID()};
+      const { response: res, payload } = await fetchInboxJson<{ error?: string }>(signal => authedFetch(`/api/tenant/${tenant.tenantId}/appointments`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          leadId: form.leadId || null,
-          title: form.title.trim(),
-          type: form.type,
-          status: "scheduled",
-          startAt: form.startAt,
-          endAt: null,
-          location: form.location || null,
-          meetingUrl: form.meetingUrl || null,
-          notes: form.notes || null,
-          ownerUserId: selectedLead?.ownerId || null,
-        }),
-      });
-      const payload = (await res.json().catch(() => ({}))) as { error?: string };
+        body: JSON.stringify({...body, requestId: createRequest.current!.key}), signal: AbortSignal.any([signal, controller.signal]),
+      }), 15000);
+      if (!active.current) return;
       if (!res.ok || payload.error) throw new Error(payload.error || "Falha ao criar compromisso.");
+      createRequest.current = null;
       setForm({ leadId: leadIdFromQuery || "", title: "", type: "reuniao", startAt: makeDefaultStart(), location: "", meetingUrl: "", notes: "" });
       setNotice("Compromisso criado na agenda.");
       await loadData();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Falha ao criar compromisso.");
+      if (active.current) setError(err instanceof Error ? err.message : "Falha ao criar compromisso.");
     } finally {
-      setSaving(false);
+      writeLock.current = false; if (active.current) setSaving(false);
+    }
+  }
+
+  async function saveStatus(appointmentId: string, nextStatus: string, dates?: {startAt: string; endAt: string}, expected?: AppointmentItem) {
+    if (!tenant?.tenantId || !canOperate || writeLock.current) return false;
+    writeLock.current = true;
+    const controller = new AbortController(); writeController.current = controller;
+    const item = expected || appointments.find(row => row.id === appointmentId);
+    setBusyId(appointmentId);
+    setError(null);
+    try {
+      const { response: res, payload } = await fetchInboxJson<{ error?: string }>(signal => authedFetch(`/api/tenant/${tenant.tenantId}/appointments/${encodeURIComponent(appointmentId)}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: nextStatus, ...dates, expectedVersion: item?.version, expectedRevision: item?.expectedRevision }), signal: AbortSignal.any([signal, controller.signal]),
+      }), 15000);
+      if (!active.current) return false;
+      if (!res.ok || payload.error) throw new Error(payload.error || "Falha ao atualizar compromisso.");
+      setNotice("Agenda atualizada.");
+      await loadData();
+      return true;
+    } catch (err) {
+      if (active.current) setError(err instanceof Error ? err.message : "Falha ao atualizar compromisso.");
+      return false;
+    } finally {
+      writeLock.current = false; if (active.current) setBusyId(null);
     }
   }
 
   async function updateStatus(appointmentId: string, nextStatus: string) {
-    if (!tenant?.tenantId || !canOperate) return;
-    setBusyId(appointmentId);
-    setError(null);
-    try {
-      const res = await authedFetch(`/api/tenant/${tenant.tenantId}/appointments/${appointmentId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: nextStatus }),
-      });
-      const payload = (await res.json().catch(() => ({}))) as { error?: string };
-      if (!res.ok || payload.error) throw new Error(payload.error || "Falha ao atualizar compromisso.");
-      setNotice("Agenda atualizada.");
-      await loadData();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Falha ao atualizar compromisso.");
-    } finally {
-      setBusyId(null);
-    }
+    const item = appointments.find(row => row.id === appointmentId);
+    if (item?.status === "draft" && nextStatus === "scheduled") {setError(null); setScheduleDraft(item); return;}
+    await saveStatus(appointmentId, nextStatus);
   }
 
   function openCreateForm() {
@@ -263,6 +304,18 @@ export default function ClienteAgendaPage() {
 
   return (
     <>
+      {scheduleDraft ? <AppointmentTimeDialog appointment={scheduleDraft} busy={busyId === scheduleDraft.id} error={error}
+        onDismiss={() => {setScheduleDraft(null); if (error) void loadData();}}
+        onConfirm={async (startAt, endAt) => {const saved = await saveStatus(scheduleDraft.id, "scheduled", {startAt, endAt}, scheduleDraft); if (saved) setScheduleDraft(null); return saved;}} /> : null}
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <h1 className="text-2xl font-bold text-[var(--cliente-card-text)]">Agenda</h1>
+        <div role="group" aria-label="Tipo de atividade" className="flex flex-wrap gap-2">
+          <CrmButton type="button" aria-pressed={activityView === "returns"} tone={activityView === "returns" ? "primary" : "secondary"} onClick={() => { setReturnsVisited(true); setActivityView("returns"); }}>Retornos</CrmButton>
+          <CrmButton type="button" aria-pressed={activityView === "appointments"} tone={activityView === "appointments" ? "primary" : "secondary"} onClick={() => setActivityView("appointments")}>Compromissos</CrmButton>
+        </div>
+      </div>
+      {returnsVisited ? <div hidden={activityView !== "returns"}><PanelCard className="p-4 sm:p-5"><CommercialActivities isActive={activityView === "returns"} leadId={leadIdFromQuery || undefined} leads={leads} /></PanelCard></div> : null}
+      {activityView === "appointments" ? <>
       <MobileAgendaScreen
         appointments={filteredAppointments}
         leads={leads}
@@ -389,7 +442,7 @@ export default function ClienteAgendaPage() {
                   {canOperate && item.status === "draft" ? (
                     <CrmButton type="button" tone="primary" disabled={busyId === item.id} onClick={() => updateStatus(item.id, "scheduled")}>
                       {busyId === item.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-                      Aprovar horario
+                      Definir horário
                     </CrmButton>
                   ) : null}
                   {canOperate && isOpen(item) && item.status !== "draft" ? (
@@ -425,7 +478,7 @@ export default function ClienteAgendaPage() {
               <CrmSelect value={form.type} onChange={(event) => setForm((current) => ({ ...current, type: event.target.value }))} disabled={!canOperate} className="w-full">
                 {typeOptions.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
               </CrmSelect>
-              <CrmInput type="datetime-local" value={form.startAt} onChange={(event) => setForm((current) => ({ ...current, startAt: event.target.value }))} disabled={!canOperate} className="w-full" />
+              <CrmInput type="datetime-local" aria-label="Data e horário do compromisso (horário local)" value={form.startAt} onChange={(event) => setForm((current) => ({ ...current, startAt: event.target.value }))} disabled={!canOperate} className="w-full" />
             </div>
             <CrmInput value={form.location} onChange={(event) => setForm((current) => ({ ...current, location: event.target.value }))} disabled={!canOperate} placeholder="Local ou cidade" className="w-full" />
             <CrmInput value={form.meetingUrl} onChange={(event) => setForm((current) => ({ ...current, meetingUrl: event.target.value }))} disabled={!canOperate} placeholder="Link da reuniao" className="w-full" />
@@ -439,6 +492,7 @@ export default function ClienteAgendaPage() {
         </div>
       </section>
       </CrmWorkspace>
+      </> : null}
     </>
   );
 }
@@ -527,11 +581,11 @@ function MobileAgendaScreen({
           {!loading && !appointments.length ? <div className="p-8 text-center text-sm text-[var(--cliente-card-text-soft)]">Nenhum compromisso nesse filtro.</div> : null}
           {appointments.map((item) => <article key={item.id} className="border-b border-[var(--cliente-border)] px-4 py-4 last:border-b-0">
             <div className="flex gap-3"><div className="flex h-11 w-11 shrink-0 flex-col items-center justify-center rounded-2xl bg-[var(--cliente-primary-soft)] text-[var(--cliente-primary)]"><CalendarDays className="h-4 w-4" /></div><div className="min-w-0 flex-1"><p className="truncate text-sm font-semibold text-[var(--cliente-card-text)]">{item.title || 'Compromisso comercial'}</p><p className="mt-1 truncate text-xs text-[var(--cliente-card-text-soft)]">{item.leadName || item.leadCompany || 'Sem contato vinculado'} · {formatCrmDate(item.startAt, 'Sem horário')}</p><div className="mt-2 flex items-center justify-between gap-2"><CrmBadge tone={statusTone(item.status)}>{statusLabel(item.status)}</CrmBadge>{item.leadId ? <Link href={`/cliente/painel/crm?leadId=${encodeURIComponent(item.leadId)}`} className="text-xs font-semibold text-[var(--cliente-primary)]">Ver cliente</Link> : null}</div></div></div>
-            {canOperate && isOpen(item) ? <div className="mt-3 flex gap-2"><button type="button" disabled={busyId === item.id} onClick={() => void onUpdateStatus(item.id, item.status === 'draft' ? 'scheduled' : item.status === 'scheduled' ? 'confirmed' : 'completed')} className="min-h-10 flex-1 rounded-xl bg-[var(--cliente-primary)] px-3 text-xs font-semibold text-white">{busyId === item.id ? 'Salvando…' : item.status === 'draft' ? 'Aprovar' : item.status === 'scheduled' ? 'Confirmar' : 'Concluir'}</button><button type="button" disabled={busyId === item.id} onClick={() => void onUpdateStatus(item.id, 'canceled')} className="min-h-10 rounded-xl px-3 text-xs font-semibold text-[var(--cliente-danger)] ring-1 ring-[var(--cliente-danger)]/25">Cancelar</button></div> : null}
+            {canOperate && isOpen(item) ? <div className="mt-3 flex gap-2"><button type="button" disabled={busyId === item.id} onClick={() => void onUpdateStatus(item.id, item.status === 'draft' ? 'scheduled' : item.status === 'scheduled' ? 'confirmed' : 'completed')} className="min-h-10 flex-1 rounded-xl bg-[var(--cliente-primary)] px-3 text-xs font-semibold text-white">{busyId === item.id ? 'Salvando…' : item.status === 'draft' ? 'Definir horário' : item.status === 'scheduled' ? 'Confirmar' : 'Concluir'}</button><button type="button" disabled={busyId === item.id} onClick={() => void onUpdateStatus(item.id, 'canceled')} className="min-h-10 rounded-xl px-3 text-xs font-semibold text-[var(--cliente-danger)] ring-1 ring-[var(--cliente-danger)]/25">Cancelar</button></div> : null}
           </article>)}
         </div>
 
-        {createOpen ? <div className="fixed inset-0 z-[70] flex items-end bg-slate-950/30" role="dialog" aria-modal="true"><form onSubmit={(event) => void onCreate(event)} className="max-h-[88dvh] w-full overflow-y-auto rounded-t-[28px] bg-[var(--cliente-card)] p-5 pb-[calc(env(safe-area-inset-bottom)+1.25rem)] shadow-2xl"><div className="flex items-center justify-between"><div><p className="text-xs font-semibold text-[var(--cliente-primary)]">Novo compromisso</p><h2 className="mt-1 text-xl font-bold text-[var(--cliente-card-text)]">Adicionar à agenda</h2></div><button type="button" onClick={onCloseCreate} className="h-10 rounded-full px-3 text-sm font-semibold text-[var(--cliente-card-text-muted)]">Fechar</button></div><div className="mt-5 space-y-3"><select value={form.leadId} onChange={(event) => onFormChange('leadId', event.target.value)} className="client-input w-full rounded-xl border px-3 py-3 text-sm"><option value="">Sem cliente vinculado</option>{leads.map((lead) => <option key={lead.id} value={lead.id}>{lead.nome || 'Contato'}{lead.empresa ? ` · ${lead.empresa}` : ''}</option>)}</select><input value={form.title} onChange={(event) => onFormChange('title', event.target.value)} placeholder="Título do compromisso" className="client-input w-full rounded-xl border px-3 py-3 text-sm" /><div className="grid grid-cols-2 gap-3"><select value={form.type} onChange={(event) => onFormChange('type', event.target.value)} className="client-input rounded-xl border px-3 py-3 text-sm">{typeOptions.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select><input type="datetime-local" value={form.startAt} onChange={(event) => onFormChange('startAt', event.target.value)} className="client-input min-w-0 rounded-xl border px-3 py-3 text-sm" /></div><input value={form.location} onChange={(event) => onFormChange('location', event.target.value)} placeholder="Local ou cidade" className="client-input w-full rounded-xl border px-3 py-3 text-sm" /><textarea value={form.notes} onChange={(event) => onFormChange('notes', event.target.value)} placeholder="Notas para preparar a conversa" rows={3} className="client-input w-full rounded-xl border px-3 py-3 text-sm" /></div><button type="submit" disabled={!canOperate || saving || !form.title.trim() || !form.startAt} className="mt-5 flex min-h-12 w-full items-center justify-center rounded-xl bg-[var(--cliente-primary)] px-4 text-sm font-semibold text-white disabled:opacity-50">{saving ? 'Salvando…' : 'Salvar compromisso'}</button></form></div> : null}
+        {createOpen ? <div className="fixed inset-0 z-[70] flex items-end bg-slate-950/30" role="dialog" aria-modal="true"><form onSubmit={(event) => void onCreate(event)} className="max-h-[88dvh] w-full overflow-y-auto rounded-t-[28px] bg-[var(--cliente-card)] p-5 pb-[calc(env(safe-area-inset-bottom)+1.25rem)] shadow-2xl"><div className="flex items-center justify-between"><div><p className="text-xs font-semibold text-[var(--cliente-primary)]">Novo compromisso</p><h2 className="mt-1 text-xl font-bold text-[var(--cliente-card-text)]">Adicionar à agenda</h2></div><button type="button" onClick={onCloseCreate} className="h-10 rounded-full px-3 text-sm font-semibold text-[var(--cliente-card-text-muted)]">Fechar</button></div><div className="mt-5 space-y-3"><select value={form.leadId} onChange={(event) => onFormChange('leadId', event.target.value)} className="client-input w-full rounded-xl border px-3 py-3 text-sm"><option value="">Sem cliente vinculado</option>{leads.map((lead) => <option key={lead.id} value={lead.id}>{lead.nome || 'Contato'}{lead.empresa ? ` · ${lead.empresa}` : ''}</option>)}</select><input value={form.title} onChange={(event) => onFormChange('title', event.target.value)} placeholder="Título do compromisso" className="client-input w-full rounded-xl border px-3 py-3 text-sm" /><div className="grid grid-cols-2 gap-3"><select value={form.type} onChange={(event) => onFormChange('type', event.target.value)} className="client-input rounded-xl border px-3 py-3 text-sm">{typeOptions.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select><input type="datetime-local" aria-label="Data e horário do compromisso (horário local)" value={form.startAt} onChange={(event) => onFormChange('startAt', event.target.value)} className="client-input min-w-0 rounded-xl border px-3 py-3 text-sm" /></div><input value={form.location} onChange={(event) => onFormChange('location', event.target.value)} placeholder="Local ou cidade" className="client-input w-full rounded-xl border px-3 py-3 text-sm" /><textarea value={form.notes} onChange={(event) => onFormChange('notes', event.target.value)} placeholder="Notas para preparar a conversa" rows={3} className="client-input w-full rounded-xl border px-3 py-3 text-sm" /></div><button type="submit" disabled={!canOperate || saving || !form.title.trim() || !form.startAt} className="mt-5 flex min-h-12 w-full items-center justify-center rounded-xl bg-[var(--cliente-primary)] px-4 text-sm font-semibold text-white disabled:opacity-50">{saving ? 'Salvando…' : 'Salvar compromisso'}</button></form></div> : null}
       </section>
     </div>
   );

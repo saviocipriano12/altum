@@ -11,6 +11,7 @@ export const TENANT_SCOPED_COLLECTIONS = [
   "pipeline",
   "kb_docs",
   "chat_state",
+  "chat_external_sync",
   "ai_logs",
   "ai_usage_ledger",
   "automations",

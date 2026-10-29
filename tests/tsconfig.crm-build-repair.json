@@ -1,0 +1,14 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": { "incremental": false },
+  "include": [
+    "../app/api/tenant/[tenantId]/chats/route.ts",
+    "../app/api/tenant/[tenantId]/chats/[chatId]/messages/route.ts",
+    "../app/cliente/assinatura/page.tsx",
+    "../app/cliente/painel/assinatura/page.tsx",
+    "../app/cliente/painel/configuracoes/faturamento/page.tsx",
+    "../components/client/subscription-screen.tsx",
+    "../lib/server/conversation-queries.ts"
+  ],
+  "exclude": ["../node_modules", "../.next", "../.qa-artifacts"]
+}

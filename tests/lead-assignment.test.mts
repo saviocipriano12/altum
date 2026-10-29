@@ -66,21 +66,22 @@ test("lead distribution supports explicit assignment and keeps linked records al
     resolve(process.cwd(), "app/api/tenant/[tenantId]/leads/distribute/route.ts"),
     "utf8"
   );
-  assert.match(route, /mode === "specific"/);
-  assert.match(route, /Escolha um vendedor ativo/);
-  assert.match(route, /collection\("appointments"\)/);
-  assert.match(route, /collection\("orcamentos"\)/);
-  assert.match(route, /collection\("financeiro"\)/);
-  assert.match(route, /relatedRecordsUpdated/);
-  assert.match(route, /type: "lead_assignment"/);
-  assert.match(route, /previousAssignments/);
+  assert.match(route, /distributeCommercialLeads/);
+  const mutation = readFileSync(resolve(process.cwd(), "lib/server/crm/assignment-mutation.ts"), "utf8");
+  assert.match(mutation, /input.mode === "specific"/);
+  assert.match(mutation, /Escolha um vendedor ativo/);
+  assert.match(mutation, /"appointments", "lead_tasks", "orcamentos", "financeiro"/);
+  assert.match(mutation, /relatedRecordsUpdated/);
+  assert.match(mutation, /type: "lead_assignment"/);
+  assert.match(mutation, /previousAssignments/);
 
   const undoRoute = readFileSync(
     resolve(process.cwd(), "app/api/tenant/[tenantId]/leads/distribute/[auditId]/undo/route.ts"),
     "utf8"
   );
-  assert.match(undoRoute, /15 \* 60_000/);
-  assert.match(undoRoute, /assignment_changed_after_distribution/);
-  assert.match(undoRoute, /lead_assignment_undo/);
-  assert.match(undoRoute, /restoredLeadIds/);
+  assert.match(undoRoute, /undoCommercialLeadDistribution/);
+  assert.match(mutation, /15 \* 60_000/);
+  assert.match(mutation, /assignment_changed_after_distribution/);
+  assert.match(mutation, /lead_assignment_undo/);
+  assert.match(mutation, /restoredLeadIds/);
 });

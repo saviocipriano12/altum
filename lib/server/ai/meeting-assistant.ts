@@ -17,6 +17,7 @@ type MeetingAssistantAppointment = {
 };
 
 export type AssistedMeetingSummary = {
+  analysisMode?: "model" | "fallback";
   executiveSummary: string;
   leadNeed: string;
   painPoints: string[];
@@ -27,7 +28,7 @@ export type AssistedMeetingSummary = {
   followUpMessage: string;
   crmUpdate: string;
   qualification: {
-    temperature: "frio" | "morno" | "quente";
+    temperature: "frio" | "morno" | "quente" | "nao_identificada";
     confidence: number;
     recommendedStage: string;
   };
@@ -41,7 +42,7 @@ export type LiveMeetingCoach = {
   translation: string;
   followUpDraft: string;
   qualificationHint: {
-    temperature: "frio" | "morno" | "quente";
+    temperature: "frio" | "morno" | "quente" | "nao_identificada";
     confidence: number;
   };
 };
@@ -164,46 +165,13 @@ function fallbackSummary(input: {
   objective: string;
   lead: MeetingAssistantLead | null;
 }): AssistedMeetingSummary {
-  const source = [input.transcript, input.notes].filter(Boolean).join(" ");
-  const lowered = source.toLowerCase();
-  const hot = /(proposta|contrato|fechar|comprar|pagar|reuniao|orçamento|orcamento|valor|preco|preço)/.test(lowered);
-  const objectionPrice = /(caro|preco|preço|valor|orçamento|orcamento|investimento)/.test(lowered);
-  const objectionTime = /(tempo|prazo|agora|depois|sem urgencia|sem urgência)/.test(lowered);
-  const leadName = clean(input.lead?.nome, 140) || "o lead";
-  const company = clean(input.lead?.empresa, 140);
-  const objective = input.objective || "avancar para o proximo passo comercial";
-
+  void input;
   return {
-    executiveSummary: `Reuniao registrada com ${leadName}${company ? ` (${company})` : ""}. O objetivo principal e ${objective}. Validar necessidade, urgencia e proximo passo com clareza.`,
-    leadNeed: input.objective || "Confirmar a necessidade principal e conectar com a oferta correta.",
-    painPoints: [
-      "Mapear o problema central citado na reuniao.",
-      "Confirmar impacto financeiro ou operacional do problema.",
-      "Entender quem participa da decisao.",
-    ],
-    objections: [
-      ...(objectionPrice ? ["Possivel objecao de preco/investimento."] : []),
-      ...(objectionTime ? ["Possivel objecao de tempo ou prioridade."] : []),
-      ...(!objectionPrice && !objectionTime ? ["Nenhuma objecao clara foi isolada automaticamente."] : []),
-    ],
-    buyingSignals: hot ? ["Lead citou proposta, valor, contrato ou proximo passo."] : ["Lead ainda precisa demonstrar um sinal mais forte de compra."],
-    nextSteps: [
-      "Enviar follow-up com resumo e proximo passo combinado.",
-      "Atualizar etapa do CRM conforme temperatura.",
-      hot ? "Preparar proposta ou reuniao de fechamento." : "Fazer nova pergunta de qualificacao antes da proposta.",
-    ],
-    sellerCoaching: [
-      "Comecar o retorno confirmando o que foi entendido.",
-      "Evitar perguntas repetidas e conduzir para uma decisao simples.",
-      "Se houver duvida, oferecer uma recomendacao objetiva em vez de abrir muitas alternativas.",
-    ],
-    followUpMessage: `Oi, ${leadName}. Recapitulando nossa conversa: entendi que o foco agora e ${objective}. O melhor proximo passo e alinharmos os detalhes finais e te mostrar o caminho mais direto para isso. Faz sentido eu seguir por aqui?`,
-    crmUpdate: `Reuniao analisada. Temperatura ${hot ? "quente" : "morno"}. Proximo passo: ${hot ? "proposta ou fechamento" : "qualificacao e follow-up"}.`,
-    qualification: {
-      temperature: hot ? "quente" : "morno",
-      confidence: hot ? 78 : 58,
-      recommendedStage: hot ? "proposta" : "follow_up",
-    },
+    analysisMode: "fallback",
+    executiveSummary: "Análise automática indisponível. O registro da reunião foi preservado para revisão.",
+    leadNeed: "Não confirmado.", painPoints: [], objections: [], buyingSignals: [], nextSteps: [], sellerCoaching: [],
+    followUpMessage: "", crmUpdate: "Registro salvo; análise comercial pendente de revisão.",
+    qualification: {temperature: "nao_identificada", confidence: 0, recommendedStage: ""},
   };
 }
 
@@ -294,7 +262,7 @@ export async function generateAssistedMeetingSummary(input: {
     const data = await response.json() as { choices?: Array<{ message?: { content?: string } }> };
     const content = data.choices?.[0]?.message?.content || "";
     const parsed = normalizeSummary(JSON.parse(content));
-    if (parsed?.executiveSummary) return parsed;
+    if (parsed?.executiveSummary) return {...parsed, analysisMode: "model" as const};
   } catch (error) {
     console.error("Falha ao gerar resumo de reuniao por IA:", error);
   }

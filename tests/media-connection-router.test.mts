@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { inferMediaPreference, mediaConnectionAvailability, planMediaConnections, routeAvatarAnchorConnection, routeMediaConnection } from "../lib/server/agent-os/creative-model-router.ts";
+import { findExplicitMediaConnectionRequest, inferMediaPreference, mediaConnectionAvailability, planMediaConnections, routeAvatarAnchorConnection, routeMediaConnection } from "../lib/server/agent-os/creative-model-router.ts";
 
 const base = { capabilities: ["GENERATE_VIDEO"], status: "approved", scope: "platform" as const };
 
@@ -47,6 +47,27 @@ test("roteador remove temporariamente a rota que acabou de falhar e mantém o fa
   });
   assert.deepEqual(plan.routes.map((route) => route.connection.id), ["higgsfield", "replicate"]);
   assert.equal(mediaConnectionAvailability({ status: "approved", health: { status: "degraded", cooldownUntil: new Date(now + 60_000) } }).available, false);
+});
+
+test("uma conexão degradada nunca volta para a fila só porque seu cooldown expirou", () => {
+  const route = routeMediaConnection({
+    tenantId: "empresa-a", capability: "GENERATE_VIDEO", prompt: "Vídeo final",
+    connections: [
+      { ...base, id: "fal", providerId: "fal", health: { status: "degraded", consecutiveFailures: 0 } },
+      { ...base, id: "replicate", providerId: "replicate", health: { status: "healthy" } },
+    ],
+  });
+  assert.equal(route?.connection.id, "replicate");
+  assert.equal(mediaConnectionAvailability({ status: "approved", health: { status: "degraded" } }).available, false);
+});
+
+test("pedido explícito escolhe somente uma conexão realmente disponível e compatível", () => {
+  const connections = [
+    { ...base, id: "groq", providerId: "groq", displayName: "Groq", capabilities: ["GENERATE_TEXT"] },
+    { ...base, id: "nvidia", providerId: "nvidia-nim", displayName: "NVIDIA NIM", capabilities: ["GENERATE_TEXT"] },
+  ];
+  assert.equal(findExplicitMediaConnectionRequest({ message: "Use a NVIDIA NIM para isso", connections, tenantId: "empresa-a", capability: "GENERATE_TEXT" })?.id, "nvidia");
+  assert.equal(findExplicitMediaConnectionRequest({ message: "Use a Groq", connections: [{ ...connections[0], health: { status: "degraded" } }, connections[1]], tenantId: "empresa-a", capability: "GENERATE_TEXT" }), null);
 });
 
 test("âncora de identidade só oferece providers com adaptador validado", () => {

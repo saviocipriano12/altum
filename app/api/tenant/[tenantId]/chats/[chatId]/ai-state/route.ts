@@ -3,9 +3,10 @@ import { FieldValue } from "firebase-admin/firestore";
 import { adminDb } from "@/app/lib/server/firebase-admin";
 import { requireRequestUser, RouteAuthError } from "@/app/lib/server/route-auth";
 import { assertTenantAccess, assertTenantCapability, assertTenantRole, TenantAccessError } from "@/lib/server/tenant";
-import { getChatState, getChatStateDocId } from "@/lib/server/ai/agent";
+import { getChatState } from "@/lib/server/ai/agent";
 import { enqueueIncomingMessageJob, kickAiQueueNow, processAiJobNow, triggerAiQueueWorker } from "@/lib/server/ai/queue";
-import { buildManualQueuePatch } from "@/lib/server/chat-operations";
+import { commitHumanChatControl, writeScopedChatState } from "@/lib/server/chat-state-store";
+import { ChatStateContextError, ChatStateIdentityError } from "@/lib/chat-state-scope";
 import { recordLeadConversionStep } from "@/lib/server/conversion-trail";
 import { assertTenantModule } from "@/lib/server/tenant-entitlements";
 import { assertChatCommercialAccess } from "@/lib/server/commercial-access";
@@ -98,7 +99,8 @@ async function assertChatInTenant(chatId: string, tenantId: string) {
     throw new RouteAuthError(403, "forbidden_tenant", "Chat fora do tenant informado.");
   }
 
-  return { chatRef, chat };
+  if (!chatSnap.createTime) throw new ChatStateContextError();
+  return { chat, chatGeneration: chatSnap.createTime };
 }
 
 async function resolveTenantOwnerMeta(tenantId: string, requestedUserId: string, fallbackName: string) {
@@ -119,9 +121,10 @@ async function resolveTenantOwnerMeta(tenantId: string, requestedUserId: string,
   };
 }
 
-async function findLatestClientMessage(chatId: string) {
+async function findLatestClientMessage(tenantId: string, chatId: string) {
   const messagesSnap = await adminDb
     .collection("messages")
+    .where("tenantId", "==", tenantId)
     .where("chatId", "==", chatId)
     .limit(200)
     .get();
@@ -140,12 +143,11 @@ async function findLatestClientMessage(chatId: string) {
 async function queueLatestClientMessage(input: {
   tenantId: string;
   chatId: string;
-  stateRefPath: string;
   userId: string;
   userName: string;
   source: "manual_retry" | "resume_pending";
 }) {
-  const latestClientMessage = await findLatestClientMessage(input.chatId);
+  const latestClientMessage = await findLatestClientMessage(input.tenantId, input.chatId);
   if (!latestClientMessage?.id) {
     return { queued: false as const, reason: "no_client_message" };
   }
@@ -159,7 +161,7 @@ async function queueLatestClientMessage(input: {
     priority: input.source === "resume_pending" ? 15 : 5,
   });
 
-  await adminDb.collection("chat_state").doc(input.stateRefPath).set(
+  await writeScopedChatState(input.tenantId, input.chatId,
     {
       tenantId: input.tenantId,
       chatId: input.chatId,
@@ -174,8 +176,7 @@ async function queueLatestClientMessage(input: {
       updatedBy: input.userId,
       updatedByName: input.userName,
       updatedAt: FieldValue.serverTimestamp(),
-    },
-    { merge: true }
+    }
   );
 
   const inlineResult = await processAiJobNow(queuedJob.jobId);
@@ -214,6 +215,9 @@ export async function GET(
     const state = await getChatState(tenantId, chatId);
     return NextResponse.json({ ok: true, state: serializeState(state) });
   } catch (error) {
+    if (error instanceof ChatStateIdentityError || error instanceof ChatStateContextError) {
+      return NextResponse.json({ error: error.message, code: error.code }, { status: error.status });
+    }
     if (error instanceof RouteAuthError) {
       return NextResponse.json({ error: error.message, code: error.code }, { status: error.status });
     }
@@ -240,7 +244,7 @@ export async function POST(
     await assertTenantModule(tenantId, "ai");
     assertTenantCapability(membership, "respond_inbox");
     await assertChatCommercialAccess({ membership, userId: user.uid, tenantId, chatId });
-    const { chatRef, chat } = await assertChatInTenant(chatId, tenantId);
+    const { chat, chatGeneration } = await assertChatInTenant(chatId, tenantId);
 
     const body = (await req.json()) as Body;
     const action = body.action || "pause";
@@ -251,8 +255,6 @@ export async function POST(
       return NextResponse.json({ error: "Acao invalida. Use pause, resume, takeover ou retry." }, { status: 400 });
     }
 
-    const stateRef = adminDb.collection("chat_state").doc(getChatStateDocId(tenantId, chatId));
-
     if (action === "pause" || action === "takeover") {
       const pausedMinutes = clampMinutes(body.pausedMinutes, 240);
       const pausedUntil = new Date(Date.now() + pausedMinutes * 60 * 1000);
@@ -261,53 +263,11 @@ export async function POST(
           ? await resolveTenantOwnerMeta(tenantId, body.humanOwnerUserId, user.name)
           : { userId: user.uid, name: user.name };
 
-      await Promise.all([
-        stateRef.set(
-          {
-            tenantId,
-            chatId,
-            aiEnabled: false,
-            pausedUntil,
-            humanOwnerUserId: targetOwner.userId,
-            pauseReason: action === "takeover" ? "human_takeover" : "manual_pause",
-            updatedBy: user.uid,
-            updatedByName: user.name,
-            updatedAt: FieldValue.serverTimestamp(),
-          },
-          { merge: true }
-        ),
-        chatRef.set(
-          {
-            assignedTo: targetOwner.userId,
-            assignedUserName: targetOwner.name,
-            ownerId: targetOwner.userId,
-            ownerName: targetOwner.name,
-            updatedAt: FieldValue.serverTimestamp(),
-            ...buildManualQueuePatch({
-              status: String(chat.status || "open"),
-              assignedTo: targetOwner.userId,
-              lastClientMessageAt: chat.lastClientMessageAt,
-              lastAgentMessageAt: chat.lastAgentMessageAt,
-              slaDueAt: chat.slaDueAt,
-            }),
-          },
-          { merge: true }
-        ),
-        adminDb.collection("messages").add({
-          chatId,
-          tenantId,
-          sender: "system",
-          type: "text",
-          text:
-            action === "takeover"
-              ? `Handoff assumido por ${targetOwner.name}. IA pausada temporariamente.`
-              : `IA pausada por ${targetOwner.name}.`,
-          createdAt: FieldValue.serverTimestamp(),
-        }),
-      ]);
+      const committedChat = await commitHumanChatControl({ tenantId, chatId, expectedChatGeneration: chatGeneration,
+        action, actor: { id: user.uid, name: user.name }, owner: { id: targetOwner.userId, name: targetOwner.name }, pausedUntil });
 
       if (action === "takeover") {
-        const relatedLeadId = cleanString(chat.leadId, 180);
+        const relatedLeadId = cleanString(committedChat.leadId, 180);
         if (relatedLeadId) {
           await recordLeadConversionStep({
             tenantId,
@@ -332,34 +292,12 @@ export async function POST(
     let resumedPendingMessage = false;
 
     if (action === "resume") {
-      await Promise.all([
-        stateRef.set(
-          {
-            tenantId,
-            chatId,
-            aiEnabled: true,
-            pausedUntil: null,
-            humanOwnerUserId: null,
-            pauseReason: null,
-            updatedBy: user.uid,
-            updatedByName: user.name,
-            updatedAt: FieldValue.serverTimestamp(),
-          },
-          { merge: true }
-        ),
-        adminDb.collection("messages").add({
-          chatId,
-          tenantId,
-          sender: "system",
-          type: "text",
-          text: `IA retomada por ${user.name}.`,
-          createdAt: FieldValue.serverTimestamp(),
-        }),
-      ]);
+      const resumedChat = await commitHumanChatControl({ tenantId, chatId, expectedChatGeneration: chatGeneration,
+        action, actor: { id: user.uid, name: user.name }, owner: { id: user.uid, name: user.name }, pausedUntil: null });
 
       const currentState = await getChatState(tenantId, chatId);
       const hasPendingLeadTurn =
-        toTime(chat.lastClientMessageAt) > toTime(chat.lastAgentMessageAt) ||
+        toTime(resumedChat.lastClientMessageAt) > toTime(resumedChat.lastAgentMessageAt) ||
         String(currentState.lastJobStatus || "").toLowerCase() === "retrying" ||
         String(currentState.lastJobStatus || "").toLowerCase() === "dead_letter" ||
         String(currentState.lastDecision || "").toLowerCase() === "skip";
@@ -368,7 +306,6 @@ export async function POST(
         const resumeResult = await queueLatestClientMessage({
           tenantId,
           chatId,
-          stateRefPath: getChatStateDocId(tenantId, chatId),
           userId: user.uid,
           userName: user.name,
           source: "resume_pending",
@@ -393,7 +330,6 @@ export async function POST(
       const retryResult = await queueLatestClientMessage({
         tenantId,
         chatId,
-        stateRefPath: getChatStateDocId(tenantId, chatId),
         userId: user.uid,
         userName: user.name,
         source: "manual_retry",
@@ -424,6 +360,9 @@ export async function POST(
       return NextResponse.json({ error: error.message, code: error.code }, { status: 403 });
     }
 
+    if (error instanceof ChatStateIdentityError || error instanceof ChatStateContextError) {
+      return NextResponse.json({ error: error.message, code: error.code }, { status: error.status });
+    }
     console.error("Erro ao atualizar estado da IA do chat:", error);
     return NextResponse.json({ error: "Falha ao atualizar estado da IA." }, { status: 500 });
   }

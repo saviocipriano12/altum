@@ -18,14 +18,39 @@ function runtimeHosts() {
   return new Set(["127.0.0.1", "localhost", "::1", "host.docker.internal", "freellmapi", ...(process.env.ALTUM_AGENT_RUNTIME_HOSTS || "").split(",").map((host) => host.trim()).filter(Boolean)]);
 }
 
+export function configuredFreeLlmApiUrl() {
+  return process.env.FREELLMAPI_BASE_URL?.trim() || "";
+}
+
+function isPrivateIpv4(hostname: string) {
+  const parts = hostname.split(".").map(Number);
+  if (parts.length !== 4 || parts.some((part) => !Number.isInteger(part) || part < 0 || part > 255)) return false;
+  return parts[0] === 10 || parts[0] === 127 || parts[0] === 0 || (parts[0] === 169 && parts[1] === 254) || (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31) || (parts[0] === 192 && parts[1] === 168);
+}
+
 export function normalizeFreeLlmApiUrl(value: unknown) {
-  const raw = typeof value === "string" && value.trim() ? value.trim() : process.env.FREELLMAPI_BASE_URL || DEFAULT_RUNTIME_URL;
+  const raw = typeof value === "string" && value.trim() ? value.trim() : configuredFreeLlmApiUrl() || DEFAULT_RUNTIME_URL;
   let url: URL;
   try { url = new URL(raw); } catch { throw new Error("freellmapi_url_invalid"); }
-  if (!["http:", "https:"].includes(url.protocol) || url.username || url.password || !runtimeHosts().has(url.hostname)) throw new Error("freellmapi_url_untrusted");
+  const localRuntime = runtimeHosts().has(url.hostname);
+  const remoteHttps = url.protocol === "https:" && Boolean(url.hostname) && !isPrivateIpv4(url.hostname) && url.hostname !== "localhost";
+  if (url.username || url.password || !(localRuntime ? ["http:", "https:"].includes(url.protocol) : remoteHttps)) throw new Error("freellmapi_url_untrusted");
   url.pathname = url.pathname.replace(/\/$/, "");
   url.search = ""; url.hash = "";
   return url.toString().replace(/\/$/, "");
+}
+
+async function listFreeLlmModels(baseUrl: string, apiKey?: string) {
+  try {
+    const response = await fetch(`${baseUrl}/v1/models`, {
+      headers: apiKey?.trim() ? { Authorization: `Bearer ${apiKey.trim()}` } : {},
+      cache: "no-store",
+      signal: AbortSignal.timeout(12_000),
+    });
+    if (!response.ok) return [];
+    const payload = await response.json().catch(() => ({})) as { data?: Array<{ id?: unknown }> };
+    return Array.from(new Set((payload.data || []).map((item) => typeof item.id === "string" ? item.id.trim() : "").filter((id) => /^[A-Za-z0-9][A-Za-z0-9._:/-]{0,179}$/.test(id)))).sort((left, right) => left.localeCompare(right)).slice(0, 200);
+  } catch { return []; }
 }
 
 export async function probeFreeLlmApi(value: unknown, apiKey?: string) {
@@ -35,6 +60,7 @@ export async function probeFreeLlmApi(value: unknown, apiKey?: string) {
   if (!response.ok || payload.status !== "ok") throw new Error(`freellmapi_unhealthy_${response.status}`);
   const key = apiKey?.trim() || "";
   if (!key) return { baseUrl, runtimeTimestamp: typeof payload.timestamp === "string" ? payload.timestamp : null, responseReceived: false };
+  const discoveredModels = await listFreeLlmModels(baseUrl, key);
   const completion = await requestFreeLlmChat({
     baseUrl,
     apiKey: key,
@@ -46,7 +72,7 @@ export async function probeFreeLlmApi(value: unknown, apiKey?: string) {
     runtimeTimestamp: typeof payload.timestamp === "string" ? payload.timestamp : null,
     responseReceived: true,
     model: completion.model,
-    availableModels: completion.model ? [completion.model] : [],
+    availableModels: Array.from(new Set([...discoveredModels, ...(completion.model ? [completion.model] : [])])),
   };
 }
 

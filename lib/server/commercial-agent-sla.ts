@@ -1,11 +1,11 @@
 import { FieldValue } from "firebase-admin/firestore";
+import {prepareAppointmentReservation} from "@/lib/server/crm/appointment-mutation";
 import { adminDb } from "@/app/lib/server/firebase-admin";
 import { sendCriticalPushToTenantUser } from "@/app/lib/server/client-portal-push";
 import {
   evaluateCommercialAgentSla,
   normalizeCommercialAgentActionType,
   resolveCommercialAgentDeadlines,
-  type CommercialAgentActionStatus,
 } from "@/lib/commercial-agent-action";
 
 function clean(value: unknown, max = 240) {
@@ -69,41 +69,64 @@ async function notifyManagers(input: {
   return managerIds.length;
 }
 
-async function expireLinkedObject(actionId: string, action: Record<string, unknown>) {
-  const tenantId = clean(action.tenantId, 180);
-  const leadId = clean(action.leadId, 180);
-  const referenceId = clean(action.referenceId, 180);
-  const referenceCollection = clean(action.referenceCollection, 80);
-  const type = clean(action.type, 60);
-  const writes: Promise<unknown>[] = [];
-
-  if (type === "review_appointment" && referenceId) {
-    const ref = adminDb.collection("appointments").doc(referenceId);
-    const snap = await ref.get();
-    if (snap.exists && clean(snap.data()?.tenantId, 180) === tenantId && clean(snap.data()?.status, 40) === "draft") {
-      writes.push(ref.set({ status: "canceled", cancelReason: "ai_suggestion_expired", updatedAt: FieldValue.serverTimestamp() }, { merge: true }));
+/** Evaluate the observed revision and commit the decision with its linked draft.
+ * Changed candidates are left for the next scan; stale scans never backfill or expire them. */
+export async function applyCommercialAgentSla(expected: FirebaseFirestore.DocumentSnapshot, now: number) {
+  return adminDb.runTransaction(async tx => {
+    const snapshot = await tx.get(expected.ref), action = snapshot.data();
+    if (!action || !snapshot.createTime?.isEqual(expected.createTime!) || !snapshot.updateTime?.isEqual(expected.updateTime!)) return null;
+    const tenantId = clean(action.tenantId, 180), leadId = clean(action.leadId, 180);
+    const type = normalizeCommercialAgentActionType(action.type);
+    const safeId = (value: string) => Boolean(value && !value.includes("/") && value.length <= 180);
+    if (!type || !safeId(tenantId) || !safeId(leadId) || action.status !== "pending_approval") return null;
+    const lead = await tx.get(adminDb.collection("leads").doc(leadId));
+    if (!lead.exists || lead.data()?.tenantId !== tenantId) return null;
+    const generation = action.sourceLeadGeneration;
+    if (generation && (typeof generation.isEqual !== "function" || !generation.isEqual(lead.createTime))) return null;
+    const deadlines = resolveCommercialAgentDeadlines(type, action.createdAt);
+    const dueAt = action.dueAt || deadlines.dueAt, expiresAt = action.expiresAt || deadlines.expiresAt;
+    const evaluation = evaluateCommercialAgentSla({type, status: "pending_approval", createdAt: action.createdAt,
+      dueAt, expiresAt, escalationLevel: action.escalationLevel, now});
+    const backfilled = Boolean(!action.dueAt && dueAt || !action.expiresAt && expiresAt);
+    const patch: Record<string, unknown> = backfilled ? {dueAt, expiresAt} : {};
+    let linked: FirebaseFirestore.DocumentSnapshot | null = null;
+    let linkedPatch: Record<string, unknown> | null = null;
+    let reserve: (() => unknown) | null = null;
+    if (evaluation.state === "expired") {
+      const referenceId = clean(action.referenceId, 180), collection = clean(action.referenceCollection, 80);
+      if (type === "review_appointment" && collection === "appointments" && safeId(referenceId)) {
+        linked = await tx.get(adminDb.collection(collection).doc(referenceId));
+        const row = linked.data();
+        if (row?.tenantId === tenantId && row.leadId === leadId && row.status === "draft" &&
+          (!row.reviewActionId || row.reviewActionId === snapshot.id) &&
+          (!row.sourceLeadGeneration || typeof row.sourceLeadGeneration.isEqual === "function" && row.sourceLeadGeneration.isEqual(lead.createTime))) {
+          reserve = await prepareAppointmentReservation(tx, {tenantId, appointmentId: referenceId, status: "canceled",
+            startAt: null, endAt: null, leadId, ownerUserId: row.ownerUserId || null});
+          linkedPatch = {status: "canceled", cancelReason: "ai_suggestion_expired", version: Number(row.version || 0) + 1};
+        }
+      } else if (["review_proposal", "review_charge"].includes(type) && collection === "orcamentos" && safeId(referenceId)) {
+        linked = await tx.get(adminDb.collection(collection).doc(referenceId));
+        const row = linked.data(), field = type === "review_charge" ? "chargeApprovalStatus" : "agentReviewStatus";
+        if (row?.tenantId === tenantId && row.leadId === leadId && (!row.reviewActionId || row.reviewActionId === snapshot.id) &&
+          (!row.sourceLeadGeneration || typeof row.sourceLeadGeneration.isEqual === "function" && row.sourceLeadGeneration.isEqual(lead.createTime)) &&
+          (!row[field] || row[field] === "pending_approval") && (type !== "review_proposal" || row.status === "Rascunho")) {
+          linkedPatch = {[field]: "expired", [`${field}At`]: FieldValue.serverTimestamp()};
+        }
+      }
+      Object.assign(patch, {status: "expired", expiredAt: new Date(now), expirationReason: "approval_window_elapsed"});
+    } else if (evaluation.state === "escalate") {
+      Object.assign(patch, {escalationLevel: evaluation.escalationLevel, escalatedAt: new Date(now)});
     }
-  }
-  if (["review_proposal", "review_charge"].includes(type) && referenceCollection === "orcamentos" && referenceId) {
-    const ref = adminDb.collection("orcamentos").doc(referenceId);
-    const snap = await ref.get();
-    if (snap.exists && clean(snap.data()?.tenantId, 180) === tenantId) {
-      const field = type === "review_charge" ? "chargeApprovalStatus" : "agentReviewStatus";
-      writes.push(ref.set({ [field]: "expired", [`${field}At`]: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp() }, { merge: true }));
-    }
-  }
-  if (leadId) {
-    writes.push(adminDb.collection("leads").doc(leadId).collection("events").doc(`agent_action_expired_${actionId}`).set({
-      type: "commercial_agent_action_expired",
-      title: "Sugestao da IA expirou sem decisao",
-      detail: clean(action.title, 180),
-      actionId,
-      actorId: "commercial_agent_sla",
-      actorName: "Controle comercial Altum",
-      createdAt: FieldValue.serverTimestamp(),
-    }, { merge: true }));
-  }
-  await Promise.all(writes);
+    if (Object.keys(patch).length) tx.update(snapshot.ref, {...patch, updatedAt: FieldValue.serverTimestamp()});
+    if (linked && linkedPatch) tx.update(linked.ref, {...linkedPatch, updatedAt: FieldValue.serverTimestamp()});
+    reserve?.();
+    if (evaluation.state === "expired") tx.create(lead.ref.collection("events").doc(`agent_action_expired_${snapshot.id}`), {
+      tenantId, type: "commercial_agent_action_expired", title: "Sugestao da IA expirou sem decisao", detail: clean(action.title, 180),
+      actionId: snapshot.id, actorId: "commercial_agent_sla", actorName: "Controle comercial Altum", createdAt: FieldValue.serverTimestamp(),
+    });
+    return {tenantId, title: clean(action.title, 180), detail: clean(action.detail, 500), backfilled,
+      state: evaluation.state, level: evaluation.escalationLevel};
+  });
 }
 
 export async function processCommercialAgentSla(input: { now?: number; limit?: number; tenantId?: string } = {}) {
@@ -120,65 +143,15 @@ export async function processCommercialAgentSla(input: { now?: number; limit?: n
   let expired = 0;
 
   for (const doc of snap.docs) {
-    const action = doc.data() as Record<string, unknown>;
-    const type = normalizeCommercialAgentActionType(action.type);
-    const tenantId = clean(action.tenantId, 180);
-    if (!type || !tenantId) {
-      results.push({ actionId: doc.id, skipped: "invalid_action" });
-      continue;
-    }
-    const deadlines = resolveCommercialAgentDeadlines(type, action.createdAt);
-    const dueAt = action.dueAt || deadlines.dueAt;
-    const expiresAt = action.expiresAt || deadlines.expiresAt;
-    if ((!action.dueAt && dueAt) || (!action.expiresAt && expiresAt)) {
-      await doc.ref.set({ dueAt, expiresAt, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
-      backfilled += 1;
-    }
-    const evaluation = evaluateCommercialAgentSla({
-      type,
-      status: clean(action.status, 40) as CommercialAgentActionStatus,
-      createdAt: action.createdAt,
-      dueAt,
-      expiresAt,
-      escalationLevel: action.escalationLevel,
-      now,
-    });
-    if (evaluation.state === "expired") {
-      const changed = await adminDb.runTransaction(async (tx) => {
-        const current = await tx.get(doc.ref);
-        if (!current.exists || clean(current.data()?.status, 40) !== "pending_approval") return false;
-        tx.set(doc.ref, {
-          status: "expired",
-          expiredAt: new Date(now),
-          expirationReason: "approval_window_elapsed",
-          updatedAt: FieldValue.serverTimestamp(),
-        }, { merge: true });
-        return true;
-      });
-      if (!changed) continue;
-      await expireLinkedObject(doc.id, action);
-      const notifiedManagers = await notifyManagers({ actionId: doc.id, tenantId, title: clean(action.title, 180), detail: clean(action.detail, 500), level: Math.max(2, evaluation.escalationLevel), expired: true });
-      expired += 1;
-      results.push({ actionId: doc.id, state: "expired", notifiedManagers });
-      continue;
-    }
-    if (evaluation.state === "escalate") {
-      const changed = await adminDb.runTransaction(async (tx) => {
-        const current = await tx.get(doc.ref);
-        const currentLevel = Number(current.data()?.escalationLevel) || 0;
-        if (!current.exists || clean(current.data()?.status, 40) !== "pending_approval" || currentLevel >= evaluation.escalationLevel) return false;
-        tx.set(doc.ref, {
-          escalationLevel: evaluation.escalationLevel,
-          escalatedAt: new Date(now),
-          updatedAt: FieldValue.serverTimestamp(),
-        }, { merge: true });
-        return true;
-      });
-      if (!changed) continue;
-      const notifiedManagers = await notifyManagers({ actionId: doc.id, tenantId, title: clean(action.title, 180), detail: clean(action.detail, 500), level: evaluation.escalationLevel, expired: false });
-      escalated += 1;
-      results.push({ actionId: doc.id, state: "escalated", level: evaluation.escalationLevel, notifiedManagers });
-    }
+    const change = await applyCommercialAgentSla(doc, now);
+    if (!change) {results.push({actionId: doc.id, skipped: "changed_or_invalid_context"}); continue;}
+    if (change.backfilled) backfilled += 1;
+    if (change.state !== "expired" && change.state !== "escalate") continue;
+    const isExpired = change.state === "expired";
+    const notifiedManagers = await notifyManagers({actionId: doc.id, tenantId: change.tenantId, title: change.title,
+      detail: change.detail, level: isExpired ? Math.max(2, change.level) : change.level, expired: isExpired});
+    if (isExpired) expired += 1; else escalated += 1;
+    results.push({actionId: doc.id, state: change.state, level: change.level, notifiedManagers});
   }
 
   return { scanned: snap.size, changed: escalated + expired, escalated, expired, backfilled, results };

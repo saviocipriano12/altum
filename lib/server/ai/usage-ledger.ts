@@ -1,5 +1,6 @@
 import { FieldValue } from "firebase-admin/firestore";
 import { adminDb } from "@/app/lib/server/firebase-admin";
+import { createHash } from "node:crypto";
 import type {
   AltumAiAutonomyMode,
   AltumAiProvider,
@@ -46,7 +47,7 @@ function monthRefFromDate(value = new Date()) {
   return value.toISOString().slice(0, 7);
 }
 
-function usageMonthDocId(tenantId: string, monthRef: string) {
+export function usageMonthDocId(tenantId: string, monthRef: string) {
   const safeTenant = String(tenantId || "")
     .trim()
     .replace(/[^a-zA-Z0-9_-]/g, "_")
@@ -81,16 +82,17 @@ function toMillis(value: unknown) {
   return 0;
 }
 
-export async function logAiUsage(entry: AiUsageLedgerEntry) {
+export async function logAiUsage(entry: AiUsageLedgerEntry, operationId?: string) {
   if (!entry.tenantId.trim()) return null;
 
-  const ref = adminDb.collection("ai_usage_ledger").doc();
+  const key = operationId ? `usage_${createHash("sha256").update(JSON.stringify([entry.tenantId, entry.scope, operationId])).digest("hex")}` : undefined;
+  const ref = key ? adminDb.collection("ai_usage_ledger").doc(key) : adminDb.collection("ai_usage_ledger").doc();
   const estimatedCostUsd = typeof entry.estimatedCostUsd === "number" ? entry.estimatedCostUsd : 0;
   const scope = entry.scope || "conversation";
   const monthRef = monthRefFromDate();
   const monthDocRef = adminDb.collection("ai_usage_monthly").doc(usageMonthDocId(entry.tenantId, monthRef));
 
-  await ref.set({
+  const ledger = {
     tenantId: entry.tenantId,
     scope,
     provider: entry.provider,
@@ -113,9 +115,19 @@ export async function logAiUsage(entry: AiUsageLedgerEntry) {
     status: entry.status || "success",
     metadata: entry.metadata || {},
     createdAt: FieldValue.serverTimestamp(),
-  });
+  };
 
-  await monthDocRef.set(
+  await adminDb.runTransaction(async tx => {
+    const previous = await tx.get(ref);
+    if (previous.exists) {
+      const old = previous.data()!;
+      if (old.tenantId !== entry.tenantId || old.scope !== scope || old.chatId !== ledger.chatId || old.messageId !== ledger.messageId ||
+          old.aiLogId !== ledger.aiLogId || old.model !== entry.model || old.provider !== entry.provider || old.estimatedCostUsd !== ledger.estimatedCostUsd ||
+          old.inputTokens !== ledger.inputTokens || old.outputTokens !== ledger.outputTokens) throw new Error("AI_USAGE_OPERATION_CONFLICT");
+      return;
+    }
+    tx.create(ref, ledger);
+    tx.set(monthDocRef,
     {
       tenantId: entry.tenantId,
       monthRef,
@@ -129,6 +141,7 @@ export async function logAiUsage(entry: AiUsageLedgerEntry) {
     },
     { merge: true }
   );
+  });
 
   return ref.id;
 }

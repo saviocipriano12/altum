@@ -1,0 +1,6 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": { "incremental": false },
+  "include": ["./crm-conversation-selection.emulator.mts", "../lib/server/crm/semantic-observation.ts", "../lib/server/crm/ai-signal-occurrence.ts", "../lib/server/ai/agent.ts"],
+  "exclude": ["../node_modules", "../.next", "../.qa-artifacts", "../_benchmark"]
+}

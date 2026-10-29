@@ -4,6 +4,7 @@ import { adminDb } from "@/app/lib/server/firebase-admin";
 import { buildConnectionPayload, buildEcommerceWebhookSecret } from "@/lib/server/ecommerce";
 import { connectionConfigFromDoc, getCommerceProvider, storeCommerceCredentials } from "@/lib/server/commerce/registry";
 import type { CommerceProviderId } from "@/lib/server/commerce/types";
+import { normalizeShopifyStore } from "@/lib/shopify-connection";
 
 export type CommerceOAuthProvider = Extract<CommerceProviderId, "shopify" | "nuvemshop">;
 
@@ -14,6 +15,7 @@ type StoredCommerceOAuthState = {
   userName: string;
   redirectPath: string;
   shopDomain: string;
+  connectionId?: string;
   nonceHash: string;
   createdAt: unknown;
   expiresAt: Date;
@@ -47,14 +49,7 @@ function toDate(value: unknown) {
 }
 
 export function normalizeShopifyDomain(value: unknown) {
-  let domain = clean(value, 220).toLowerCase();
-  try {
-    if (domain.includes("/")) domain = new URL(domain.startsWith("http") ? domain : `https://${domain}`).hostname;
-  } catch {
-    return "";
-  }
-  if (!domain.includes(".")) domain = `${domain}.myshopify.com`;
-  return /^[a-z0-9][a-z0-9-]*\.myshopify\.com$/.test(domain) ? domain : "";
+  return normalizeShopifyStore(value);
 }
 
 export function getCommerceOAuthEnv() {
@@ -86,6 +81,7 @@ export async function createCommerceOAuthState(input: {
   userName?: string;
   redirectPath?: string;
   shopDomain?: string;
+  connectionId?: string;
 }) {
   const id = token(12);
   const nonce = token(24);
@@ -97,6 +93,7 @@ export async function createCommerceOAuthState(input: {
     userName: clean(input.userName, 120),
     redirectPath: cleanRedirectPath(input.redirectPath),
     shopDomain: clean(input.shopDomain, 220),
+    connectionId: clean(input.connectionId, 180),
     nonceHash: hash(nonce),
     createdAt: FieldValue.serverTimestamp(),
     expiresAt: new Date(Date.now() + 15 * 60_000),
@@ -132,6 +129,7 @@ export async function consumeCommerceOAuthState(value: unknown, provider: Commer
       userName: clean(data.userName, 120),
       redirectPath: cleanRedirectPath(data.redirectPath),
       shopDomain: clean(data.shopDomain, 220),
+      connectionId: clean(data.connectionId, 180),
     };
   });
 }
@@ -159,11 +157,22 @@ export async function saveManagedCommerceConnection(input: {
   storeUrl?: string;
   accessToken: string;
   scope?: string;
+  connectionId?: string;
 }) {
   const existing = await adminDb.collection("ecommerce_connections").where("tenantId", "==", input.tenantId).limit(40).get();
-  const match = existing.docs.find((doc) => {
+  const requested = input.connectionId ? await adminDb.collection("ecommerce_connections").doc(input.connectionId).get() : null;
+  if (requested && (!requested.exists || clean(requested.data()?.tenantId, 180) !== input.tenantId || clean(requested.data()?.provider, 80) !== input.provider)) {
+    throw new Error("commerce_connection_tenant_mismatch");
+  }
+  if (requested?.exists && input.provider === "shopify") {
+    const data = requested.data()!;
+    const savedShop = normalizeShopifyDomain(data.storeId) || normalizeShopifyDomain(data.storeUrl);
+    if (savedShop && savedShop !== input.storeId) throw new Error("shopify_oauth_shop_mismatch");
+  }
+  const match = requested?.exists ? requested : existing.docs.find((doc) => {
     const data = doc.data() as Record<string, unknown>;
-    return clean(data.provider, 80) === input.provider && clean(data.storeId, 220).toLowerCase() === clean(input.storeId, 220).toLowerCase();
+    const storeId = input.provider === "shopify" ? normalizeShopifyDomain(data.storeId) || normalizeShopifyDomain(data.storeUrl) : clean(data.storeId, 220).toLowerCase();
+    return clean(data.provider, 80) === input.provider && storeId === clean(input.storeId, 220).toLowerCase();
   });
   const ref = match?.ref || adminDb.collection("ecommerce_connections").doc();
   const webhookSecret = buildEcommerceWebhookSecret();

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { FormEvent, useCallback, useDeferredValue, useEffect, useMemo, useState } from "react";
+import { FormEvent, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import {
   ArrowRight,
@@ -38,6 +38,7 @@ import {
   toCrmDate,
 } from "@/app/cliente/painel/components/crm-workspace";
 import { getPipelineStageLabel } from "@/lib/pipeline";
+import { getProposalCreateAttempt, completeProposalCreateAttempt } from "@/lib/proposal-create-attempt";
 
 type LeadItem = {
   id: string;
@@ -53,6 +54,7 @@ type LeadItem = {
 
 type BudgetItem = {
   id: string;
+  revision?: number;
   titulo?: string;
   leadId?: string;
   leadName?: string;
@@ -149,6 +151,7 @@ export default function ClienteComercialPage() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [savingBudget, setSavingBudget] = useState(false);
+  const budgetSubmission = useRef(false);
   const [savingFinance, setSavingFinance] = useState(false);
   const [creatingCharge, setCreatingCharge] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -251,18 +254,28 @@ export default function ClienteComercialPage() {
 
   async function createBudget(event: FormEvent) {
     event.preventDefault();
-    if (!tenant?.tenantId || !canOperate) return;
+    if (!tenant?.tenantId || !canOperate || budgetSubmission.current) return;
+    budgetSubmission.current = true;
     setSavingBudget(true);
     setError(null);
     setNotice(null);
     try {
+      const requestId = getProposalCreateAttempt(sessionStorage, tenant.tenantId, tenant.userId);
       const res = await authedFetch(`/api/tenant/${tenant.tenantId}/budgets`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "Idempotency-Key": requestId },
         body: JSON.stringify({ ...budgetForm, valorTotal: Number(budgetForm.valorTotal || 0) }),
       });
-      const payload = (await res.json().catch(() => ({}))) as { error?: string };
+      const payload = (await res.json().catch(() => ({}))) as { error?: string; id?: string; code?: string; existingProposalId?: string; retryProtected?: boolean };
+      if (res.status === 409 && payload.code === "CREATION_REQUEST_CONFLICT" && payload.existingProposalId) {
+        completeProposalCreateAttempt(sessionStorage, tenant.tenantId, tenant.userId, requestId);
+        setActiveTab("proposals");
+        await load();
+        throw new Error("A tentativa anterior ja criou uma proposta. Confira a lista antes de criar outra com os dados alterados.");
+      }
       if (!res.ok || payload.error) throw new Error(payload.error || "Falha ao criar proposta.");
+      if (!payload.id || payload.retryProtected !== true) throw new Error("Criacao sem confirmacao segura. Repita a tentativa sem alterar os dados.");
+      completeProposalCreateAttempt(sessionStorage, tenant.tenantId, tenant.userId, requestId);
       setBudgetForm({ leadId: leadFromQuery || "", titulo: "", tipo: "Projeto unico", status: "Rascunho", valorTotal: "", validade: nextBusinessDate(7), resumo: "" });
       setNotice("Proposta criada com sucesso.");
       await load();
@@ -270,6 +283,7 @@ export default function ClienteComercialPage() {
     } catch (err) {
       setError(err instanceof Error ? err.message : "Falha ao criar proposta.");
     } finally {
+      budgetSubmission.current = false;
       setSavingBudget(false);
     }
   }
@@ -306,7 +320,7 @@ export default function ClienteComercialPage() {
       const res = await authedFetch(`/api/tenant/${tenant.tenantId}/budgets/${budgetId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: nextStatus }),
+        body: JSON.stringify({ status: nextStatus, expectedRevision: budgets.find(item => item.id === budgetId)?.revision ?? 0 }),
       });
       const payload = (await res.json().catch(() => ({}))) as { error?: string };
       if (!res.ok || payload.error) throw new Error(payload.error || "Falha ao atualizar proposta.");

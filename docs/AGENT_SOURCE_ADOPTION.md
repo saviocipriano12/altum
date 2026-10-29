@@ -48,3 +48,9 @@ O adaptador `lib/server/agent-os/openjev.ts` usa o contrato original `POST /v1/s
 ## Skills importadas com atribuição
 
 `node scripts/import-reviewed-agent-skills.mjs` importa uma primeira curadoria de skills de marketing e social provenientes de fontes MIT para `resources/agent-skills/review-queue/`, preservando uma nota de origem, commit e licença. Elas começam como `review_required_before_activation`: fonte externa não pode se tornar instrução de produção sem revisão de escopo, segurança, regras de marca e ações permitidas.
+
+## Agência de especialistas importada com atribuição
+
+`node scripts/import-reviewed-agency-agents.mjs` importa a primeira equipe do upstream `Ado77/agency-agents` para `resources/agency-agents/review-queue/`. A importação confere o commit fixado, preserva a origem e a licença MIT e gera um manifesto de revisão. Esses agentes são conteúdo externo versionado: não recebem acesso a empresas, ferramentas ou execução até que cada um tenha contrato Altum, escopo, limite de custo, avaliações e responsável definidos.
+
+Antes de importar ou atualizar fontes, rode `npm run agents:audit:sources`. O comando valida os registros, a lista de especialistas e o checkout fixado do Agency Agents; ele falha se houver commit, caminho ou catálogo divergente.

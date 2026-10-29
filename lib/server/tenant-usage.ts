@@ -98,13 +98,15 @@ async function ensureAutomationUsageCounter(tenantId: string, referenceDate = ne
     );
   }).length;
 
-  await ref.set({
-    tenantId,
-    monthRef: monthRef(referenceDate),
-    automationExecutions,
-    initializedAt: FieldValue.serverTimestamp(),
-    updatedAt: FieldValue.serverTimestamp(),
-  }, { merge: true });
+  await adminDb.runTransaction(async transaction => {
+    const current = await transaction.get(ref), existing = Number(current.data()?.automationExecutions);
+    // A slower initializer must not reset reservations committed by another run.
+    if (current.exists && Number.isFinite(existing) && existing >= 0) return;
+    transaction.set(ref, {
+      tenantId, monthRef: monthRef(referenceDate), automationExecutions,
+      initializedAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp(),
+    }, { merge: true });
+  });
   return ref;
 }
 
@@ -200,24 +202,81 @@ export async function getTenantCommercialUsage(
   };
 }
 
-export async function reserveTenantAutomationExecution(tenantId: string) {
+export async function reserveTenantAutomationExecution(tenantId: string, execution?: {
+  jobId: string; claimToken: string; kind?: "inbound" | "proposal" | "stage"; automationId?: string; stageSourceKind?: import("@/lib/server/crm/stage-source-contract").StageAutomationSourceKind;
+}) {
   const entitlements = await getTenantEntitlements(tenantId);
   const limit = Number(entitlements.limits.automationsPerMonth || 0);
-  if (!Number.isFinite(limit) || limit <= 0) {
+  if ((!Number.isFinite(limit) || limit <= 0) && !execution) {
     return { allowed: true, limit: 0, currentUsage: 0 };
   }
 
-  const ref = await ensureAutomationUsageCounter(tenantId);
+  const ref = Number.isFinite(limit) && limit > 0 ? await ensureAutomationUsageCounter(tenantId) : null;
+  // Keep the proposal authority graph lazy for unrelated usage readers/workers.
+  const authorizeProposal = execution?.kind === "proposal"
+    ? (await import("@/lib/server/automation-proposal-delivery")).authorizeProposalAutomationReservation : null;
+  const authorizeStage = execution?.kind === "stage"
+    ? (await import("@/lib/server/automation-stage-delivery")).authorizeStageAutomationReservation : null;
   return adminDb.runTransaction(async (transaction) => {
-    const snap = await transaction.get(ref);
-    const currentUsage = Math.max(0, Number((snap.data() as Record<string, unknown> | undefined)?.automationExecutions || 0));
-    if (currentUsage >= limit) return { allowed: false, limit, currentUsage };
-    transaction.set(ref, {
+    const jobRef = execution ? adminDb.collection("jobs").doc(execution.jobId) : null;
+    const job = jobRef ? await transaction.get(jobRef) : null;
+    let reservationField = execution?.kind === "inbound" ? "inboundUsageReservation" : "schedulerUsageReservation";
+    let proposalReservation: { key: string; planDigest: string } | null = null;
+    if (execution) {
+      const data = job?.data();
+      const expectedType = execution.kind === "proposal" ? "crm_proposal_mutation"
+        : execution.kind === "stage" ? stageAutomationSourceType(execution.stageSourceKind) || "invalid_stage_source"
+        : execution.kind === "inbound" ? "automation_inbound_execution" : "automation_scheduled_action";
+      if (!data || data.tenantId !== tenantId || data.type !== expectedType || data.status !== "processing" ||
+          data.claimToken !== execution.claimToken || toMillis(data.leaseUntil) <= Date.now()) {
+        throw new Error("Reserva de automacao sem posse valida do agendamento.");
+      }
+      if (!execution.kind && (execution.jobId.startsWith("stage_schedule_") || data.stageScheduleProtocol !== undefined || data.stageSourceId !== undefined || data.stageSourceKind !== undefined)) {
+        const { assertStageAutomationSchedule } = await import("@/lib/server/automation-stage-delivery");
+        const { reservation } = await assertStageAutomationSchedule(transaction, execution.jobId, data, "quota", execution.claimToken);
+        if (!data.schedulerUsageReservation) transaction.update(jobRef!, { schedulerUsageReservation: { ...reservation } });
+        return { allowed: true, limit: Number(reservation.limit), currentUsage: Number(reservation.currentUsage) };
+      }
+      if (execution.kind !== "proposal" && (execution.jobId.startsWith("proposal_schedule_") || data.proposalScheduleProtocol !== undefined || data.automationProposalSourceId !== undefined)) {
+        const { assertProposalAutomationSchedule } = await import("@/lib/server/automation-proposal-delivery");
+        const { reservation } = await assertProposalAutomationSchedule(transaction, execution.jobId, data, "quota", execution.claimToken);
+        // The original automation already reserved this occurrence. An action
+        // scheduled by it must not charge the tenant for the same run again.
+        const result = { allowed: true, limit: Number(reservation.limit), currentUsage: Number(reservation.currentUsage) };
+        if (!data.schedulerUsageReservation) transaction.update(jobRef!, { schedulerUsageReservation: { ...reservation } });
+        return result;
+      }
+      if (authorizeProposal) {
+        proposalReservation = await authorizeProposal(transaction, { tenantId, sourceId: execution.jobId,
+          token: execution.claimToken, automationId: execution.automationId || "" });
+        reservationField = `proposalUsageReservations.${proposalReservation.key}`;
+      }
+      if (authorizeStage) {
+        proposalReservation = await authorizeStage(transaction, { tenantId, sourceId: execution.jobId,
+          token: execution.claimToken, automationId: execution.automationId || "", sourceKind: execution.stageSourceKind });
+        reservationField = `stageUsageReservations.${proposalReservation.key}`;
+      }
+      const previous = proposalReservation ? data[execution.kind === "stage" ? "stageUsageReservations" : "proposalUsageReservations"]?.[proposalReservation.key] : data[reservationField];
+      if (previous && proposalReservation && (previous.automationId !== execution.automationId || previous.planDigest !== proposalReservation.planDigest)) {
+        throw new Error("PROPOSAL_AUTOMATION_RESERVATION_CHANGED");
+      }
+      if (previous?.allowed === true && Number.isFinite(previous.limit) && Number.isFinite(previous.currentUsage)) {
+        return { allowed: true, limit: Number(previous.limit), currentUsage: Number(previous.currentUsage) };
+      }
+    }
+    const snap = ref ? await transaction.get(ref) : null;
+    const currentUsage = Math.max(0, Number((snap?.data() as Record<string, unknown> | undefined)?.automationExecutions || 0));
+    if (ref && currentUsage >= limit) return { allowed: false, limit, currentUsage };
+    if (ref) transaction.set(ref, {
       tenantId,
       monthRef: monthRef(),
       automationExecutions: currentUsage + 1,
       updatedAt: FieldValue.serverTimestamp(),
     }, { merge: true });
-    return { allowed: true, limit, currentUsage: currentUsage + 1 };
+    const result = { allowed: true, limit: ref ? limit : 0, currentUsage: ref ? currentUsage + 1 : 0 };
+    if (jobRef) transaction.update(jobRef, { [reservationField]: { ...result, monthRef: monthRef(),
+      ...(proposalReservation ? { automationId: execution!.automationId, planDigest: proposalReservation.planDigest } : {}) } });
+    return result;
   });
 }
+import { stageAutomationSourceType } from "@/lib/server/crm/stage-source-contract";

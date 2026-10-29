@@ -1,0 +1,6 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": { "incremental": false },
+  "include": ["./crm-conversation-context.emulator.mts", "./crm-lead-intake.emulator.mts", "../lib/server/crm/conversation-commercial-context.ts", "../lib/server/crm/conversation-intelligence.ts", "../lib/server/crm/conversation-observation-queue.ts", "../lib/server/lead-intake.ts"],
+  "exclude": ["../node_modules", "../.next", "../.qa-artifacts"]
+}

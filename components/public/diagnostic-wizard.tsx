@@ -61,14 +61,23 @@ export function DiagnosticWizard() {
       landingPage: typeof window !== "undefined" ? window.location.href : "",
       referrer: typeof document !== "undefined" ? document.referrer : "",
     }),
-    [searchParams]
+    [searchParams],
   );
 
-  const classification = useMemo(() => classifyDiagnosticLead(answers), [answers]);
+  const classification = useMemo(
+    () => classifyDiagnosticLead(answers),
+    [answers],
+  );
   const recommendation = classification.recommendation;
   const completed = step >= TOTAL_STEPS;
-  const answerDetails = useMemo(() => getDiagnosticAnswerDetails(answers), [answers]);
-  function updateContact<K extends keyof ContactState>(key: K, value: ContactState[K]) {
+  const answerDetails = useMemo(
+    () => getDiagnosticAnswerDetails(answers),
+    [answers],
+  );
+  function updateContact<K extends keyof ContactState>(
+    key: K,
+    value: ContactState[K],
+  ) {
     setContact((current) => ({ ...current, [key]: value }));
   }
 
@@ -78,11 +87,15 @@ export function DiagnosticWizard() {
 
   function canContinueCurrentStep() {
     if (step === 0) {
-      return contact.nome.trim().length >= 3 && contact.empresa.trim().length >= 2;
+      return (
+        contact.nome.trim().length >= 3 && contact.empresa.trim().length >= 2
+      );
     }
 
     if (step === 1) {
-      return contact.telefone.trim().length >= 8 && contact.email.trim().length >= 5;
+      return (
+        contact.telefone.trim().length >= 8 && contact.email.trim().length >= 5
+      );
     }
 
     if (step === 2) {
@@ -132,7 +145,12 @@ export function DiagnosticWizard() {
         whatsappUrl?: string;
       };
 
-      if (!response.ok || !payload.leadId || !payload.message || !payload.whatsappUrl) {
+      if (
+        !response.ok ||
+        !payload.leadId ||
+        !payload.message ||
+        !payload.whatsappUrl
+      ) {
         setSubmitError(payload.error || "Falha ao enviar quiz.");
         return;
       }
@@ -150,24 +168,29 @@ export function DiagnosticWizard() {
   }
 
   return (
-    <div className="overflow-hidden rounded-[32px] border border-white/10 bg-[#111111]/95 shadow-[0_40px_120px_-48px_rgba(37,99,235,0.32)]">
-      <div className="border-b border-white/10 bg-[radial-gradient(circle_at_top_left,rgba(37,99,235,0.16),transparent_34%),linear-gradient(180deg,rgba(255,255,255,0.03),rgba(255,255,255,0.01))] px-6 py-6">
+    <div className="overflow-hidden rounded-[32px] border border-slate-200 bg-[#faf9f7]/95 shadow-[0_40px_120px_-48px_rgba(78,53,33,0.16)]">
+      <div className="border-b border-slate-200 bg-[radial-gradient(circle_at_top_left,rgba(37,99,235,0.16),transparent_34%),linear-gradient(180deg,rgba(255,255,255,0.03),rgba(255,255,255,0.01))] px-6 py-6">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <p className="text-xs uppercase tracking-[0.28em] text-[#93c5fd]">Quiz estrategico Altum</p>
-            <h2 className="mt-3 text-2xl font-semibold text-white md:text-3xl">
-              Um diagnóstico rápido para entender sua operação e indicar o melhor ponto de entrada na Altum.
+            <p className="text-xs uppercase tracking-[0.28em] text-[#292a2d]">
+              Quiz estrategico Altum
+            </p>
+            <h2 className="mt-3 text-2xl font-semibold text-[#292a2d] md:text-3xl">
+              Um diagnóstico rápido para entender sua operação e indicar o
+              melhor ponto de entrada na Altum.
             </h2>
           </div>
-          <div className="rounded-full border border-white/10 bg-black/20 px-4 py-2 text-sm text-white/64">
+          <div className="rounded-full border border-slate-200 bg-slate-50 px-4 py-2 text-sm text-slate-600">
             {completed ? "Resumo final" : `Etapa ${step + 1} de ${TOTAL_STEPS}`}
           </div>
         </div>
 
-        <div className="mt-5 h-2 w-full overflow-hidden rounded-full bg-white/10">
+        <div className="mt-5 h-2 w-full overflow-hidden rounded-full bg-white">
           <div
-            className="h-full rounded-full bg-[linear-gradient(90deg,#93c5fd_0%,#2563eb_55%,#dbeafe_100%)] transition-all duration-300"
-            style={{ width: `${Math.min(((step + 1) / (TOTAL_STEPS + 1)) * 100, 100)}%` }}
+            className="h-full rounded-full bg-[linear-gradient(90deg,#ffb97c_0%,#ed782f_55%,#ffe4ca_100%)] transition-all duration-300"
+            style={{
+              width: `${Math.min(((step + 1) / (TOTAL_STEPS + 1)) * 100, 100)}%`,
+            }}
           />
         </div>
       </div>
@@ -175,7 +198,11 @@ export function DiagnosticWizard() {
       <div className="grid gap-0 lg:grid-cols-[minmax(0,1.1fr)_360px]">
         <div className="px-6 py-6 md:px-8 md:py-8">
           {submitState ? (
-            <SuccessState leadId={submitState.leadId} message={submitState.message} whatsappUrl={submitState.whatsappUrl} />
+            <SuccessState
+              leadId={submitState.leadId}
+              message={submitState.message}
+              whatsappUrl={submitState.whatsappUrl}
+            />
           ) : completed ? (
             <ReviewStep
               contact={contact}
@@ -206,8 +233,10 @@ export function DiagnosticWizard() {
           )}
         </div>
 
-        <aside className="border-t border-white/10 bg-black/20 px-6 py-6 lg:border-l lg:border-t-0">
-          <p className="text-xs uppercase tracking-[0.22em] text-[#93c5fd]">Como isso entra na Altum</p>
+        <aside className="border-t border-slate-200 bg-slate-50 px-6 py-6 lg:border-l lg:border-t-0">
+          <p className="text-xs uppercase tracking-[0.22em] text-[#292a2d]">
+            Como isso entra na Altum
+          </p>
           <div className="mt-5 space-y-4">
             <SideCard
               title="Lead com contexto"
@@ -227,13 +256,14 @@ export function DiagnosticWizard() {
             />
           </div>
 
-          <div className="mt-6 rounded-[24px] border border-white/10 bg-white/[0.03] p-4">
-            <div className="inline-flex items-center gap-2 rounded-full border border-[#2563eb]/15 bg-[#2563eb]/10 px-3 py-1 text-[11px] uppercase tracking-[0.18em] text-[#93c5fd]">
+          <div className="mt-6 rounded-[24px] border border-slate-200 bg-white p-4">
+            <div className="inline-flex items-center gap-2 rounded-full border border-[#ed782f]/15 bg-[#ed782f]/10 px-3 py-1 text-[11px] uppercase tracking-[0.18em] text-[#292a2d]">
               <Sparkles className="h-3.5 w-3.5" />
               Logica comercial
             </div>
-            <p className="mt-4 text-sm leading-7 text-white/68">
-              O cliente responde rapido. A Altum recebe o lead com contexto, rota sugerida e entrada da pagina ja registrada.
+            <p className="mt-4 text-sm leading-7 text-slate-600">
+              O cliente responde rapido. A Altum recebe o lead com contexto,
+              rota sugerida e entrada da pagina ja registrada.
             </p>
           </div>
         </aside>
@@ -257,7 +287,10 @@ function StepRenderer({
   contact: ContactState;
   answers: DiagnosticAnswerMap;
   canContinue: boolean;
-  onContactChange: <K extends keyof ContactState>(key: K, value: ContactState[K]) => void;
+  onContactChange: <K extends keyof ContactState>(
+    key: K,
+    value: ContactState[K],
+  ) => void;
   onAnswerChange: (key: keyof DiagnosticAnswerMap, value: string) => void;
   onBack: (() => void) | null;
   onNext: () => void;
@@ -327,8 +360,12 @@ function StepRenderer({
   }
 
   if (step === 2) {
-    const revenueQuestion = diagnosticQuestions.find((item) => item.id === "revenue");
-    const segmentQuestion = diagnosticQuestions.find((item) => item.id === "segment");
+    const revenueQuestion = diagnosticQuestions.find(
+      (item) => item.id === "revenue",
+    );
+    const segmentQuestion = diagnosticQuestions.find(
+      (item) => item.id === "segment",
+    );
 
     return (
       <StepLayout
@@ -425,9 +462,15 @@ function StepLayout({
 }) {
   return (
     <>
-      <p className="text-xs uppercase tracking-[0.22em] text-[#93c5fd]">{eyebrow}</p>
-      <h3 className="mt-4 max-w-3xl text-3xl font-semibold leading-tight text-white md:text-4xl">{title}</h3>
-      <p className="mt-4 max-w-2xl text-sm leading-7 text-white/68 md:text-base">{description}</p>
+      <p className="text-xs uppercase tracking-[0.22em] text-[#292a2d]">
+        {eyebrow}
+      </p>
+      <h3 className="mt-4 max-w-3xl text-3xl font-semibold leading-tight text-[#292a2d] md:text-4xl">
+        {title}
+      </h3>
+      <p className="mt-4 max-w-2xl text-sm leading-7 text-slate-600 md:text-base">
+        {description}
+      </p>
 
       <div className="mt-8">{children}</div>
 
@@ -436,7 +479,7 @@ function StepLayout({
           <button
             type="button"
             onClick={onBack}
-            className="inline-flex items-center gap-2 rounded-full border border-white/12 px-5 py-3 text-sm font-semibold text-white/78 transition hover:border-white/22 hover:text-white"
+            className="inline-flex items-center gap-2 rounded-full border border-slate-200 px-5 py-3 text-sm font-semibold text-slate-600 transition hover:border-slate-200 hover:text-[#292a2d]"
           >
             <ChevronLeft className="h-4 w-4" />
             Voltar
@@ -447,7 +490,7 @@ function StepLayout({
           type="button"
           onClick={onNext}
           disabled={!canContinue}
-          className="inline-flex items-center gap-2 rounded-full bg-[#2563eb] px-5 py-3 text-sm font-semibold text-white transition hover:bg-[#1d4ed8] disabled:cursor-not-allowed disabled:opacity-40"
+          className="inline-flex items-center gap-2 rounded-full bg-[#292a2d] px-5 py-3 text-sm font-semibold text-white transition hover:bg-[#424346] disabled:cursor-not-allowed disabled:opacity-40"
         >
           {nextLabel}
           <ArrowRight className="h-4 w-4" />
@@ -476,9 +519,15 @@ function QuestionStep({
 }) {
   return (
     <>
-      <p className="text-xs uppercase tracking-[0.22em] text-[#93c5fd]">{eyebrow}</p>
-      <h3 className="mt-4 max-w-3xl text-3xl font-semibold leading-tight text-white md:text-4xl">{title}</h3>
-      <p className="mt-4 max-w-2xl text-sm leading-7 text-white/68 md:text-base">{description}</p>
+      <p className="text-xs uppercase tracking-[0.22em] text-[#292a2d]">
+        {eyebrow}
+      </p>
+      <h3 className="mt-4 max-w-3xl text-3xl font-semibold leading-tight text-[#292a2d] md:text-4xl">
+        {title}
+      </h3>
+      <p className="mt-4 max-w-2xl text-sm leading-7 text-slate-600 md:text-base">
+        {description}
+      </p>
 
       <div className="mt-8 grid gap-3">
         {options.map((option) => {
@@ -490,11 +539,13 @@ function QuestionStep({
               onClick={() => onSelect(option.value)}
               className={`rounded-[22px] border px-5 py-4 text-left transition ${
                 active
-                  ? "border-[#2563eb]/40 bg-[#2563eb]/12"
-                  : "border-white/10 bg-white/[0.03] hover:border-[#2563eb]/25 hover:bg-[#2563eb]/8"
+                  ? "border-[#ed782f]/40 bg-[#ed782f]/12"
+                  : "border-slate-200 bg-white hover:border-[#ed782f]/25 hover:bg-[#ed782f]/8"
               }`}
             >
-              <span className="text-base font-semibold text-white">{option.label}</span>
+              <span className="text-base font-semibold text-[#292a2d]">
+                {option.label}
+              </span>
             </button>
           );
         })}
@@ -504,7 +555,7 @@ function QuestionStep({
         <button
           type="button"
           onClick={onBack}
-          className="mt-8 inline-flex items-center gap-2 rounded-full border border-white/12 px-5 py-3 text-sm font-semibold text-white/78 transition hover:border-white/22 hover:text-white"
+          className="mt-8 inline-flex items-center gap-2 rounded-full border border-slate-200 px-5 py-3 text-sm font-semibold text-slate-600 transition hover:border-slate-200 hover:text-[#292a2d]"
         >
           <ChevronLeft className="h-4 w-4" />
           Voltar
@@ -542,12 +593,18 @@ function ReviewStep({
         Quiz montado
       </div>
 
-      <h3 className="mt-5 text-3xl font-semibold text-white md:text-4xl">{recommendationTitle}</h3>
-      <p className="mt-4 max-w-3xl text-base leading-8 text-white/72">{recommendationDescription}</p>
+      <h3 className="mt-5 text-3xl font-semibold text-[#292a2d] md:text-4xl">
+        {recommendationTitle}
+      </h3>
+      <p className="mt-4 max-w-3xl text-base leading-8 text-slate-600">
+        {recommendationDescription}
+      </p>
 
       <div className="mt-8 grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
-        <div className="rounded-[26px] border border-white/10 bg-white/[0.03] p-5">
-          <p className="text-xs uppercase tracking-[0.18em] text-[#93c5fd]">Resumo enviado para a Altum</p>
+        <div className="rounded-[26px] border border-slate-200 bg-white p-5">
+          <p className="text-xs uppercase tracking-[0.18em] text-[#292a2d]">
+            Resumo enviado para a Altum
+          </p>
           <div className="mt-5 grid gap-3 md:grid-cols-2">
             <SummaryItem label="Contato" value={contact.nome} />
             <SummaryItem label="Empresa" value={contact.empresa} />
@@ -555,19 +612,26 @@ function ReviewStep({
             <SummaryItem label="E-mail" value={contact.email} />
           </div>
 
-          <div className="mt-6 space-y-3 border-t border-white/10 pt-6">
+          <div className="mt-6 space-y-3 border-t border-slate-200 pt-6">
             {answerDetails.map((item) => (
-              <SummaryLine key={item.id} label={item.title} value={item.label} />
+              <SummaryLine
+                key={item.id}
+                label={item.title}
+                value={item.label}
+              />
             ))}
           </div>
         </div>
 
-        <div className="rounded-[26px] border border-white/10 bg-black/20 p-5">
-          <p className="text-xs uppercase tracking-[0.18em] text-[#93c5fd]">Antes de enviar</p>
-          <p className="mt-4 text-sm leading-7 text-white/68">
-            Seu lead vai entrar na base da Altum com contexto, rota sugerida e dados suficientes para o comercial agir sem retrabalho.
+        <div className="rounded-[26px] border border-slate-200 bg-slate-50 p-5">
+          <p className="text-xs uppercase tracking-[0.18em] text-[#292a2d]">
+            Antes de enviar
           </p>
-          <p className="mt-4 text-xs leading-6 text-white/40">{summary}</p>
+          <p className="mt-4 text-sm leading-7 text-slate-600">
+            Seu lead vai entrar na base da Altum com contexto, rota sugerida e
+            dados suficientes para o comercial agir sem retrabalho.
+          </p>
+          <p className="mt-4 text-xs leading-6 text-slate-600">{summary}</p>
         </div>
       </div>
 
@@ -575,7 +639,7 @@ function ReviewStep({
         <button
           type="button"
           onClick={onBack}
-          className="inline-flex items-center gap-2 rounded-full border border-white/12 px-5 py-3 text-sm font-semibold text-white/78 transition hover:border-white/22 hover:text-white"
+          className="inline-flex items-center gap-2 rounded-full border border-slate-200 px-5 py-3 text-sm font-semibold text-slate-600 transition hover:border-slate-200 hover:text-[#292a2d]"
         >
           <ChevronLeft className="h-4 w-4" />
           Voltar
@@ -584,9 +648,13 @@ function ReviewStep({
         <button
           type="submit"
           disabled={submitting}
-          className="inline-flex items-center gap-2 rounded-full bg-[#2563eb] px-5 py-3 text-sm font-semibold text-white transition hover:bg-[#1d4ed8] disabled:opacity-60"
+          className="inline-flex items-center gap-2 rounded-full bg-[#292a2d] px-5 py-3 text-sm font-semibold text-white transition hover:bg-[#424346] disabled:opacity-60"
         >
-          {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+          {submitting ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <Send className="h-4 w-4" />
+          )}
           Enviar diagnóstico
         </button>
       </form>
@@ -616,26 +684,30 @@ function SuccessState({
         Lead salvo no CRM da Altum
       </div>
 
-      <h3 className="mt-5 text-3xl font-semibold text-white md:text-4xl">Quiz enviado com sucesso.</h3>
-      <p className="mt-4 max-w-3xl text-base leading-8 text-white/72">{message}</p>
+      <h3 className="mt-5 text-3xl font-semibold text-[#292a2d] md:text-4xl">
+        Quiz enviado com sucesso.
+      </h3>
+      <p className="mt-4 max-w-3xl text-base leading-8 text-slate-600">
+        {message}
+      </p>
 
       <div className="mt-8 flex flex-wrap gap-3">
         <Link
           href={whatsappUrl}
-          className="inline-flex items-center gap-2 rounded-full bg-[#2563eb] px-6 py-3 text-sm font-semibold text-white transition hover:bg-[#1d4ed8]"
+          className="inline-flex items-center gap-2 rounded-full bg-[#292a2d] px-6 py-3 text-sm font-semibold text-white transition hover:bg-[#424346]"
         >
           Abrir WhatsApp com contexto <ArrowRight className="h-4 w-4" />
         </Link>
         <Link
           href="/precos"
-          className="inline-flex items-center gap-2 rounded-full border border-white/15 px-6 py-3 text-sm font-semibold text-white/90 transition hover:border-white/30 hover:text-white"
+          className="inline-flex items-center gap-2 rounded-full border border-slate-200 px-6 py-3 text-sm font-semibold text-slate-600 transition hover:border-slate-200 hover:text-[#292a2d]"
         >
           Ver planos
         </Link>
       </div>
 
-      <p className="mt-6 text-sm text-white/52">
-        Lead ID: <span className="font-mono text-white/78">{leadId}</span>
+      <p className="mt-6 text-sm text-slate-600">
+        Lead ID: <span className="font-mono text-slate-600">{leadId}</span>
       </p>
     </div>
   );
@@ -656,8 +728,8 @@ function ChoiceGroup({
 }) {
   return (
     <div>
-      <p className="text-sm font-semibold text-white">{title}</p>
-      <p className="mt-2 text-sm leading-7 text-white/56">{description}</p>
+      <p className="text-sm font-semibold text-[#292a2d]">{title}</p>
+      <p className="mt-2 text-sm leading-7 text-slate-600">{description}</p>
       <div className="mt-4 grid gap-3 md:grid-cols-2">
         {options.map((option) => {
           const active = value === option.value;
@@ -668,11 +740,13 @@ function ChoiceGroup({
               onClick={() => onChange(option.value)}
               className={`rounded-[22px] border px-4 py-4 text-left transition ${
                 active
-                  ? "border-[#2563eb]/40 bg-[#2563eb]/12"
-                  : "border-white/10 bg-white/[0.03] hover:border-[#2563eb]/25 hover:bg-[#2563eb]/8"
+                  ? "border-[#ed782f]/40 bg-[#ed782f]/12"
+                  : "border-slate-200 bg-white hover:border-[#ed782f]/25 hover:bg-[#ed782f]/8"
               }`}
             >
-              <span className="text-sm font-semibold text-white">{option.label}</span>
+              <span className="text-sm font-semibold text-[#292a2d]">
+                {option.label}
+              </span>
             </button>
           );
         })}
@@ -698,7 +772,7 @@ function Field({
 }) {
   return (
     <label className="block space-y-2">
-      <span className="text-xs uppercase tracking-[0.14em] text-white/55">
+      <span className="text-xs uppercase tracking-[0.14em] text-slate-600">
         {label}
         {required ? " *" : ""}
       </span>
@@ -707,35 +781,45 @@ function Field({
         value={value}
         onChange={(event) => onChange(event.target.value)}
         placeholder={placeholder}
-        className="w-full rounded-[20px] border border-white/12 bg-black/30 px-4 py-3 text-sm text-white outline-none placeholder:text-white/35"
+        className="w-full rounded-[20px] border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-[#292a2d] outline-none placeholder:text-slate-600"
       />
     </label>
   );
 }
 
-function SideCard({ title, description }: { title: string; description: string }) {
+function SideCard({
+  title,
+  description,
+}: {
+  title: string;
+  description: string;
+}) {
   return (
-    <div className="rounded-[24px] border border-white/10 bg-white/[0.03] p-4">
-      <p className="text-sm font-semibold text-white">{title}</p>
-      <p className="mt-2 text-sm leading-7 text-white/64">{description}</p>
+    <div className="rounded-[24px] border border-slate-200 bg-white p-4">
+      <p className="text-sm font-semibold text-[#292a2d]">{title}</p>
+      <p className="mt-2 text-sm leading-7 text-slate-600">{description}</p>
     </div>
   );
 }
 
 function SummaryItem({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-[18px] border border-white/10 bg-black/20 px-4 py-3">
-      <p className="text-[11px] uppercase tracking-[0.18em] text-white/42">{label}</p>
-      <p className="mt-2 text-sm font-medium text-white">{value || "-"}</p>
+    <div className="rounded-[18px] border border-slate-200 bg-slate-50 px-4 py-3">
+      <p className="text-[11px] uppercase tracking-[0.18em] text-slate-600">
+        {label}
+      </p>
+      <p className="mt-2 text-sm font-medium text-[#292a2d]">{value || "-"}</p>
     </div>
   );
 }
 
 function SummaryLine({ label, value }: { label: string; value: string }) {
   return (
-    <div className="grid gap-2 border-b border-white/8 pb-3 last:border-b-0 last:pb-0 md:grid-cols-[0.92fr_1.08fr]">
-      <p className="text-xs uppercase tracking-[0.14em] text-white/42">{label}</p>
-      <p className="text-sm leading-7 text-white/74">{value}</p>
+    <div className="grid gap-2 border-b border-slate-200 pb-3 last:border-b-0 last:pb-0 md:grid-cols-[0.92fr_1.08fr]">
+      <p className="text-xs uppercase tracking-[0.14em] text-slate-600">
+        {label}
+      </p>
+      <p className="text-sm leading-7 text-slate-600">{value}</p>
     </div>
   );
 }

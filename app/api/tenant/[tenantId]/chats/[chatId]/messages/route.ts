@@ -1,10 +1,12 @@
 import { NextResponse } from "next/server";
-import { Timestamp } from "firebase-admin/firestore";
+import { normalizeInstagramMessageContext } from "@/lib/instagram-message-context";
+import { listChatMessages, type MessagePageDirection } from "@/lib/server/conversation-queries";
 import { adminDb } from "@/app/lib/server/firebase-admin";
 import { requireRequestUser, RouteAuthError } from "@/app/lib/server/route-auth";
 import { assertTenantAccess, assertTenantRole, TenantAccessError } from "@/lib/server/tenant";
 import { assertTenantModule } from "@/lib/server/tenant-entitlements";
 import { assertChatCommercialAccess } from "@/lib/server/commercial-access";
+import { decodeConversationCursor, encodeConversationCursor } from "@/lib/server/conversation-pagination";
 
 const MEDIA_TYPES = new Set(["image", "audio", "document", "video"]);
 
@@ -84,7 +86,7 @@ function inferMediaAvailability(type: string, data: Record<string, unknown>) {
   }
 
   const hasStoredSource = cleanText(data.mediaUrl, 1800);
-  const hasRemoteId = cleanText(data.mediaId, 240);
+  const hasRemoteId = cleanText(data.mediaId, 240) || (data.channel === "whatsapp" && data.channelId && (data.metaMessageId || data.inboundMetaMessageId));
   const hasPreview = cleanText(data.mediaThumbnail, 1800);
 
   if (hasStoredSource || hasRemoteId || hasPreview) {
@@ -119,39 +121,6 @@ function normalizeTemplateHeaderMedia(value: unknown) {
   };
 }
 
-async function listChatMessages(chatId: string, sinceMs: number | null) {
-  if (!sinceMs) {
-    try {
-      // Always load the newest page. An unordered limit can return an old,
-      // arbitrary slice and makes recent messages appear to disappear.
-      return await adminDb
-        .collection("messages")
-        .where("chatId", "==", chatId)
-        .orderBy("createdAt", "desc")
-        .limit(500)
-        .get();
-    } catch (error) {
-      console.warn("Indice de historico de mensagens indisponivel; usando fallback:", error);
-      return adminDb.collection("messages").where("chatId", "==", chatId).limit(1000).get();
-    }
-  }
-
-  try {
-    return await adminDb
-      .collection("messages")
-      .where("chatId", "==", chatId)
-      .where("createdAt", ">", Timestamp.fromMillis(sinceMs))
-      .orderBy("createdAt", "asc")
-      .limit(200)
-      .get();
-  } catch (error) {
-    // Enquanto o indice composto e propagado, a conversa continua funcional.
-    // O cliente deduplica a resposta completa e preserva o historico aberto.
-    console.warn("Indice incremental de mensagens indisponivel; usando fallback:", error);
-    return adminDb.collection("messages").where("chatId", "==", chatId).limit(500).get();
-  }
-}
-
 function messageText(data: Record<string, unknown>) {
   return cleanMessageText(
     data.text || data.message || data.body || data.content || data.caption,
@@ -183,15 +152,44 @@ export async function GET(
       return NextResponse.json({ error: "Chat fora do tenant informado." }, { status: 403 });
     }
 
+    const requestedLimit = Number(url.searchParams.get("limit") || 100);
+    const pageLimit = Number.isFinite(requestedLimit)
+      ? Math.max(25, Math.min(200, Math.round(requestedLimit)))
+      : 100;
+    const rawDirection = url.searchParams.get("direction");
+    const rawCursor = url.searchParams.get("cursor");
+    const cursor = rawCursor ? decodeConversationCursor(rawCursor) : null;
+    if (rawCursor && !cursor) {
+      return NextResponse.json({ error: "Cursor de mensagens invalido.", code: "invalid_cursor" }, { status: 400 });
+    }
     const requestedSince = Number(url.searchParams.get("since") || 0);
-    // A margem absorve timestamps iguais do Firestore. O cliente elimina os
-    // ids repetidos antes de renderizar as mensagens novas.
-    const sinceMs = Number.isFinite(requestedSince) && requestedSince > 0
+    const legacySinceMs = Number.isFinite(requestedSince) && requestedSince > 0
       ? Math.max(0, Math.round(requestedSince) - 1_000)
       : null;
-    const messagesSnap = await listChatMessages(chatId, sinceMs);
+    const direction: MessagePageDirection = rawDirection === "older"
+      ? "older"
+      : rawDirection === "newer" || legacySinceMs
+        ? "newer"
+        : "initial";
+    if (direction !== "initial" && !cursor && !legacySinceMs) {
+      return NextResponse.json({ error: "Cursor obrigatorio para paginar mensagens.", code: "cursor_required" }, { status: 400 });
+    }
 
-    const items = messagesSnap.docs
+    const ids = Array.from(new Set(url.searchParams.getAll("id")));
+    if (ids.length > 100 || ids.some((id) => !id || id.length > 300 || id.includes("/"))) {
+      return NextResponse.json({ error: "Identificadores de mensagens invalidos." }, { status: 400 });
+    }
+    const messagesSnap = ids.length
+      ? { docs: await adminDb.getAll(...ids.map((id) => adminDb.collection("messages").doc(id))), size: ids.length }
+      : await listChatMessages({ chatId, direction, cursor, legacySinceMs, limit: pageLimit });
+    if (messagesSnap.docs.some((doc) => doc.exists && (doc.data()?.tenantId !== tenantId || doc.data()?.chatId !== chatId))) {
+      return NextResponse.json({ error: "Mensagem fora da conversa informada." }, { status: 403 });
+    }
+    const pageDocs = messagesSnap.docs.filter((doc) => doc.exists).slice(0, ids.length || pageLimit);
+    const missingIds = ids.length ? messagesSnap.docs.filter((doc) => !doc.exists).map((doc) => doc.id) : [];
+    const hasMore = !ids.length && messagesSnap.size > pageLimit;
+
+    const items = pageDocs
       .map((doc) => {
         const data = doc.data() as Record<string, unknown>;
         const type = normalizeMessageType(data.type);
@@ -200,6 +198,8 @@ export async function GET(
 
         return {
           id: doc.id,
+          generation: doc.createTime ? `${String(doc.createTime.seconds).padStart(12, "0")}:${String(doc.createTime.nanoseconds).padStart(9, "0")}` : undefined,
+          revision: doc.updateTime ? `${String(doc.updateTime.seconds).padStart(12, "0")}:${String(doc.updateTime.nanoseconds).padStart(9, "0")}` : undefined,
           text: messageText(data),
           sender: normalizeSender(data.sender),
           participantName: cleanText(data.participantName, 180) || null,
@@ -213,6 +213,8 @@ export async function GET(
           deliveryUpdatedAt: data.deliveryUpdatedAt || null,
           type,
           replyToId: cleanText(data.replyToId, 180) || null,
+          metaMessageId: cleanText(data.metaMessageId, 240) || null,
+          instagramContext: data.channel === "instagram" ? normalizeInstagramMessageContext(data.instagramContext) : null,
           reactions: normalizeReactionMap(data.reactions),
           mediaUrl: canRenderMedia ? buildProtectedMediaUrl(tenantId, chatId, doc.id) : null,
           mediaDownloadUrl: canRenderMedia ? buildProtectedMediaUrl(tenantId, chatId, doc.id, true) : null,
@@ -237,7 +239,26 @@ export async function GET(
       })
       .sort((a, b) => toTime(a.createdAt) - toTime(b.createdAt));
 
-    return NextResponse.json({ ok: true, tenantId, chatId, items, incremental: Boolean(sinceMs) });
+    const oldest = items[0] || null;
+    const newest = items[items.length - 1] || null;
+    const oldestCursor = oldest ? encodeConversationCursor(toTime(oldest.createdAt), oldest.id) : null;
+    const newestCursor = newest ? encodeConversationCursor(toTime(newest.createdAt), newest.id) : cursor ? rawCursor : null;
+    const nextCursor = direction === "newer" ? newestCursor : oldestCursor;
+
+    return NextResponse.json({
+      ok: true,
+      tenantId,
+      chatId,
+      items,
+      missingIds,
+      direction,
+      incremental: direction === "newer",
+      limit: pageLimit,
+      hasMore,
+      nextCursor,
+      oldestCursor,
+      newestCursor,
+    });
   } catch (error) {
     if (error instanceof RouteAuthError) {
       return NextResponse.json({ error: error.message, code: error.code }, { status: error.status });

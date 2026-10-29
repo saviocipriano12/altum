@@ -1,77 +1,268 @@
 "use client";
-
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { ArrowRight, CircleCheck } from "lucide-react";
-import { DEFAULT_PLATFORM_PLANS, type PlatformPlan } from "@/lib/platform-plans";
-
-function money(value: number) {
-  return value.toLocaleString("pt-BR", {
+import { ArrowRight, Check, ChevronLeft, ChevronRight } from "lucide-react";
+import { useReducedMotion } from "framer-motion";
+import { type PlatformPlan } from "@/lib/platform-plans";
+import {
+  PUBLIC_PLATFORM_PLANS,
+  selectPublicPlatformPlans,
+} from "@/lib/public-platform-plans";
+import styles from "./public-site.module.css";
+const money = (value: number) =>
+  value.toLocaleString("pt-BR", {
     style: "currency",
     currency: "BRL",
     maximumFractionDigits: 0,
   });
-}
-
-export function PricingPlans() {
-  const [plans, setPlans] = useState<PlatformPlan[]>([...DEFAULT_PLATFORM_PLANS]);
-
+const amount = (value: number) => value.toLocaleString("pt-BR");
+export function PricingPlans({ comparison = false }: { comparison?: boolean }) {
+  const track = useRef<HTMLDivElement>(null);
+  const [page, setPage] = useState(0);
+  const [pageCount, setPageCount] = useState(1);
+  const reduced = useReducedMotion();
+  const [plans, setPlans] = useState<PlatformPlan[]>([
+    ...PUBLIC_PLATFORM_PLANS,
+  ]);
   useEffect(() => {
-    fetch("/api/public/platform-plans")
-      .then((response) => response.ok ? response.json() : Promise.reject())
-      .then((payload: { plans?: PlatformPlan[] }) => payload.plans?.length && setPlans(payload.plans))
+    const controller = new AbortController();
+    fetch("/api/public/platform-plans", { signal: controller.signal })
+      .then((response) => (response.ok ? response.json() : Promise.reject()))
+      .then((payload: { plans?: PlatformPlan[] }) => {
+        if (payload.plans?.length)
+          setPlans(selectPublicPlatformPlans(payload.plans));
+      })
       .catch(() => undefined);
+    return () => controller.abort();
   }, []);
-
+  useEffect(() => {
+    const element = track.current;
+    if (!element) return;
+    const measure = () => {
+      const card = element.querySelector("article");
+      if (!card) return;
+      const step =
+        card.getBoundingClientRect().width +
+        parseFloat(getComputedStyle(element).columnGap || "0");
+      const maximum = element.scrollWidth - element.clientWidth;
+      const count = Math.max(1, Math.ceil(maximum / step) + 1);
+      setPageCount(count);
+      setPage(
+        maximum - element.scrollLeft < 4
+          ? count - 1
+          : Math.min(count - 1, Math.round(element.scrollLeft / step)),
+      );
+    };
+    const observer = new ResizeObserver(measure);
+    observer.observe(element);
+    element.addEventListener("scroll", measure, { passive: true });
+    measure();
+    return () => {
+      observer.disconnect();
+      element.removeEventListener("scroll", measure);
+    };
+  }, [plans]);
+  const goTo = (next: number) => {
+    const element = track.current;
+    const card = element?.querySelector("article");
+    if (!element || !card) return;
+    const step =
+      card.getBoundingClientRect().width +
+      parseFloat(getComputedStyle(element).columnGap || "0");
+    element.scrollTo({
+      left: Math.min(
+        element.scrollWidth - element.clientWidth,
+        Math.max(0, next) * step,
+      ),
+      behavior: reduced ? "auto" : "smooth",
+    });
+  };
+  const rows: { label: string; value: (plan: PlatformPlan) => string }[] = [
+    { label: "Usuários", value: (plan) => amount(plan.allowances.users) },
+    {
+      label: "Canais WhatsApp",
+      value: (plan) => amount(plan.allowances.whatsappChannels),
+    },
+    { label: "Contatos", value: (plan) => amount(plan.allowances.contacts) },
+    {
+      label: "Mensagens por mês",
+      value: (plan) => amount(plan.allowances.messagesPerMonth),
+    },
+    {
+      label: "Créditos de IA por mês",
+      value: (plan) => amount(plan.allowances.aiCreditsPerMonth),
+    },
+    {
+      label: "Automações ativas",
+      value: (plan) => amount(plan.allowances.activeAutomations),
+    },
+    {
+      label: "Implantação",
+      value: (plan) =>
+        plan.setupMode === "required"
+          ? "Obrigatória"
+          : plan.setupMode === "proposal"
+            ? "Sob proposta"
+            : "Opcional",
+    },
+  ];
   return (
-    <div className="mx-auto max-w-[1380px]">
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        {plans.map((plan) => (
-        <article
-          key={plan.id}
-          className={`relative flex min-h-[38rem] flex-col rounded-[2rem] border p-7 ${plan.featured ? "border-[#2563eb]/50 bg-[#111111] shadow-[0_30px_80px_rgba(37,99,235,0.12)]" : "border-white/9 bg-[#0b0b0b]"}`}
-        >
-          {plan.featured ? (
-            <span className="absolute right-5 top-5 rounded-full bg-[#2563eb] px-3 py-1.5 text-[10px] font-extrabold uppercase tracking-[0.16em] text-white">
-              Mais escolhido
-            </span>
-          ) : null}
-          <p className="text-xs font-extrabold uppercase tracking-[0.18em] text-[#60a5fa]">{plan.name}</p>
-          <p className="mt-5 min-h-14 text-base font-extrabold leading-6 text-white">{plan.promise}</p>
-          <div className="mt-6">
-            {plan.pricePrefix ? <p className="mb-1 text-xs font-bold text-white/42">{plan.pricePrefix}</p> : null}
-            <span className="text-4xl font-extrabold tracking-[-0.06em] text-white">
-              {plan.monthlyPrice ? money(plan.monthlyPrice) : "Sob consulta"}
-            </span>
-            {plan.monthlyPrice ? <span className="ml-1 text-sm font-bold text-white/36">/mes</span> : null}
-          </div>
-          <p className="mt-4 min-h-24 text-sm leading-6 text-white/48">{plan.description}</p>
-          <div className="mt-6 space-y-3 border-t border-white/8 pt-6">
-            {plan.features.map((feature) => (
-              <div key={feature} className="flex items-start gap-3 text-sm leading-6 text-white/68">
-                <CircleCheck className="mt-0.5 h-4 w-4 shrink-0 text-[#2563eb]" />
-                {feature}
-              </div>
-            ))}
-          </div>
-          <div className="mt-6 rounded-xl border border-white/8 bg-white/[0.025] p-3 text-xs leading-5 text-white/48">
-            <strong className="text-white/72">{plan.setupLabel}</strong>
-            {plan.setupFee ? `: ${plan.pricePrefix || plan.setupMode === "proposal" ? "a partir de " : ""}${money(plan.setupFee)}` : ""}
-          </div>
-          <Link
-            href={plan.checkoutEnabled && plan.trialEligible ? `/cadastro?plan=${plan.id}` : `/contato?interest=${plan.id}`}
-            className={`mt-auto inline-flex items-center justify-center gap-2 rounded-xl px-5 py-4 text-sm font-extrabold transition ${plan.featured ? "bg-[#2563eb] text-white hover:bg-[#1d4ed8]" : "border border-white/12 bg-white/[0.035] text-white hover:bg-white/[0.07]"}`}
+    <div className={styles.pricingCarousel}>
+      <div className={styles.pricingCarouselTop}>
+        <span>Encontre o seu momento. Explore os planos.</span>
+        <div className={styles.pricingControls}>
+          <button
+            type="button"
+            aria-label="Ver planos anteriores"
+            disabled={page === 0}
+            onClick={() => goTo(page - 1)}
           >
-            {plan.checkoutEnabled && plan.trialEligible ? "Testar gratis por 7 dias" : "Falar com a Altum"}
-            <ArrowRight className="h-4 w-4" />
-          </Link>
-        </article>
+            <ChevronLeft size={19} />
+          </button>
+          <button
+            type="button"
+            aria-label="Ver próximos planos"
+            disabled={page >= pageCount - 1}
+            onClick={() => goTo(page + 1)}
+          >
+            <ChevronRight size={19} />
+          </button>
+        </div>
+      </div>
+      <div
+        ref={track}
+        className={styles.pricingGrid}
+        role="region"
+        aria-roledescription="carrossel"
+        aria-label="Planos Altum — deslize ou use as setas para explorar"
+        tabIndex={0}
+        onKeyDown={(event) => {
+          if (event.target !== event.currentTarget) return;
+          if (event.key === "ArrowRight" || event.key === "ArrowLeft") {
+            event.preventDefault();
+            goTo(
+              Math.min(
+                pageCount - 1,
+                Math.max(0, page + (event.key === "ArrowRight" ? 1 : -1)),
+              ),
+            );
+          }
+        }}
+      >
+        {plans.map((plan) => (
+          <article
+            key={plan.id}
+            className={`${styles.plan} ${plan.featured ? styles.planFeatured : ""}`}
+          >
+            {plan.featured && (
+              <span className={styles.planBadge}>Mais escolhido</span>
+            )}
+            <h2>{plan.name}</h2>
+            <p className={styles.planPromise}>{plan.promise}</p>
+            {plan.pricePrefix && (
+              <small className={styles.muted}>{plan.pricePrefix}</small>
+            )}
+            <p className={styles.planPrice}>
+              {plan.monthlyPrice ? money(plan.monthlyPrice) : "Sob consulta"}
+              {plan.monthlyPrice ? <small> /mês</small> : null}
+            </p>
+            <p className={styles.planDescription}>{plan.description}</p>
+            <ul>
+              {plan.features.map((feature) => (
+                <li key={feature}>
+                  <Check size={13} />
+                  {feature}
+                </li>
+              ))}
+            </ul>
+            <p className={styles.planSetup}>
+              <strong>{plan.setupLabel}</strong>
+              {plan.setupFee
+                ? `: ${plan.pricePrefix || plan.setupMode === "proposal" ? "a partir de " : ""}${money(plan.setupFee)}`
+                : ""}
+            </p>
+            <Link
+              prefetch={false}
+              href={
+                plan.checkoutEnabled && plan.trialEligible
+                  ? `/cadastro?plan=${plan.id}`
+                  : `/contato?interest=plataforma&plan=${plan.id}#formulario-comercial`
+              }
+              className={plan.featured ? styles.button : styles.secondaryButton}
+            >
+              {plan.checkoutEnabled && plan.trialEligible
+                ? "Testar grátis por 7 dias"
+                : "Falar com a Altum"}
+              <ArrowRight size={14} />
+            </Link>
+          </article>
         ))}
       </div>
-      <div className="mt-6 grid gap-4 rounded-[1.5rem] border border-white/8 bg-[#0b0b0b] p-6 text-white lg:grid-cols-2">
-        <div><p className="text-sm font-extrabold">Teste completo, cobranca clara</p><p className="mt-2 text-sm leading-6 text-white/48">Use todos os modulos por 7 dias, com limites controlados e sem cartao. Mensalidade, implantacao obrigatoria e custos oficiais de provedores sao apresentados separadamente.</p></div>
-        <div><p className="text-sm font-extrabold">Capacidade adicional com confirmacao</p><p className="mt-2 text-sm leading-6 text-white/48">Usuarios, canais, contatos, IA e automacoes adicionais sao contratados somente apos confirmacao de disponibilidade e aceite comercial. Nenhum adicional e incluido automaticamente no checkout.</p></div>
+      <div
+        className={styles.pricingDots}
+        aria-label="Posições do carrossel de planos"
+      >
+        {Array.from({ length: pageCount }, (_, index) => (
+          <button
+            key={index}
+            type="button"
+            aria-label={`Ver posição ${index + 1} de ${pageCount} dos planos`}
+            aria-current={page === index}
+            onClick={() => goTo(index)}
+          />
+        ))}
       </div>
+      <p className="sr-only" role="status">
+        Posição {page + 1} de {pageCount} dos planos.
+      </p>
+      <p className={styles.pricingNote}>
+        Teste de 7 dias nos planos elegíveis, sem cartão. Mensalidade,
+        implantação e custos oficiais de provedores são apresentados
+        separadamente. O valor vigente aparece antes da confirmação. Adicionais
+        dependem de disponibilidade e aceite comercial.
+      </p>
+      {comparison && (
+        <section className={styles.section}>
+          <div className={styles.sectionHeading}>
+            <p className={styles.eyebrow}>Encontre o seu plano</p>
+            <h2>Compare a capacidade de cada operação.</h2>
+            <p>
+              Limites do catálogo atual. Para condições específicas, converse
+              com a Altum.
+            </p>
+          </div>
+          <div
+            className={styles.pricingTableWrap}
+            role="region"
+            aria-label="Comparação dos planos — role horizontalmente para ver todas as colunas"
+            tabIndex={0}
+          >
+            <table className={styles.pricingTable}>
+              <caption>Capacidade incluída em cada plano</caption>
+              <thead>
+                <tr>
+                  <th scope="col">Recurso</th>
+                  {plans.map((plan) => (
+                    <th scope="col" key={plan.id}>
+                      {plan.name}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((row) => (
+                  <tr key={row.label}>
+                    <th scope="row">{row.label}</th>
+                    {plans.map((plan) => (
+                      <td key={plan.id}>{row.value(plan)}</td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
     </div>
   );
 }

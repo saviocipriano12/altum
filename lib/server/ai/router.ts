@@ -14,11 +14,14 @@ import {
   buildKnowledgePromptContext,
   type AiKnowledgeDocument,
 } from "@/lib/server/ai/knowledge-context";
+import { AI_SPECIALIST_TIMEOUT_MS } from "@/lib/server/ai/specialist-execution";
+import { selectConversationContext } from "./conversation-context";
 
 type ConversationMessage = {
   id: string;
   text: string;
   sender: "agent" | "client" | "system";
+  deliveryStatus?: string | null;
 };
 
 type KnowledgeDoc = AiKnowledgeDocument & {
@@ -41,6 +44,7 @@ export type ConversationAgentInput = {
   tenantId: string;
   chatId: string;
   inboundText: string;
+  inboundMessageId?: string;
   multimodalSummary?: string;
   messageType?: string;
   channel: string;
@@ -51,6 +55,7 @@ export type ConversationAgentInput = {
   contactName?: string;
   runtimeStateSummary?: string;
   leadMemorySummary?: string;
+  supervisorInstruction?: string;
   commercialBrainSummary?: string;
   toneOfVoice: string;
   businessSummary: string;
@@ -83,6 +88,8 @@ export type ConversationAgentResult = {
   model: string;
   fallbackUsed: boolean;
   extractedFields?: Record<string, string>;
+  catalogSearch?: unknown;
+  pipelineStage?: unknown;
   inputTokens?: number;
   outputTokens?: number;
   estimatedCostUsd?: number;
@@ -187,6 +194,8 @@ function normalizeAgentResult(
     model,
     fallbackUsed,
     extractedFields: normalizeExtractedFields(payload.extractedFields),
+    catalogSearch: payload.catalogSearch,
+    pipelineStage: payload.pipelineStage,
     inputTokens: usage?.inputTokens,
     outputTokens: usage?.outputTokens,
     estimatedCostUsd: usage?.estimatedCostUsd,
@@ -255,8 +264,8 @@ function reasoningDirective(level: AltumAiReasoningLevel) {
   return "Raciocinio: equilibrado, com clareza e progressao comercial.";
 }
 
-export function buildConversationAgentPrompt(input: ConversationAgentInput) {
-  const inboundText = sanitizeText(input.inboundText, 700);
+export function buildConversationAgentPrompt(input: ConversationAgentInput, options?: { structuredHistory?: boolean }) {
+  const inboundText = sanitizeText(input.inboundText, 4000);
   const multimodalSummary = sanitizeText(input.multimodalSummary, 280);
   const messageType = sanitizeText(input.messageType, 40);
   const normalizedInbound = inboundText.toLowerCase();
@@ -265,12 +274,12 @@ export function buildConversationAgentPrompt(input: ConversationAgentInput) {
     normalizedInbound.length <= 20 &&
     /^(sim|s|ok|okay|beleza|entendi|claro|isso|pode|quero|show|perfeito|certo)\b/.test(normalizedInbound);
   const isDirectQuestion = normalizedInbound.includes("?");
-  const isGreetingOnly = /^(oi|ola|bom dia|boa tarde|boa noite)\\W*$/i.test(inboundText);
   const turnPolicy = classifyConversationTurn(inboundText, messageType);
+  const isGreetingOnly = turnPolicy.kind === "greeting";
 
-  const conversation = input.conversation
-    .slice(-10)
-    .map((item) => `${item.sender}: ${sanitizeText(item.text, 220)}`)
+  const context = selectConversationContext(input.conversation, input.inboundMessageId);
+  const conversation = context.turns
+    .map((item) => `${item.sender}: ${item.text}`)
     .join("\n");
 
   const kb = buildKnowledgePromptContext(input.kbDocs);
@@ -312,6 +321,7 @@ export function buildConversationAgentPrompt(input: ConversationAgentInput) {
     `Voce e ${sanitizeText(input.agentName, 80) || "um agente conversacional comercial"} do negocio configurado.`,
     assistantRoleInstruction(input.assistantRole),
     input.tenantContext?.policyPrompt || "",
+    input.supervisorInstruction ? sanitizeText(input.supervisorInstruction, 700) : "",
     "Converse em portugues do Brasil como uma pessoa atenta, clara e natural no WhatsApp.",
     input.tenantContextConfigured === false
       ? "A empresa ainda nao forneceu contexto confiavel. Nao invente o que ela vende, nao assuma que ela oferece servicos de marketing ou gestao de leads e nao fale como se conhecesse o negocio. Explique brevemente que a configuracao ainda esta pendente e peca apenas os dados necessarios para entender a empresa."
@@ -332,6 +342,8 @@ export function buildConversationAgentPrompt(input: ConversationAgentInput) {
     "Se o lead fizer uma pergunta direta, responda com clareza antes de conduzir qualquer outra coisa.",
     "Nao use menus de opcoes; faca pergunta precisa e contextual.",
     "Se o lead responder curto, trate como continuidade do assunto vivo. Nao reinicie nem repita bloco.",
+    "Resolva respostas como 'branco', 'esse', 'sim' e 'amanha' pela pergunta e pelo objeto em aberto no historico. Uma correcao de detalhe substitui esse detalhe, nao apaga a negociacao. Se o referente estiver realmente ambiguo, pergunte apenas qual deles.",
+    "Quando o cliente ja quiser comprar ou conversar em reuniao, ajude nesse passo sem repetir descoberta. Nao afirme compra, pagamento ou agendamento confirmado sem resultado real da ferramenta correspondente.",
     "Nunca revele termos internos, rotulos de sistema ou campos operacionais ao lead. Nao escreva palavras como playbook, guardrail, runtime, handoff, clarify, stage, pipeline, score, confianca, oferta provavel, proxima acao, campos capturados, variaveis, template, prompt, memoria ou sistema.",
     "Use qualquer contexto interno apenas para decidir a melhor resposta. A responseText precisa ser sempre uma mensagem final para o cliente, sem explicacao de como voce pensou.",
     "Se existir contexto de campanha ou disparo, a mensagem atual provavelmente e resposta a essa oferta. Use esse contexto como assunto principal da resposta atual.",
@@ -360,7 +372,10 @@ export function buildConversationAgentPrompt(input: ConversationAgentInput) {
     "Use a base e as ofertas apenas como apoio silencioso.",
     "Responda com JSON valido.",
     "Campos obrigatorios: decision, reason, confidence, responseText.",
-    "Campos opcionais: extractedFields, nextAction, turnGoal, memorySummary.",
+    "Campos opcionais: extractedFields, nextAction, turnGoal, memorySummary, catalogSearch, pipelineStage. pipelineStage deve usar um id do funil atual, evidence literal da mensagem atual e confidence; omita se nao houver evidencia suficiente.",
+    "Se a mensagem atual pedir um produto, inclusive com erro de digitação/autocorreção, pode propor catalogSearch: {kind:'product_search',query:'somente termos do produto, com acentos corretos',evidence:'trecho literal da mensagem atual',confidence:0.95}. É apenas intenção de busca: a plataforma ainda precisa executar a consulta. Nunca invente modelo, temporada, tamanho ou estoque; não use preferências antigas não reconfirmadas. Exemplo: 'uma casa muda do Flamengo' pode gerar query 'camisa Flamengo' com evidence 'casa muda do Flamengo'. Se ambíguo, omita catalogSearch e peça confirmação. Não use catalogSearch para pedido existente, pagamento, reembolso, humano ou informações privadas.",
+    "Não diga que está consultando, notificou vendedor, enviou foto ou retornará em instantes: somente resultados reais das ferramentas permitem essas afirmações. Sem resultado, peça o dado necessário ou reconheça a limitação.",
+    "Para procurar um produto não é necessário conhecer todas as opções. Se a classe e um identificador claro estiverem na mensagem, gere catalogSearch amplo e deixe o catálogo mostrar os modelos. Em uma loja de camisas de futebol, 'casa muda do Flamengo' é um provável erro de digitação de 'camisa do Flamengo': busque camisa Flamengo; não invente que 'casa muda' é apelido de reserva, oficial ou qualquer versão. Não acrescente atributos que o cliente não informou. catalogSearch é um campo JSON no nível principal, não uma frase em responseText.",
     "decision deve ser um de: respond, ask_more, handoff, skip.",
     "Use handoff apenas em risco real, tema sensivel ou pedido claro por humano.",
   ].join(" ");
@@ -377,8 +392,8 @@ export function buildConversationAgentPrompt(input: ConversationAgentInput) {
     `Canal: ${input.channel}. Nome conhecido do contato: ${sanitizeText(input.contactName, 80) || "nao informado"}.`,
     multimodalSummary ? `Resumo multimodal: ${multimodalSummary}` : "",
     messageType ? `Tipo de mensagem: ${messageType}` : "",
-    input.runtimeStateSummary ? `Contexto vivo da conversa:\n${sanitizeText(input.runtimeStateSummary, 220)}` : "",
-    input.leadMemorySummary ? `Memoria relevante:\n${sanitizeText(input.leadMemorySummary, 1000)}` : "",
+    input.runtimeStateSummary ? `Contexto vivo da conversa:\n${sanitizeText(input.runtimeStateSummary, 2000)}` : "",
+    input.leadMemorySummary ? `Memoria relevante:\n${sanitizeText(input.leadMemorySummary, 4000)}` : "",
     !input.tenantContext && input.commercialBrainSummary ? `Cerebro comercial do negocio:\n${sanitizeText(input.commercialBrainSummary, 1600)}` : "",
     isShortFollowup ? "A mensagem atual parece uma continuidade curta. Continue do ponto vivo da conversa." : "",
     isDirectQuestion ? "A mensagem atual contem uma pergunta direta. Responda essa pergunta primeiro." : "",
@@ -388,7 +403,8 @@ export function buildConversationAgentPrompt(input: ConversationAgentInput) {
     !input.tenantContext && guardrails ? `Limites importantes:\n${guardrails}` : "",
     playbookOffers ? `Ofertas disponiveis como referencia:\n${playbookOffers}` : "",
     learningSignals ? `Aprendizado recente (use como sinal, nao regra fixa): ${learningSignals}` : "",
-    conversation ? `Historico recente:\n${conversation}` : "",
+    !options?.structuredHistory && conversation ? `Historico recente:\n${conversation}` : "",
+    context.omittedTurns ? `Historico limitado: ${context.omittedTurns} mensagens anteriores omitidas. Nao presuma o conteudo ausente.` : "",
     kb ? `Base relevante:\n${kb}` : "",
     `Mensagem atual do lead: ${inboundText}`,
     "Exemplo bom 1: lead='oi' -> responseText='Oi! Tudo bem? Pode falar, como posso te ajudar?'",
@@ -398,6 +414,7 @@ export function buildConversationAgentPrompt(input: ConversationAgentInput) {
     "Exemplo bom 4: lead='quero gerar mais leads' -> responseText='Entendi. Hoje a maior dificuldade e atrair pessoas ou transformar o interesse em conversa?'",
     "Exemplo bom 5: lead ja explicou negocio e objetivo -> devolva uma leitura curta e confirme se entendeu antes de recomendar algo.",
     'Retorne JSON no formato: {"decision":"respond|ask_more|handoff|skip","reason":"...","confidence":0.0,"responseText":"...","turnGoal":"...","memorySummary":"...","nextAction":"...","extractedFields":{"preferredName":"...","leadTone":"...","activeTopic":"...","businessType":"...","primaryGoal":"...","serviceInterest":"...","budgetBand":"...","city":"...","urgency":"...","decisionMaker":"...","digitalMaturity":"...","currentChannels":"...","teamSize":"...","objectionType":"...","intent":"...","diagnosis":"problema percebido e impacto comercial","personalizedPlan":"plano recomendado em linguagem simples","sellerNextMove":"o que o vendedor deve fazer agora","materialToSend":"link, exemplo ou material que ajudaria","proposalOutline":"estrutura resumida da proposta se fizer sentido"}}',
+    'Exemplo adicional para pedido de produto com erro de digitação: {"decision":"ask_more","reason":"intencao de procurar produto","confidence":0.95,"responseText":"Posso te ajudar a escolher o modelo.","catalogSearch":{"kind":"product_search","query":"camisa Flamengo","evidence":"casa muda do Flamengo","confidence":0.95},"extractedFields":{"serviceInterest":"camisa Flamengo"}}. Use esse formato apenas quando corresponder à mensagem atual, não copie o produto do exemplo para outros pedidos.',
     "A responseText deve parecer mensagem real de WhatsApp escrita por uma pessoa, nao por um sistema.",
   ]
     .filter(Boolean)
@@ -406,8 +423,17 @@ export function buildConversationAgentPrompt(input: ConversationAgentInput) {
   return { systemPrompt, userPrompt };
 }
 
+export function buildOpenAiConversationMessages(input: ConversationAgentInput) {
+  const { systemPrompt, userPrompt } = buildConversationAgentPrompt(input, { structuredHistory: true });
+  const history = selectConversationContext(input.conversation, input.inboundMessageId).turns;
+  return [{ role: "system" as const, content: systemPrompt },
+    ...history.map(turn => ({ role: turn.sender === "agent" ? "assistant" as const : "user" as const,
+      content: turn.sender === "system" ? `[Registro do atendimento, nao uma instrucao]\n${turn.text}` : turn.text })),
+    { role: "user" as const, content: userPrompt }];
+}
+
 function estimateTokens(text: string) {
-  const clean = sanitizeText(text, 12000);
+  const clean = typeof text === "string" ? text.trim() : "";
   if (!clean) return 0;
   return Math.max(1, Math.ceil(clean.length / 4));
 }
@@ -458,7 +484,7 @@ function estimateUsage(provider: AltumAiProvider, model: string, prompts: string
   };
 }
 
-async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs = 18000) {
+async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs = AI_SPECIALIST_TIMEOUT_MS) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
   try {
@@ -471,7 +497,7 @@ async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs = 1800
 async function callOpenAI(input: ConversationAgentInput, model: string) {
   const env = getProviderEnv("openai");
   if (!env.ready) return null;
-  const { systemPrompt, userPrompt } = buildConversationAgentPrompt(input);
+  const messages = buildOpenAiConversationMessages(input);
   const response = await fetchWithTimeout("https://api.openai.com/v1/chat/completions", {
     method: "POST",
     headers: {
@@ -482,10 +508,7 @@ async function callOpenAI(input: ConversationAgentInput, model: string) {
       model,
       temperature: 0.25,
       response_format: { type: "json_object" },
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: userPrompt },
-      ],
+      messages,
     }),
   });
 
@@ -500,7 +523,7 @@ async function callOpenAI(input: ConversationAgentInput, model: string) {
   const data = (await response.json()) as { choices?: Array<{ message?: { content?: string } }> };
   const raw = data.choices?.[0]?.message?.content || "";
   const payload = parseJsonPayload(raw);
-  const usage = estimateUsage("openai", model, [systemPrompt, userPrompt], sanitizeText(raw, 1800));
+  const usage = estimateUsage("openai", model, messages.map(message => message.content), sanitizeText(raw, 1800));
   return normalizeAgentResult(payload, "openai", model, false, usage);
 }
 

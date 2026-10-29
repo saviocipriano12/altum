@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { processOutboundCampaignJobs } from "@/lib/server/outbound-campaigns";
 import { purgeExpiredTenantTrash } from "@/lib/server/tenant-data-deletion";
+import { processConversionDispatchJobs } from "@/lib/server/pixels/conversions";
 
 function token(req: Request) {
   const bearer = String(req.headers.get("authorization") || "").trim();
@@ -30,11 +31,12 @@ async function handle(req: Request) {
     return NextResponse.json({ error: "Nao autorizado." }, { status: 401 });
   }
   const url = new URL(req.url);
-  const [result, trash] = await Promise.all([
+  const [result, conversions, trash] = await Promise.all([
     processOutboundCampaignJobs({ limit: Number(url.searchParams.get("limit") || 40) }),
+    processConversionDispatchJobs({ limit: Number(url.searchParams.get("conversionLimit") || 80) }),
     purgeExpiredTenantTrash(),
   ]);
-  return NextResponse.json({ ok: true, ...result, trash });
+  return NextResponse.json({ ok: true, ...result, conversions, trash });
 }
 
 export async function GET(req: Request) {

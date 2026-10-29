@@ -179,6 +179,7 @@ export async function POST(
       await runLeadAutomations({
         tenantId,
         trigger: "message_received",
+        sourceMessageId: messageRef.id,
         leadId,
         chatId,
         channel: "site_chat",

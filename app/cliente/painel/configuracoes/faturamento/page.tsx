@@ -1,6 +1,6 @@
 "use client";
 
-import AssinaturaPage from "../../../assinatura/page";
+import AssinaturaPage from "@/components/client/subscription-screen";
 import { useClienteTenant } from "@/app/cliente/ClientePanelGuard";
 
 export default function ClienteFaturamentoPage() {

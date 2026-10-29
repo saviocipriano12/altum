@@ -1,0 +1,11 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": { "incremental": false },
+  "include": ["./whatsapp-delivery-status.emulator.mts", "./chat-outbound-trash.emulator.mts", "./crm-stage-trash.emulator.mts", "./automation-message-delivery.emulator.mts", "./automation-inbound-producers.test.mts", "./crm-manual-routes.emulator.mts", "./crm-stage-transition.emulator.mts", "./crm-draft-mutation.emulator.mts", "./crm-proposal-create.emulator.mts", "../app/api/webhooks/whatsapp/route.ts",
+    "../app/api/webhooks/meta/route.ts", "../app/api/public/chats/[chatId]/messages/route.ts", "../lib/server/meta-conversation-sync.ts",
+    "../app/api/tenant/[tenantId]/leads/[leadId]/route.ts", "../app/api/tenant/[tenantId]/leads/[leadId]/stage/route.ts",
+    "./proposal-create-attempt.test.mts", "./fixtures/proposal-create-replay-worker.mts", "./crm-proposal-update.emulator.mts", "./crm-lead-intake.emulator.mts", "./fixtures/lead-intake-identity-worker.mts", "./crm-ecommerce-projection.emulator.mts", "./fixtures/shopify-occurrence-worker.mts", "./ecommerce-shopify-authority.emulator.mts", "./chat-media-read.emulator.mts", "../app/cliente/painel/comercial/page.tsx"],
+  "files": ["./proposal-approval-candidates.emulator.mts", "./crm-agency-creation.emulator.mts", "./asaas-commercial-time.test.mts", "./crm-asaas-paid.emulator.mts", "./crm-finance-paid.emulator.mts", "./crm-social-creation.emulator.mts", "./crm-creation-draft.emulator.mts", "./crm-manual-creation.emulator.mts", "./crm-intake-occurrence.emulator.mts", "./crm-manual-stage-occurrence.emulator.mts", "./fixtures/proposal-schedule-worker.mts", "./fixtures/proposal-internal-worker.mts", "./fixtures/stage-internal-worker.mts", "./fixtures/stage-schedule-worker.mts", "./fixtures/contact-profile-worker.mts", "./omnichannel-identity.emulator.mts", "./pipeline-error-contract.test.mts"],
+  "exclude": ["../node_modules", "../.next", "../.qa-artifacts"]
+}
+

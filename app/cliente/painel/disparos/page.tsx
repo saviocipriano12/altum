@@ -30,6 +30,7 @@ import {
   Wand2,
 } from "lucide-react";
 import { authedFetch } from "@/app/lib/authed-fetch";
+import { getCampaignDispatchAttempt, acknowledgeCampaignDispatch } from "@/lib/campaign-dispatch-attempt";
 import { useClienteTenant } from "@/app/cliente/ClientePanelGuard";
 import {
   ClientActionButton,
@@ -1010,7 +1011,8 @@ export default function BulkMessagingPage() {
   }
 
   async function dispatch() {
-    if (!tenant?.tenantId || !editor.id || !preview || !canManage) return;
+    if (!tenant?.tenantId || !editor.id || !preview || !canManage || working === "send") return;
+    if (editor.scheduledAt && Number.isNaN(new Date(editor.scheduledAt).getTime())) { setError("Data de agendamento invalida."); return; }
     if (editor.deliveryMode === "template" && requiredHeaderMedia && editor.headerMedia?.type !== requiredHeaderMedia) {
       setError(`Este template tem cabecalho de ${requiredHeaderMedia}. Anexe a midia antes de enviar.`);
       setStep("conteudo");
@@ -1020,22 +1022,30 @@ export default function BulkMessagingPage() {
     setWorking("send");
     setError("");
     try {
+      const scope = [tenant.tenantId, tenant.userId, editor.id];
+      const attempt = getCampaignDispatchAttempt(window.localStorage, scope, editor.scheduledAt || null, () => crypto.randomUUID());
       const response = await authedFetch(
         `/api/tenant/${tenant.tenantId}/outbound-campaigns/${editor.id}/dispatch`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ scheduledAt: editor.scheduledAt || null }),
+          body: JSON.stringify({ scheduledAt: attempt.scheduledAt, clientRequestId: attempt.id }),
         }
       );
-      const payload = (await response.json()) as { queued?: number; jobs?: number; scheduledAt?: string; error?: string };
+      const payload = (await response.json()) as { tenantId?: string; campaignId?: string; runId?: string; replayed?: boolean; queued?: number; jobs?: number; scheduledAt?: string; error?: string };
       if (!response.ok) throw new Error(payload.error || "Falha ao iniciar disparo.");
+      if (typeof payload.runId !== "string" || !payload.runId || payload.tenantId !== tenant.tenantId || payload.campaignId !== editor.id) {
+        throw new Error("A confirmacao do disparo esta incompleta. Repita para consultar a mesma execucao.");
+      }
+      const acknowledged = acknowledgeCampaignDispatch(window.localStorage, scope, attempt.id);
       await load();
       setNotice(
-        editor.scheduledAt
+        payload.replayed ? "Este disparo ja estava registrado. Nenhuma nova execucao foi criada."
+          : editor.scheduledAt
           ? `${payload.queued || 0} contatos agendados. A Altum processa a fila automaticamente minuto a minuto.`
           : `${payload.queued || 0} contatos colocados na fila em ${payload.jobs || 0} lote(s).`
       );
+      if (!acknowledged) setNotice("Disparo confirmado. O navegador manteve a identificacao anterior; repetir consultara a mesma execucao.");
     } catch (dispatchError) {
       setError(dispatchError instanceof Error ? dispatchError.message : "Falha ao iniciar disparo.");
     } finally {

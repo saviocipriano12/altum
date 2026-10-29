@@ -22,6 +22,7 @@ import {
   type AltumAiTier,
 } from "@/lib/server/ai/operating-layer";
 import { deriveHandoffTopicsFromCommercialCriteria } from "@/lib/server/ai/tenant-context";
+import { AI_EVALUATION_SCENARIO_VERSION } from "@/lib/ai-evaluation";
 
 type Body = {
   enabled?: boolean;
@@ -59,6 +60,8 @@ type Body = {
   rolloutMode?: AiConversationRolloutMode;
   rolloutPercent?: number;
   agentVersion?: string;
+  testOnly?: boolean;
+  testChatIds?: string[];
 };
 
 type CommercialBrainInput = {
@@ -232,6 +235,8 @@ function isEvaluationFreshForSettings(evaluation: Awaited<ReturnType<typeof getL
   return isAiEvaluationFreshForSettings({
     settingsUpdatedAtMs: timestampMillis((settings as Record<string, unknown> | null)?.updatedAt),
     evaluatedAtMs: timestampMillis(evaluation.evaluatedAt),
+    scenarioVersion: evaluation.scenarioVersion,
+    expectedScenarioVersion: AI_EVALUATION_SCENARIO_VERSION,
   });
 }
 
@@ -333,6 +338,8 @@ function normalizeAiConfig(
     rolloutMode: rollout.mode,
     rolloutPercent: rollout.rolloutPercent,
     agentVersion: rollout.agentVersion,
+    testOnly: rollout.exclusiveTest !== undefined,
+    testChatIds: rollout.exclusiveTest?.chatIds || [],
     runtimePolicy,
     providerStatus: providerStatus(),
   };
@@ -419,7 +426,21 @@ export async function POST(
       mode: body.rolloutMode ?? current.rolloutMode,
       rolloutPercent: body.rolloutPercent ?? current.rolloutPercent,
       agentVersion: body.agentVersion ?? current.agentVersion,
+      ...((body.testOnly ?? current.testOnly) ? {
+        exclusiveTest: { tenantId, chatIds: body.testChatIds ?? current.testChatIds },
+      } : {}),
     });
+    if (requestedRollout.exclusiveTest) {
+      const ids = body.testChatIds ?? current.testChatIds;
+      if (!Array.isArray(ids) || ids.length < 1 || ids.length > 5 ||
+        ids.some((id) => typeof id !== "string" || !/^[a-zA-Z0-9_-]{1,440}$/.test(id))) {
+        return NextResponse.json({ error: "Informe de 1 a 5 IDs exatos de conversas existentes para o teste." }, { status: 400 });
+      }
+      const chats = await Promise.all(ids.map((id) => adminDb.collection("chats").doc(id).get()));
+      if (chats.some((chat) => !chat.exists || chat.data()?.tenantId !== tenantId || chat.data()?.isGroup === true)) {
+        return NextResponse.json({ error: "Todas as conversas de teste precisam pertencer a esta empresa e não podem ser grupos." }, { status: 400 });
+      }
+    }
     // Alteracoes operacionais como pausar ou desativar a IA nao dependem da
     // leitura das avaliacoes. A consulta e necessaria somente quando o
     // usuario aumenta respostas automaticas, que e o unico caso de risco.
@@ -531,7 +552,9 @@ export async function POST(
     await adminDb.collection("tenant_settings").doc(tenantId).set(
       {
         tenantId,
-        ai: next,
+        ai: { ...next, rollout: { ...requestedRollout,
+          exclusiveTest: requestedRollout.exclusiveTest ?? FieldValue.delete(),
+        } },
         updatedAt: FieldValue.serverTimestamp(),
         updatedBy: user.uid,
         updatedByName: user.name,

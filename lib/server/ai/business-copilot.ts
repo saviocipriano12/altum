@@ -4,6 +4,7 @@ import { decryptSecret } from "@/app/lib/server/secret-crypto";
 import { requestFreeLlmChat } from "@/lib/server/agent-os/freellmapi";
 import { requestOpenAiCompatibleChat } from "@/lib/server/agent-os/openai-compatible";
 import { selectCompatibleModels } from "@/lib/server/agent-os/compatible-model-routing";
+import { requestRuntimeModel } from "@/lib/server/agent-os/openclaw-model-gateway";
 import {
   buildAiRuntimePolicy,
   normalizeTenantAiOperatingProfile,
@@ -17,7 +18,7 @@ export type BusinessCopilotMessage = {
 
 export type BusinessCopilotResult = {
   answer: string | null;
-  provider?: Exclude<AltumAiProvider, "altum_rules"> | "freellmapi" | "alibaba-model-studio" | "custom-openai-compatible";
+  provider?: string;
   model?: string;
   fallbackUsed: boolean;
   unavailableReason?: string;
@@ -27,6 +28,18 @@ type Provider = Exclude<AltumAiProvider, "altum_rules">;
 
 function clean(value: unknown, max = 4_000) {
   return typeof value === "string" ? value.trim().slice(0, max) : "";
+}
+
+/** Only an explicit "use/usar/via" instruction changes the automatic route.
+ * Mentioning a provider in ordinary conversation must not unexpectedly pin a
+ * request to it. */
+function requestedRuntimeRoute(question: string) {
+  const text = question.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  if (!/\b(usar|use|via|pelo provider|pela conexao|pela conexão)\b/.test(text)) return { providerId: undefined, model: undefined };
+  const aliases: Array<[string, string]> = [["free llm", "freellmapi"], ["freellm", "freellmapi"], ["open router", "openrouter"], ["openrouter", "openrouter"], ["nvidia", "nvidia-nim"], ["groq", "groq"], ["cerebras", "cerebras"], ["hugging face", "huggingface"], ["huggingface", "huggingface"], ["mistral", "mistral"], ["alibaba", "alibaba-model-studio"], ["qwen", "alibaba-model-studio"]];
+  const providerId = aliases.find(([name]) => text.includes(name))?.[1];
+  const model = question.match(/\b(?:modelo|model)\s*[:=]?\s*([A-Za-z0-9][A-Za-z0-9._:/-]{1,179})/i)?.[1];
+  return { providerId, model };
 }
 
 function providerReady(provider: Provider) {
@@ -169,6 +182,28 @@ export async function runBusinessCopilot(input: {
   const prompt = `Pergunta atual: ${clean(input.question, 700)}\n\nFatos autorizados da operacao:\n${clean(input.facts, 24_000)}\n\nLeitura calculada de apoio:\n${clean(input.deterministicAnswer, 3_000)}`;
   let lastError = providers.length ? "" : "Nenhum provedor de IA esta configurado.";
   const providerErrors: string[] = [];
+
+  // This is the actual platform router: it first tries the private
+  // FreeLLMAPI gateway when it is healthy, then every configured
+  // OpenAI-compatible platform connection (Groq, OpenRouter, NVIDIA, etc.)
+  // in a controlled order. A connection on cooldown or marked degraded is
+  // excluded before a request is sent.
+  try {
+    const startedAt = Date.now();
+    const requestedRoute = requestedRuntimeRoute(input.question);
+    const result = await requestRuntimeModel({
+      model: requestedRoute.model || "altum-agent",
+      maxTokens: 1_000,
+      providerId: requestedRoute.providerId,
+      tenantId: input.tenantId,
+      messages: [{ role: "system", content: system }, ...history, { role: "user", content: prompt }],
+    });
+    void logAiUsage({ tenantId: input.tenantId, scope: "analysis", provider: "altum_rules", model: result.model, agentId: "business-insights", decision: "answer", latencyMs: Date.now() - startedAt, inputTokens: result.inputTokens || null, outputTokens: result.outputTokens || null, status: "success", metadata: { surface: "perguntar_altum", routedProvider: result.provider } }).catch(() => undefined);
+    return { answer: result.answer, provider: result.provider, model: result.model, fallbackUsed: result.provider !== "freellmapi" };
+  } catch (error) {
+    lastError = `roteador-altum: ${error instanceof Error ? clean(error.message, 220) : "falha no roteador"}`;
+    providerErrors.push(lastError);
+  }
 
   // A Central é preferida quando o administrador a conectou explicitamente.
   // Ela mantém o roteamento e o fallback entre provedores fora da conversa do usuário.

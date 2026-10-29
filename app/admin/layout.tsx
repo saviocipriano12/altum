@@ -19,6 +19,7 @@ const ADMIN_ONLY_PREFIXES = [
   "/admin/operacao",
   "/admin/comando",
   "/admin/missoes",
+  "/admin/agentes",
   "/admin/ferramentas",
   "/admin/conexoes",
   "/admin/aprovacoes",
@@ -42,7 +43,11 @@ function isClientPanelRole(role: unknown) {
   );
 }
 
-export default function AdminLayout({ children }: { children: React.ReactNode }) {
+export default function AdminLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   const { user, profile, loading, isAdmin } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
@@ -52,17 +57,21 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
   const needsAdmin = useMemo(
     () => ADMIN_ONLY_PREFIXES.some((prefix) => pathname.startsWith(prefix)),
-    [pathname]
+    [pathname],
   );
 
   useEffect(() => {
     if (loading) return;
 
     if (!user || !profile) {
-      const returnTo = ["/admin/mcp/autorizar", "/admin/midia"].includes(pathname)
+      const returnTo = ["/admin/mcp/autorizar", "/admin/midia"].includes(
+        pathname,
+      )
         ? `${pathname}${window.location.search}`
         : null;
-      router.push(returnTo ? `/login?returnTo=${encodeURIComponent(returnTo)}` : "/login");
+      router.push(
+        returnTo ? `/login?returnTo=${encodeURIComponent(returnTo)}` : "/login",
+      );
       return;
     }
 
@@ -99,7 +108,10 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
   // Comando is the primary Agent OS workspace. It owns its own focused
   // conversation shell instead of nesting inside the legacy admin navigation.
-  if (pathname.startsWith("/admin/comando") || pathname.startsWith("/admin/resultados")) {
+  if (
+    pathname.startsWith("/admin/comando") ||
+    pathname.startsWith("/admin/resultados")
+  ) {
     return <div className="h-dvh w-full overflow-hidden">{children}</div>;
   }
 
@@ -124,7 +136,15 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           data-altum-admin-main="true"
           className={`flex-1 min-w-0 bg-slate-50 ${pathname.startsWith("/admin/chat") ? "overflow-hidden" : "overflow-y-auto px-4 py-6 md:px-8 md:py-8"}`}
         >
-          <div className={pathname.startsWith("/admin/chat") ? "h-full" : "mx-auto w-full max-w-[1440px]"}>{children}</div>
+          <div
+            className={
+              pathname.startsWith("/admin/chat")
+                ? "h-full"
+                : "mx-auto w-full max-w-[1440px]"
+            }
+          >
+            {children}
+          </div>
         </main>
       </div>
     </div>

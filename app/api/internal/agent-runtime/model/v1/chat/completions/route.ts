@@ -15,6 +15,11 @@ const requestSchema = z.object({
   messages: z.array(messageSchema).min(1).max(80),
   max_tokens: z.number().int().min(1).max(8_000).optional(),
   max_completion_tokens: z.number().int().min(1).max(8_000).optional(),
+  // Agent/MCP callers may explicitly select an already-connected route. The
+  // default remains Altum's automatic routing and fallback order.
+  provider_id: z.string().trim().min(2).max(120).optional(),
+  connection_id: z.string().trim().regex(/^[A-Za-z0-9_-]{1,180}$/).optional(),
+  tenant_id: z.string().trim().min(1).max(180).optional(),
   stream: z.literal(false).optional(),
 });
 
@@ -37,6 +42,9 @@ export async function POST(request: Request) {
       model: parsed.data.model,
       messages: parsed.data.messages,
       maxTokens: parsed.data.max_completion_tokens || parsed.data.max_tokens || 1_000,
+      providerId: parsed.data.provider_id,
+      connectionId: parsed.data.connection_id,
+      tenantId: parsed.data.tenant_id,
     });
     return Response.json(runtimeChatCompletion(result), { headers: { "Cache-Control": "no-store" } });
   } catch (cause) {

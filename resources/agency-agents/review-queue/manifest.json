@@ -1,0 +1,154 @@
+{
+  "schemaVersion": 2,
+  "source": {
+    "repo": "Ado77/agency-agents",
+    "commit": "3c9588880b7cafaec325a104899fd8bbe27e7d72",
+    "license": "MIT"
+  },
+  "agents": [
+    {
+      "id": "market-research-synthesist",
+      "altumRole": "Pesquisador de Mercado",
+      "division": "research",
+      "sourceRepo": "Ado77/agency-agents",
+      "sourceCommit": "3c9588880b7cafaec325a104899fd8bbe27e7d72",
+      "sourcePath": "research/research-synthesist.md",
+      "importedFile": "review-queue/market-research-synthesist.md",
+      "sourceSha256": "3618b4a2a73523147731ae38ac4096cea0e83a7de930f55ea9ea6c69e3c77f30",
+      "importedContentSha256": "5096a0853120d007820d6f8f75fda1292b536cd03d22c7c16e1aaf92bba3e056",
+      "status": "review_required_before_activation"
+    },
+    {
+      "id": "growth-strategist",
+      "altumRole": "Estrategista de Growth",
+      "division": "marketing",
+      "sourceRepo": "Ado77/agency-agents",
+      "sourceCommit": "3c9588880b7cafaec325a104899fd8bbe27e7d72",
+      "sourcePath": "marketing/marketing-growth-hacker.md",
+      "importedFile": "review-queue/growth-strategist.md",
+      "sourceSha256": "6938b4fccaf4447e8c4b8fd071ce383a484cd3fb72583d87ac9835fa9741a7c7",
+      "importedContentSha256": "a17abd216a7004311f5b272b88662f55e3b2295fdabe0e3e154cba79f6900874",
+      "status": "review_required_before_activation"
+    },
+    {
+      "id": "seo-strategist",
+      "altumRole": "Especialista de SEO e GEO",
+      "division": "marketing",
+      "sourceRepo": "Ado77/agency-agents",
+      "sourceCommit": "3c9588880b7cafaec325a104899fd8bbe27e7d72",
+      "sourcePath": "marketing/marketing-seo-specialist.md",
+      "importedFile": "review-queue/seo-strategist.md",
+      "sourceSha256": "cfa35eb3626230e1bc96ab3d434b42005b092fd4de8f517efe4a4b3f8fca60d0",
+      "importedContentSha256": "0b7a90220bdce00e8fcaf76f8bd456526ae6fa35950632f55667e441dcd7d0e7",
+      "status": "review_required_before_activation"
+    },
+    {
+      "id": "social-strategist",
+      "altumRole": "Estrategista de Conteúdo Social",
+      "division": "marketing",
+      "sourceRepo": "Ado77/agency-agents",
+      "sourceCommit": "3c9588880b7cafaec325a104899fd8bbe27e7d72",
+      "sourcePath": "marketing/marketing-social-media-strategist.md",
+      "importedFile": "review-queue/social-strategist.md",
+      "sourceSha256": "7c698a9280872666b2726b7ca305c6d4890fcb95a098c7c316beb9bf5fdb4274",
+      "importedContentSha256": "295585f57b37fa808c8d74e1173a148a996daa6911982a5c8274d66eddf9c856",
+      "status": "review_required_before_activation"
+    },
+    {
+      "id": "paid-social-strategist",
+      "altumRole": "Especialista de Mídia Paga Social",
+      "division": "paid-media",
+      "sourceRepo": "Ado77/agency-agents",
+      "sourceCommit": "3c9588880b7cafaec325a104899fd8bbe27e7d72",
+      "sourcePath": "paid-media/paid-media-paid-social-strategist.md",
+      "importedFile": "review-queue/paid-social-strategist.md",
+      "sourceSha256": "c8004c7f640dfef9c7c698f69c4c3712d063df06c8d391c809df92ba420af3db",
+      "importedContentSha256": "dcb8f1f293b2905abb4b8ad8a3b9bd749a2e576fc3bf4118a72d27f00c0309d6",
+      "status": "review_required_before_activation"
+    },
+    {
+      "id": "paid-search-strategist",
+      "altumRole": "Especialista de Mídia Paga de Busca",
+      "division": "paid-media",
+      "sourceRepo": "Ado77/agency-agents",
+      "sourceCommit": "3c9588880b7cafaec325a104899fd8bbe27e7d72",
+      "sourcePath": "paid-media/paid-media-ppc-strategist.md",
+      "importedFile": "review-queue/paid-search-strategist.md",
+      "sourceSha256": "3e172aa58ad7f9ea3bad947def69dfe26d66134c0aa88dca60e5aea4b8e25f67",
+      "importedContentSha256": "a3c3d1487f5c62fdb7f581320559085ad25310ae548ad66c140da10d6a1db451",
+      "status": "review_required_before_activation"
+    },
+    {
+      "id": "measurement-specialist",
+      "altumRole": "Analista de Medição e Atribuição",
+      "division": "paid-media",
+      "sourceRepo": "Ado77/agency-agents",
+      "sourceCommit": "3c9588880b7cafaec325a104899fd8bbe27e7d72",
+      "sourcePath": "paid-media/paid-media-tracking-specialist.md",
+      "importedFile": "review-queue/measurement-specialist.md",
+      "sourceSha256": "8caa9bbc8f5a8aaeb5ac156dbb27818f27e79512472053b824484496b0ca5b96",
+      "importedContentSha256": "8b0f7e4bd743748ab0abddd13a0b206c7e0e497f1a7a9e7476f94722d6f9665d",
+      "status": "review_required_before_activation"
+    },
+    {
+      "id": "brand-guardian",
+      "altumRole": "Revisor de Marca e Qualidade",
+      "division": "design",
+      "sourceRepo": "Ado77/agency-agents",
+      "sourceCommit": "3c9588880b7cafaec325a104899fd8bbe27e7d72",
+      "sourcePath": "design/design-brand-guardian.md",
+      "importedFile": "review-queue/brand-guardian.md",
+      "sourceSha256": "d1d5c78af85d4d35be94b93d5c011d17e3cf5dcb69b2037a3ebf3059803b893e",
+      "importedContentSha256": "7973ff98664dec461dd77963ca08feba135b91a384fcc7f18c223718d724ca14",
+      "status": "review_required_before_activation"
+    },
+    {
+      "id": "visual-storyteller",
+      "altumRole": "Diretor Criativo",
+      "division": "design",
+      "sourceRepo": "Ado77/agency-agents",
+      "sourceCommit": "3c9588880b7cafaec325a104899fd8bbe27e7d72",
+      "sourcePath": "design/design-visual-storyteller.md",
+      "importedFile": "review-queue/visual-storyteller.md",
+      "sourceSha256": "f4950c9d65b5d105ec48ebce4b7621154e3bf89871dbbf07af245476930eb4dd",
+      "importedContentSha256": "2e395fc3764d6c97436e4abb44525e67020b65f5e577d206b0df4f339786d7f7",
+      "status": "review_required_before_activation"
+    },
+    {
+      "id": "offer-leadgen-strategist",
+      "altumRole": "Estrategista de Oferta e Geração de Demanda",
+      "division": "sales",
+      "sourceRepo": "Ado77/agency-agents",
+      "sourceCommit": "3c9588880b7cafaec325a104899fd8bbe27e7d72",
+      "sourcePath": "sales/sales-offer-lead-gen-strategist.md",
+      "importedFile": "review-queue/offer-leadgen-strategist.md",
+      "sourceSha256": "75a12987fb2a205ac029c2ebf43d1ae1a1502d1707ab4921923928489ff3778c",
+      "importedContentSha256": "73b05a976cdd99f61d8d19038315ce399c069a25834f034ac1aa8dbe93e1da47",
+      "status": "review_required_before_activation"
+    },
+    {
+      "id": "proposal-strategist",
+      "altumRole": "Estrategista de Propostas",
+      "division": "sales",
+      "sourceRepo": "Ado77/agency-agents",
+      "sourceCommit": "3c9588880b7cafaec325a104899fd8bbe27e7d72",
+      "sourcePath": "sales/sales-proposal-strategist.md",
+      "importedFile": "review-queue/proposal-strategist.md",
+      "sourceSha256": "84c42e0ae7e11e6b239b7f921bdb0c33398102f94998c2eaa41114a3a46dc4c9",
+      "importedContentSha256": "5ad0c1e3cddf25f89a735e7167b47c1013fd17aeefa049e698043b05b08d5165",
+      "status": "review_required_before_activation"
+    },
+    {
+      "id": "studio-producer",
+      "altumRole": "Coordenador de Operações da Agência",
+      "division": "project-management",
+      "sourceRepo": "Ado77/agency-agents",
+      "sourceCommit": "3c9588880b7cafaec325a104899fd8bbe27e7d72",
+      "sourcePath": "project-management/project-management-studio-producer.md",
+      "importedFile": "review-queue/studio-producer.md",
+      "sourceSha256": "d942feab0f50ea7b8e98cb73bdaf05226d2a6c53c6359c7380149f7545bb199d",
+      "importedContentSha256": "59bbd75252144055cb889bf7805db9e9300bf7fe1f36931409003feb53324b5c",
+      "status": "review_required_before_activation"
+    }
+  ]
+}

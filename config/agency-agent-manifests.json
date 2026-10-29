@@ -1,0 +1,65 @@
+{
+  "schemaVersion": 1,
+  "status": "draft_manifests",
+  "source": {
+    "repo": "Ado77/agency-agents",
+    "commit": "3c9588880b7cafaec325a104899fd8bbe27e7d72",
+    "license": "MIT"
+  },
+  "manifests": [
+    {
+      "schemaVersion": 1,
+      "agentId": "market-research-synthesist",
+      "version": "0.1.0",
+      "displayName": "Pesquisador de Mercado",
+      "role": "Pesquisa mercado, público, concorrentes e evidências para missões de crescimento.",
+      "status": "review_required",
+      "executionMode": "draft_only",
+      "source": { "repo": "Ado77/agency-agents", "commit": "3c9588880b7cafaec325a104899fd8bbe27e7d72", "path": "research/research-synthesist.md", "license": "MIT" },
+      "ownerId": null,
+      "capabilities": ["WEB_RESEARCH", "ANALYZE_RESULTS", "GENERATE_TEXT"],
+      "skillIds": ["audience-intelligence"],
+      "allowedConnectionKinds": ["none", "read_only"],
+      "approvalCapabilities": [],
+      "limits": { "maxRunMinutes": 20, "maxAttempts": 2, "maxCostBrl": 20 },
+      "evaluationIds": ["market-research-evidence-v1"],
+      "escalation": { "requiresHumanForExternalAction": true, "failureOwner": null }
+    },
+    {
+      "schemaVersion": 1,
+      "agentId": "paid-social-strategist",
+      "version": "0.1.0",
+      "displayName": "Especialista de Mídia Paga Social",
+      "role": "Planeja campanhas pagas sociais e produz recomendações ou rascunhos de configuração.",
+      "status": "review_required",
+      "executionMode": "draft_only",
+      "source": { "repo": "Ado77/agency-agents", "commit": "3c9588880b7cafaec325a104899fd8bbe27e7d72", "path": "paid-media/paid-media-paid-social-strategist.md", "license": "MIT" },
+      "ownerId": null,
+      "capabilities": ["READ_ANALYTICS", "ANALYZE_RESULTS", "GENERATE_CREATIVE", "PUBLISH_OR_ADS_WRITE"],
+      "skillIds": ["campaign-plan", "ad-creative", "campaign-audit"],
+      "allowedConnectionKinds": ["none", "read_only", "approved_write"],
+      "approvalCapabilities": ["PUBLISH_OR_ADS_WRITE", "SPEND_MONEY"],
+      "limits": { "maxRunMinutes": 30, "maxAttempts": 2, "maxCostBrl": 50 },
+      "evaluationIds": ["paid-social-plan-v1", "brand-safety-v1"],
+      "escalation": { "requiresHumanForExternalAction": true, "failureOwner": null }
+    },
+    {
+      "schemaVersion": 1,
+      "agentId": "studio-producer",
+      "version": "0.1.0",
+      "displayName": "Coordenador de Operações da Agência",
+      "role": "Organiza entregáveis, dependências, aprovações e handoffs de uma missão criativa.",
+      "status": "review_required",
+      "executionMode": "draft_only",
+      "source": { "repo": "Ado77/agency-agents", "commit": "3c9588880b7cafaec325a104899fd8bbe27e7d72", "path": "project-management/project-management-studio-producer.md", "license": "MIT" },
+      "ownerId": null,
+      "capabilities": ["PLAN_MISSION", "ANALYZE_RESULTS", "GENERATE_TEXT"],
+      "skillIds": ["campaign-plan"],
+      "allowedConnectionKinds": ["none", "read_only"],
+      "approvalCapabilities": [],
+      "limits": { "maxRunMinutes": 15, "maxAttempts": 2, "maxCostBrl": 10 },
+      "evaluationIds": ["mission-plan-v1"],
+      "escalation": { "requiresHumanForExternalAction": true, "failureOwner": null }
+    }
+  ]
+}

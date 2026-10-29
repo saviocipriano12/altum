@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { commercialRecordIdentity, commercialPotentialValue, parseCommercialPotentialValue, type CommercialRecordIdentity } from "@/lib/crm-commercial-record";
 import { FieldValue } from "firebase-admin/firestore";
 import { adminDb } from "@/app/lib/server/firebase-admin";
 import { requireRequestUser, RouteAuthError } from "@/app/lib/server/route-auth";
@@ -6,16 +7,17 @@ import { normalizePhoneBR } from "@/app/lib/server/phone";
 import { assertTenantAccess, assertTenantCapability, assertTenantRole, getTenantSettings, TenantAccessError } from "@/lib/server/tenant";
 import { assertTenantLimitAvailable, assertTenantModule } from "@/lib/server/tenant-entitlements";
 import { normalizePipelineStageId } from "@/lib/pipeline";
-import { runLeadAutomations } from "@/lib/server/automations";
+import { commitManualLeadCreationOccurrence, intakeCreationJobId, processIntakeCreation } from "@/lib/server/crm/intake-occurrence";
 import { upsertContactProfile } from "@/lib/server/contact-profile";
 import { deriveSalesJourney, type SalesJourneyRecommendation } from "@/lib/sales-journey";
 import { canAccessAssignedCommercialRecord, hasTeamWideCommercialAccess } from "@/lib/server/commercial-access";
 import { inferClientAccessProfile } from "@/lib/client-access-profiles";
+import { assertPipelineStageExists, InvalidPipelineStageError, loadTenantPipelineInTransaction, TenantPipelineConfigurationError } from "@/lib/server/crm/pipeline";
 
 const DEFAULT_LEADS_LIMIT = 200;
 const MAX_LEADS_LIMIT = 250;
 
-type LeadItem = {
+type LeadItem = CommercialRecordIdentity & {
   id: string;
   nome?: string;
   email?: string;
@@ -126,27 +128,26 @@ function cleanString(value: unknown, max = 1000) {
   return value.trim().slice(0, max);
 }
 
-function cleanPotentialValue(value: unknown) {
-  const parsed = Number(value);
-  if (!Number.isFinite(parsed) || parsed < 0) return 0;
-  return Math.min(999_999_999, Math.round(parsed * 100) / 100);
-}
-
 function chunks<T>(items: T[], size: number) {
   const result: T[][] = [];
   for (let index = 0; index < items.length; index += size) result.push(items.slice(index, index + size));
   return result;
 }
 
-async function listChatsForLeadPage(tenantId: string, leads: LeadItem[]) {
+async function listChatsForLeadPage(tenantId: string, leads: LeadItem[], compact: boolean) {
   const leadIds = Array.from(new Set(leads.map((lead) => lead.id).filter(Boolean)));
   const phones = Array.from(new Set(leads.map((lead) => cleanString(lead.telefone, 60)).filter(Boolean)));
+  const readChats = (query: FirebaseFirestore.Query) => (compact ? query.select(
+    "tenantId", "leadId", "contactPhone", "status", "priority", "lastMessageTime", "updatedAt", "contactPhotoUrl",
+    "lastMessage", "lastClientMessageAt", "lastAgentMessageAt", "channel", "followUpCount",
+    "assignedTo", "ownerId", "ownerUserId", "assignedUserId", "responsavelId", "channelScope", "channelOwnerUserId"
+  ) : query).get();
   const queries = [
     ...chunks(leadIds, 30).map((ids) =>
-      adminDb.collection("chats").where("tenantId", "==", tenantId).where("leadId", "in", ids).get()
+      readChats(adminDb.collection("chats").where("tenantId", "==", tenantId).where("leadId", "in", ids))
     ),
     ...chunks(phones, 30).map((values) =>
-      adminDb.collection("chats").where("tenantId", "==", tenantId).where("contactPhone", "in", values).get()
+      readChats(adminDb.collection("chats").where("tenantId", "==", tenantId).where("contactPhone", "in", values))
     ),
   ];
   if (queries.length === 0) return [] as ChatRow[];
@@ -194,6 +195,7 @@ export async function GET(
         const data = doc.data() as Record<string, unknown>;
         return {
           id: doc.id,
+          ...commercialRecordIdentity(data),
           nome: typeof data.nome === "string" ? data.nome : "Lead",
           email: typeof data.email === "string" ? data.email : "",
           telefone: typeof data.telefone === "string" ? data.telefone : "",
@@ -211,12 +213,7 @@ export async function GET(
           score: typeof data.score === "number" ? data.score : null,
           heat: typeof data.heat === "string" ? data.heat : "",
           priority: typeof data.priority === "string" ? data.priority : "",
-          potentialValue:
-            typeof data.potentialValue === "number"
-              ? data.potentialValue
-              : typeof data.valorPotencial === "number"
-                ? data.valorPotencial
-                : null,
+          potentialValue: commercialPotentialValue(data),
           tags: parseTags(data.tags),
           notes: typeof data.notes === "string" ? data.notes : "",
           customFields:
@@ -268,10 +265,10 @@ export async function GET(
       }))
       .sort((a, b) => toTime(b.updatedAt) - toTime(a.updatedAt));
 
-    // A tabela inicial do CRM deve abrir com os dados do proprio lead. As
-    // leituras cruzadas de chats sao valiosas na ficha, mas em lote tornam a
-    // lista lenta conforme a carteira cresce.
-    const chatRows = compact ? [] : await listChatsForLeadPage(tenantId, leads);
+    // Read only the visible page's summary fields in compact mode; omitted reads
+    // must never be presented as zero pending conversations.
+    const chatRows = (await listChatsForLeadPage(tenantId, leads, compact))
+      .filter(chat => canAccessAssignedCommercialRecord(membership, user.uid, chat));
     const chatSummaryByLead = new Map<string, LeadItem["chatSummary"]>();
     const chatsByLead = new Map<string, ChatRow[]>();
 
@@ -279,7 +276,7 @@ export async function GET(
       const phone = normalizePhone(lead.telefone);
       const relatedChats = chatRows.filter((chat) => {
         const chatLeadId = typeof chat.leadId === "string" ? chat.leadId : "";
-        if (chatLeadId && chatLeadId === lead.id) return true;
+        if (chatLeadId) return chatLeadId === lead.id;
         if (!phone) return false;
         return normalizePhone(chat.contactPhone) === phone;
       });
@@ -366,6 +363,8 @@ export async function POST(
       );
     }
 
+    const potentialValue = parseCommercialPotentialValue(body.potentialValue);
+    if (!potentialValue.ok) return NextResponse.json({ error: "Informe um valor previsto válido ou deixe vazio." }, { status: 400 });
     const tenantLeads = await adminDb.collection("leads").where("tenantId", "==", tenantId).get();
     const duplicate = tenantLeads.docs.find((doc) => {
       const data = doc.data() as Record<string, unknown>;
@@ -388,7 +387,9 @@ export async function POST(
     });
 
     const leadRef = adminDb.collection("leads").doc();
-    const pipelineStage = normalizePipelineStageId(cleanString(body.pipelineStage, 80) || "captado");
+    const creationEventRef = leadRef.collection("events").doc();
+    const requestedStage = body.pipelineStage === undefined ? null : normalizePipelineStageId(body.pipelineStage, "");
+    const pipelineStage = requestedStage || "captado";
     const creatorIsSeller = inferClientAccessProfile({
       role: membership.role,
       capabilities: membership.capabilities,
@@ -407,7 +408,7 @@ export async function POST(
       pipelineStage,
       priority: cleanString(body.priority, 40) || "medium",
       heat: cleanString(body.heat, 20) || "morno",
-      potentialValue: cleanPotentialValue(body.potentialValue),
+      potentialValue: potentialValue.value,
       notes: cleanString(body.notes, 4000),
       ownerId: creatorIsSeller ? user.uid : null,
       ownerUserId: creatorIsSeller ? user.uid : null,
@@ -419,23 +420,24 @@ export async function POST(
       updatedAt: FieldValue.serverTimestamp(),
     };
 
-    await Promise.all([
-      leadRef.set(payload),
-      leadRef.collection("events").add({
-        type: "system",
-        title: "Contato criado",
-        detail: `Cadastrado manualmente por ${user.name}.`,
-        createdAt: FieldValue.serverTimestamp(),
-      }),
-      adminDb.collection("audit_logs").add({
+    const savedPayload = await adminDb.runTransaction(async transaction => {
+      const pipeline = await loadTenantPipelineInTransaction(transaction, tenantId);
+      const stageId = requestedStage === null ? pipeline.stages[0]?.id || "" : requestedStage;
+      assertPipelineStageExists(pipeline.stages, stageId);
+      const record = await commitManualLeadCreationOccurrence(transaction, {
+        leadRef, eventRef: creationEventRef, record: { ...payload, stage: stageId, pipelineStage: stageId }, actorId: user.uid, actorName: user.name,
+      });
+      transaction.create(adminDb.collection("audit_logs").doc(), {
         type: "tenant_lead_created",
         tenantId,
         leadId: leadRef.id,
         actorId: user.uid,
         actorName: user.name,
         createdAt: FieldValue.serverTimestamp(),
-      }),
-      upsertContactProfile({
+      });
+      return record;
+    });
+    await upsertContactProfile({
         tenantId,
         phone: telefone,
         email,
@@ -443,16 +445,9 @@ export async function POST(
         channel: payload.channel,
         name: payload.nome,
         company: payload.empresa,
-      }),
-    ]);
+      });
 
-    await runLeadAutomations({
-      tenantId,
-      trigger: "lead_created",
-      leadId: leadRef.id,
-      actorId: user.uid,
-      actorName: user.name,
-    }).catch((automationError) => {
+    await processIntakeCreation(intakeCreationJobId(creationEventRef.id), tenantId).catch((automationError) => {
       console.error("Contato criado, mas a automacao inicial falhou:", {
         tenantId,
         leadId: leadRef.id,
@@ -460,7 +455,7 @@ export async function POST(
       });
     });
 
-    return NextResponse.json({ ok: true, tenantId, leadId: leadRef.id, item: { id: leadRef.id, ...payload } }, { status: 201 });
+    return NextResponse.json({ ok: true, tenantId, leadId: leadRef.id, item: { id: leadRef.id, ...savedPayload } }, { status: 201 });
   } catch (error) {
     if (error instanceof RouteAuthError) {
       return NextResponse.json({ error: error.message, code: error.code }, { status: error.status });
@@ -471,6 +466,8 @@ export async function POST(
         { status: error.code === "tenant_limit_exceeded" ? 409 : 403 }
       );
     }
+    if (error instanceof InvalidPipelineStageError) return NextResponse.json({ error: error.message, code: "invalid_pipeline_stage" }, { status: 400 });
+    if (error instanceof TenantPipelineConfigurationError) return NextResponse.json({ error: error.message, code: "pipeline_configuration_invalid" }, { status: 409 });
     console.error("Erro ao criar lead do tenant:", error);
     return NextResponse.json({ error: "Falha ao criar contato." }, { status: 500 });
   }

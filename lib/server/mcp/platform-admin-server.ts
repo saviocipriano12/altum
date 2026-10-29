@@ -3,11 +3,17 @@ import { FieldValue } from "firebase-admin/firestore";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { adminDb } from "@/app/lib/server/firebase-admin";
-import { executeCreativeJob, refreshCreativeJob } from "@/lib/server/agent-os/creative-executor";
+import { executeCreativeJobWithFallback, refreshCreativeJob, type RoutedCreativeExecutionResult } from "@/lib/server/agent-os/creative-executor";
+import { loadCreativeExecutionCandidates } from "@/lib/server/agent-os/creative-execution-routing";
+import { mediaConnectionAvailability, planMediaConnections } from "@/lib/server/agent-os/creative-model-router";
+import { recordCreativeConnectionAttempts } from "@/lib/server/agent-os/creative-connection-health";
 import { persistCreativeAsset, signedCreativeAssetUrl } from "@/lib/server/agent-os/creative-asset-storage";
 import { classifyPlatformRender } from "@/lib/server/mcp/platform-creative-policy";
+import { registerAdminCommercialTools } from "@/lib/server/mcp/admin-commercial-tools";
+import { registerAdminAgentOsTools } from "@/lib/server/agent-os/admin-mcp-tools";
+import type { Grant } from "@/lib/mcp/contracts";
 
-type PlatformActor = { userId: string; connectionId: string; scopes: readonly string[] };
+type PlatformActor = { userId: string; connectionId: string; scopes: readonly string[]; grants?: Grant[]; origin?: string };
 type OAuthRuntime = { grantedScopes: readonly string[]; resourceMetadataUrl: string };
 
 const id = z.string().regex(/^[A-Za-z0-9_-]{1,180}$/);
@@ -21,6 +27,11 @@ const connectionPatch = z.object({
 }).strict();
 const creativeFormat = z.enum(["image", "carousel", "video", "copy"]);
 const missionStatus = z.enum(["planned", "running", "paused", "completed", "cancelled"]);
+// A saved connection is allowed to perform its first *explicitly approved*
+// render.  Its status must not prevent the no-cost preparation step, otherwise
+// a newly connected provider can never become healthy through a real job.
+// Connections that are disabled or in a provider cooldown remain excluded.
+const renderableConnectionStatuses = ["configured_unapproved", "healthy", "approved"] as const;
 
 function sanitizeConnection(doc: FirebaseFirestore.QueryDocumentSnapshot) {
   const row = doc.data();
@@ -35,6 +46,7 @@ function sanitizeConnection(doc: FirebaseFirestore.QueryDocumentSnapshot) {
     capabilities: Array.isArray(row.capabilities) ? row.capabilities.map(String).slice(0, 40) : [],
     notes: typeof row.notes === "string" ? row.notes.slice(0, 2000) : "",
     status: String(row.status || "pending_config"),
+    health: row.health && typeof row.health === "object" ? row.health : null,
     credentialConfigured: Boolean(row.credential),
   };
 }
@@ -90,7 +102,7 @@ export function createPlatformAdminServer(actor: PlatformActor | null, oauth?: O
       adminDb.collection("tool_connections").where("scope", "==", "platform").limit(201).get(),
     ]);
     const rows = connections.docs.map(sanitizeConnection);
-    return { adminMcpEnabled: policy.get("enabled") === true, platformConnections: { total: rows.length, partial: rows.length > 200, ready: rows.filter((row) => ["configured_unapproved", "healthy", "approved"].includes(row.status)).length }, boundaries: "Nenhum dado de tenant, cliente, CRM, inbox, campanha ou agente de empresa esta exposto neste MCP." };
+    return { adminMcpEnabled: policy.get("enabled") === true, platformConnections: { total: rows.length, partial: rows.length > 200, ready: rows.filter((row) => mediaConnectionAvailability(row).available).length }, boundaries: "Nenhum dado de tenant, cliente, CRM, inbox, campanha ou agente de empresa esta exposto neste MCP." };
   });
 
   register("altum_admin_list_ai_connections", "Lista apenas conexoes globais de IA da Altum, com modelos e capacidades. Nunca retorna credenciais, tokens ou conexoes de empresas.", z.object({}).strict(), ["integrations:read"], async () => {
@@ -174,7 +186,7 @@ export function createPlatformAdminServer(actor: PlatformActor | null, oauth?: O
     return { jobId, status: String(row.status || "unknown"), format: String(row.format || ""), providerId: String(row.providerId || ""), assetId: typeof row.assetId === "string" ? row.assetId : null, assetUrl, stored: Boolean(assetUrl), failureReason: typeof row.failureReason === "string" ? row.failureReason.slice(0, 300) : null };
   });
 
-  register("altum_admin_prepare_creative_render", "Prepara uma imagem ou vídeo global na Altum, sem consumir créditos. Renderização efetiva requer aprovação separada.", z.object({ conceptId: id, connectionId: id.optional() }).strict(), ["ai:draft"], async ({ conceptId, connectionId }) => {
+  register("altum_admin_prepare_creative_render", "Prepara uma imagem ou vídeo global na Altum, sem consumir créditos. Renderização efetiva requer aprovação separada.", z.object({ conceptId: id, connectionId: id.optional(), model: z.string().trim().min(3).max(180).optional() }).strict(), ["ai:draft"], async ({ conceptId, connectionId, model }) => {
     const concept = await adminDb.collection("platform_creative_concepts").doc(conceptId).get();
     if (!concept.exists) throw new Error("NOT_FOUND");
     const format = String(concept.get("format") || "");
@@ -183,12 +195,31 @@ export function createPlatformAdminServer(actor: PlatformActor | null, oauth?: O
     const candidateSnaps = connectionId
       ? [await adminDb.collection("tool_connections").doc(connectionId).get()]
       : (await adminDb.collection("tool_connections").where("scope", "==", "platform").limit(201).get()).docs;
-    const connection = candidateSnaps.find((item) => item.exists && item.get("scope") === "platform" && item.get("credential") && ["healthy", "approved"].includes(String(item.get("status") || "")) && Array.isArray(item.get("capabilities")) && (item.get("capabilities") as string[]).includes(capability));
+    const connection = candidateSnaps.find((item) => item.exists && item.get("scope") === "platform" && item.get("credential") && renderableConnectionStatuses.includes(String(item.get("status") || "") as typeof renderableConnectionStatuses[number]) && Array.isArray(item.get("capabilities")) && (item.get("capabilities") as string[]).includes(capability));
     if (!connection) throw new Error("NOT_FOUND");
+    const catalog = connection.get("modelCatalog");
+    if (model && (!Array.isArray(catalog) || !catalog.includes(model))) throw new Error("INVALID_INPUT");
     // No provider call here. The selected route is saved for approval and
     // revalidated again at execution time.
+    const allPlatformConnections = connectionId ? (await adminDb.collection("tool_connections").where("scope", "==", "platform").limit(201).get()).docs : candidateSnaps;
+    const fallbackConnectionIds = planMediaConnections({
+      tenantId: "platform",
+      capability,
+      prompt: String(concept.get("content") || ""),
+      connections: allPlatformConnections.map((item) => ({
+        id: item.id,
+        providerId: String(item.get("providerId") || ""),
+        displayName: typeof item.get("displayName") === "string" ? item.get("displayName") : undefined,
+        capabilities: Array.isArray(item.get("capabilities")) ? item.get("capabilities").map(String) : [],
+        status: String(item.get("status") || "pending_config"),
+        scope: "platform" as const,
+        tenantId: null,
+        creativeModel: item.get("creativeModel"),
+        health: item.get("health"),
+      })),
+    }).routes.map((item) => item.connection.id).filter((candidateId) => candidateId !== connection.id);
     const ref = adminDb.collection("platform_creative_jobs").doc();
-    await ref.set({ conceptId, projectId: concept.get("projectId"), format, connectionId: connection.id, providerId: connection.get("providerId") || null, prompt: String(concept.get("content") || "").slice(0, 6000), status: "awaiting_approval", createdBy: actor!.userId, createdAt: FieldValue.serverTimestamp() });
+    await ref.set({ conceptId, projectId: concept.get("projectId"), format, connectionId: connection.id, fallbackConnectionIds, creativeModel: model || null, providerId: connection.get("providerId") || null, prompt: String(concept.get("content") || "").slice(0, 6000), status: "awaiting_approval", createdBy: actor!.userId, createdAt: FieldValue.serverTimestamp() });
     await adminDb.collection("audit_logs").add({ type: "admin_mcp_platform_render_prepared", actorId: actor!.userId, jobId: ref.id, createdAt: FieldValue.serverTimestamp() });
     return { jobId: ref.id, status: "awaiting_approval", estimatedCost: "unknown", next: "Exige confirmação explícita antes de chamar o provedor. Nenhum crédito foi utilizado." };
   });
@@ -221,15 +252,18 @@ export function createPlatformAdminServer(actor: PlatformActor | null, oauth?: O
     try {
       const connection = await adminDb.collection("tool_connections").doc(String(job.connectionId)).get();
       if (!connection.exists || connection.get("scope") !== "platform") throw new Error("INVALID_INPUT");
-      if (!connection.get("credential") || !["healthy", "approved"].includes(String(connection.get("status") || ""))) throw new Error("INVALID_INPUT");
+      if (!connection.get("credential") || !renderableConnectionStatuses.includes(String(connection.get("status") || "") as typeof renderableConnectionStatuses[number])) throw new Error("INVALID_INPUT");
       // Permissions can change after preparation. Recheck the capability just
       // before using paid credits or polling a provider response.
       const requiredCapability = job.format === "video" ? "GENERATE_VIDEO" : "GENERATE_IMAGE";
       const capabilities = connection.get("capabilities");
       if (!Array.isArray(capabilities) || !capabilities.includes(requiredCapability)) throw new Error("INVALID_INPUT");
+      const executionJob = { id: jobId, tenantId: "platform", projectId: String(job.projectId || ""), outputId: String(job.conceptId || ""), capability: job.format === "video" ? "GENERATE_VIDEO" : "GENERATE_IMAGE", format: String(job.format), prompt: String(job.prompt), creativeModel: job.creativeModel || undefined, connectionId: String(job.connectionId || ""), fallbackConnectionIds: Array.isArray(job.fallbackConnectionIds) ? job.fallbackConnectionIds : [] };
       const result = action === "start"
-        ? await executeCreativeJob({ id: jobId, tenantId: "platform", projectId: String(job.projectId || ""), outputId: String(job.conceptId || ""), capability: job.format === "video" ? "GENERATE_VIDEO" : "GENERATE_IMAGE", format: String(job.format), prompt: String(job.prompt) }, connection.data()!)
+        ? await executeCreativeJobWithFallback({ job: executionJob, candidates: await loadCreativeExecutionCandidates(executionJob) })
         : await refreshCreativeJob(connection.data()!, job.providerStatusUrl);
+      const routed = action === "start" ? result as RoutedCreativeExecutionResult : null;
+      if (routed) await recordCreativeConnectionAttempts(routed.attempts);
       if (result.status === "submitted" && classifyPlatformRender(result, job.providerStatusUrl || null, false) === "needs_reconciliation") {
         // A provider may have accepted a paid request without exposing a way to
         // query it. Never resubmit blindly: preserve the receipt for review.
@@ -244,12 +278,22 @@ export function createPlatformAdminServer(actor: PlatformActor | null, oauth?: O
         return { jobId, status: "needs_reconciliation", stored: false, next: "O provedor concluiu a geração, mas o arquivo não pôde ser armazenado; não execute novamente antes de recuperar o original." };
       }
       const batch = adminDb.batch();
-      batch.set(ref, { status: result.status, providerJobId: result.providerJobId || job.providerJobId || null, providerStatusUrl: result.providerStatusUrl || job.providerStatusUrl || null, assetId: asset ? jobId : null, pollLockUntil: null, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+      batch.set(ref, { status: result.status, providerJobId: result.providerJobId || job.providerJobId || null, providerStatusUrl: result.providerStatusUrl || job.providerStatusUrl || null, assetId: asset ? jobId : null, pollLockUntil: null, ...(routed ? { connectionId: routed.connectionId, providerId: routed.providerId, executionAttempts: routed.attempts } : {}), updatedAt: FieldValue.serverTimestamp() }, { merge: true });
       if (asset) batch.set(adminDb.collection("platform_creative_assets").doc(jobId), { jobId, projectId: job.projectId, format: job.format, sourceUrl: asset.sourceUrl, storagePath: asset.storagePath, persistence: asset.persistence, createdBy: actor!.userId, createdAt: FieldValue.serverTimestamp() });
       batch.set(adminDb.collection("audit_logs").doc(), { type: "admin_mcp_platform_render_executed", actorId: actor!.userId, jobId, action, status: result.status, createdAt: FieldValue.serverTimestamp() });
       await batch.commit();
       return { jobId, status: result.status, assetId: asset ? jobId : null, providerJobId: result.providerJobId || null };
     } catch (error) {
+      // A routed execution carries every provider attempt on the error after
+      // all candidates fail. Persist it before surfacing the failure, so the
+      // next request skips exhausted or invalid routes instead of repeating a
+      // known-bad provider.
+      const attempts = error && typeof error === "object" && "attempts" in error
+        ? (error as { attempts?: unknown }).attempts
+        : null;
+      if (action === "start" && Array.isArray(attempts)) {
+        await recordCreativeConnectionAttempts(attempts.filter((attempt): attempt is import("@/lib/server/agent-os/creative-executor").CreativeExecutionAttempt => Boolean(attempt) && typeof attempt === "object"));
+      }
       await ref.set(action === "start"
         ? { status: "needs_reconciliation", failureReason: "Provider submission outcome unknown; inspect provider before retrying.", pollLockUntil: null, updatedAt: FieldValue.serverTimestamp() }
         : { pollLockUntil: null, nextPollAt: new Date(Date.now() + 30_000), updatedAt: FieldValue.serverTimestamp() }, { merge: true });
@@ -268,11 +312,19 @@ export function createPlatformAdminServer(actor: PlatformActor | null, oauth?: O
   register("altum_admin_list_creative_models", "Descobre rotas globais de imagem e vídeo configuradas. Não consulta provedores pagos nem expõe credenciais.", z.object({ format: z.enum(["image", "video"]).optional() }).strict(), ["integrations:read"], async ({ format }) => {
     const snap = await adminDb.collection("tool_connections").where("scope", "==", "platform").limit(201).get();
     const rows = snap.docs.map(sanitizeConnection).filter((row) =>
-      Boolean(row.credentialConfigured) && ["healthy", "approved"].includes(row.status) &&
+      Boolean(row.credentialConfigured) && mediaConnectionAvailability(row).available &&
       (!format || row.capabilities.includes(format === "video" ? "GENERATE_VIDEO" : "GENERATE_IMAGE")) &&
       row.capabilities.some((capability) => ["GENERATE_IMAGE", "GENERATE_VIDEO"].includes(capability))
     );
-    return { items: rows.map((row) => ({ connectionId: row.id, providerId: row.providerId, displayName: row.displayName, model: row.chatModel, modelCatalog: row.modelCatalog, capabilities: row.capabilities, status: row.status, estimatedCostUsd: null })), partial: snap.size > 200, note: "Preços e cotas não verificados. A escolha de um modelo não autoriza consumo de créditos." };
+    return { items: rows.map((row) => ({ connectionId: row.id, providerId: row.providerId, displayName: row.displayName, model: row.chatModel, modelCatalog: row.modelCatalog, capabilities: row.capabilities, status: row.status, readiness: row.status === "configured_unapproved" ? "ready_for_first_approved_render" : "validated", modelSelection: row.modelCatalog.length || row.chatModel ? "configured" : "provider_default", estimatedCostUsd: null })), partial: snap.size > 200, note: "Uma conexão configurada sem catálogo ainda pode executar o primeiro render aprovado usando o adaptador padrão do provider. Preços e cotas não foram verificados." };
   });
+  // The same owner connection can operate the established commercial Altum
+  // contracts as well as global platform tools. Each commercial tool still
+  // checks tenant membership and returns a reviewable draft for writes.
+  if (actor?.grants) registerAdminCommercialTools(server, { ...actor, grants: actor.grants });
+  // Agent OS is the tenant-facing side of the same connection: creative
+  // projects, media jobs, results and ideas. It shares the OAuth grant but
+  // validates a tenant on every call and never returns provider credentials.
+  if (actor?.grants && actor.origin) registerAdminAgentOsTools(server, { ...actor, grants: actor.grants, origin: actor.origin });
   return server;
 }

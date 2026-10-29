@@ -16,6 +16,8 @@ export default defineConfig([
     "out/**",
     "build/**",
     "_benchmark/**",
+    ".altum-agent-sources/**",
+    ".qa-artifacts/**",
     "next-env.d.ts",
   ]),
 ]);

@@ -4,11 +4,12 @@ import { assertTenantAccess, assertTenantCapability, TenantAccessError } from "@
 import { assertTenantModule } from "@/lib/server/tenant-entitlements";
 import { createCommerceOAuthState, getCommerceOAuthEnv, normalizeShopifyDomain } from "@/lib/server/commerce/oauth";
 import { getAppBaseUrl } from "@/app/lib/server/integration-oauth";
+import { adminDb } from "@/app/lib/server/firebase-admin";
 
 export async function POST(req: Request) {
   try {
     const user = await requireRequestUser(req);
-    const body = (await req.json()) as { tenantId?: unknown; shopDomain?: unknown; redirectPath?: unknown };
+    const body = (await req.json()) as { tenantId?: unknown; shopDomain?: unknown; redirectPath?: unknown; connectionId?: unknown };
     const tenantId = typeof body.tenantId === "string" ? body.tenantId.trim() : "";
     const shopDomain = normalizeShopifyDomain(body.shopDomain);
     if (!tenantId || !shopDomain) {
@@ -17,6 +18,17 @@ export async function POST(req: Request) {
     const membership = await assertTenantAccess(user.uid, tenantId);
     await assertTenantModule(tenantId, "commerce");
     assertTenantCapability(membership, "manage_channels");
+    const connectionId = typeof body.connectionId === "string" ? body.connectionId.trim().slice(0, 180) : "";
+    if (connectionId) {
+      if (connectionId.includes("/")) return NextResponse.json({ error: "Conexão inválida." }, { status: 400 });
+      const connection = await adminDb.collection("ecommerce_connections").doc(connectionId).get();
+      const data = connection.data();
+      if (!connection.exists || data?.tenantId !== tenantId || data?.provider !== "shopify") {
+        return NextResponse.json({ error: "Esta conexão não pertence à empresa selecionada." }, { status: 403 });
+      }
+      const savedShop = normalizeShopifyDomain(data.storeId) || normalizeShopifyDomain(data.storeUrl);
+      if (savedShop && savedShop !== shopDomain) return NextResponse.json({ error: "Use a mesma loja desta conexão." }, { status: 400 });
+    }
 
     const env = getCommerceOAuthEnv().shopify;
     if (!env.clientId || !env.clientSecret) {
@@ -30,6 +42,7 @@ export async function POST(req: Request) {
       userName: user.name,
       redirectPath: body.redirectPath as string,
       shopDomain,
+      connectionId,
     });
     const url = new URL(`https://${shopDomain}/admin/oauth/authorize`);
     url.searchParams.set("client_id", env.clientId);

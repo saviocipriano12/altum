@@ -20,11 +20,17 @@ const labels: Record<CalloutType, string> = {
   success: "Sucesso",
 };
 
-export default function Callout({ type = "info", title, children }: CalloutProps) {
+export default function Callout({
+  type = "info",
+  title,
+  children,
+}: CalloutProps) {
   return (
     <aside className={`my-8 rounded-2xl border p-5 md:p-6 ${styles[type]}`}>
-      <p className="mb-2 text-xs font-semibold uppercase tracking-[0.12em]">{title ?? labels[type]}</p>
-      <div className="text-[1.02rem] leading-7 text-white/90">{children}</div>
+      <p className="mb-2 text-xs font-semibold uppercase tracking-[0.12em]">
+        {title ?? labels[type]}
+      </p>
+      <div className="text-[1.02rem] leading-7 text-slate-600">{children}</div>
     </aside>
   );
 }

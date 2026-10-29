@@ -1,0 +1,26 @@
+{
+  "extends": "./tsconfig.json",
+  "include": [
+    "next-env.d.ts",
+    "lib/ai-digital-twin.ts",
+    "lib/ai-proactive-intelligence.ts",
+    "lib/server/ai/digital-twin-store.ts",
+    "lib/server/ai/proactive-store.ts",
+    "lib/server/ai/proactive-processor.ts",
+    "lib/server/ai/learning-approval.ts",
+    "app/api/tenant/[tenantId]/ai-simulations/route.ts",
+    "app/api/tenant/[tenantId]/ai-proactive/**/*.ts",
+    "app/api/internal/jobs/ai-proactive/route.ts",
+    "app/cliente/painel/page.tsx",
+    "app/api/tenant/[tenantId]/ai-learning/recommendations/route.ts",
+    "app/api/tenant/[tenantId]/ai-evaluations/route.ts",
+    "scripts/verify-ai-digital-twin-artifacts.mts",
+    "scripts/verify-ai-proactive-operational.mts"
+  ],
+  "exclude": [
+    "node_modules",
+    ".next",
+    "app/admin/**",
+    "app/api/admin/**"
+  ]
+}

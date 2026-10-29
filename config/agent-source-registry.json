@@ -69,5 +69,10 @@
     ,{ "repo": "FunAudioLLM/CosyVoice", "commit": "074ca6dc9e80a2f424f1f74b48bdd7d3fea531cc", "category": "creative_audio", "adoption": "runtime_candidate" }
     ,{ "repo": "bytedance/LatentSync", "commit": "a229c3948406bc2cf6eaf4873e662e70c6a04746", "category": "creative_video", "adoption": "runtime_candidate" }
     ,{ "repo": "mastra-ai/mastra", "commit": "2a478e00a1e71705488eda2ae0cb8e17a88d2a1f", "category": "agent_runtime", "adoption": "runtime_candidate" }
+    ,{ "repo": "Ado77/agency-agents", "commit": "3c9588880b7cafaec325a104899fd8bbe27e7d72", "category": "agency_workforce", "adoption": "skills_candidate" }
+    ,{ "repo": "DeusData/codebase-memory-mcp", "commit": "4d9592b5fbceb80d3f7fc9c43020e50b77ad806a", "category": "codebase_intelligence", "adoption": "runtime_candidate" }
+    ,{ "repo": "calesthio/OpenMontage", "commit": "9327439db69021ab4b0e2776729bf3b58fdb5a87", "category": "creative_video", "adoption": "runtime_candidate" }
+    ,{ "repo": "orca-cli/orca", "commit": "5beeefcb57555962bb93facc54b5f82484731802", "category": "agent_orchestration", "adoption": "runtime_candidate" }
+    ,{ "repo": "orka-agents/orka", "commit": "0001a7b5680b0c6b7a15710cbe71722668d0bba3", "category": "agent_orchestration", "adoption": "runtime_candidate" }
   ]
 }

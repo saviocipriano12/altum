@@ -2,17 +2,26 @@ import { NextResponse } from "next/server";
 import { randomUUID } from "node:crypto";
 import { FieldValue } from "firebase-admin/firestore";
 import { adminAuth, adminDb } from "@/app/lib/server/firebase-admin";
+import { withCommercialTaskIndex } from "@/lib/crm-task-index";
 import { decryptSecret } from "@/app/lib/server/secret-crypto";
 import { requireRequestUser, RouteAuthError } from "@/app/lib/server/route-auth";
 import { assertTenantAccess, assertTenantCapability, TenantAccessError, getTenantSettings } from "@/lib/server/tenant";
 import { assertTenantLimitAvailable, assertTenantModule } from "@/lib/server/tenant-entitlements";
 import { assertAssignedCommercialRecordAccess, assertChatCommercialAccess, hasTeamWideCommercialAccess } from "@/lib/server/commercial-access";
-import { normalizePipelineStageId, normalizePipelineStages } from "@/lib/pipeline";
+import { normalizePipelineStages, validateCustomizedPipelineStages } from "@/lib/pipeline";
+import { saveTenantPipelineStages } from "@/lib/server/crm/pipeline";
 import { normalizeAutomationDoc } from "@/lib/server/automations";
-import { runLeadAutomations } from "@/lib/server/automations";
-import { sendTenantChatTemplate, sendTenantChatText } from "@/lib/server/chat-dispatch";
+import {applyApprovedAppointmentDraft} from "@/lib/server/crm/appointment-draft";
+import {AppointmentChangeError} from "@/lib/server/crm/appointment-mutation";
+import {assertTransactionalTenantAuthority} from "@/lib/server/tenant-operation-authority";
+import { applyApprovedLeadCreationDraft } from "@/lib/server/crm/lead-creation-draft";
+import { processIntakeCreation } from "@/lib/server/crm/intake-occurrence";
+import { deliverApprovedMcpMessage, McpMessageDeliveryPendingError, McpMessageDeliveryBlockedError } from "@/lib/server/mcp/message-delivery";
+import { mcpMessageFingerprint } from "@/lib/server/mcp/message-approval";
+import { ChatOutboundIdempotencyError } from "@/lib/server/chat-outbound-idempotency";
+import { resolveCanonicalWhatsAppChat } from "@/lib/server/whatsapp-chat-identity";
 import { upsertContactProfile } from "@/lib/server/contact-profile";
-import { normalizePhone, normalizePhoneBR } from "@/app/lib/server/phone";
+import { normalizePhoneBR } from "@/app/lib/server/phone";
 import { getWhatsAppChannelForTenant, isOfficialWhatsAppProvider } from "@/app/lib/server/whatsapp-channel";
 import { adportGoogleCredentials, applyAdportCampaignChange, applyAdportGoogleOperation, applyAdportMetaOperation, hasAdportGoogleCredentials, verifyAdportDraftHash } from "@/lib/server/growth/adport-connectors";
 import type { CampaignPlatform } from "@/lib/server/growth/campaign-action-policy";
@@ -28,6 +37,7 @@ import { CommandError } from "@/lib/server/command-center/security";
 import { trackProposalOutcome } from "@/lib/server/ai/learning-outcomes";
 import { normalizeAltumAssistantRole } from "@/lib/ai-assistant-role";
 import { normalizeCommercialOffer } from "@/lib/commercial-offer";
+import { applyApprovedCrmDraft, crmDraftTypes, crmDraftFingerprint, CrmDraftMutationConflict } from "@/lib/server/crm/draft-mutation";
 
 export const dynamic = "force-dynamic";
 
@@ -121,7 +131,7 @@ export async function POST(
     }
     const membership = await assertTenantAccess(user.uid, tenantId);
 
-    const safeDraftId = clean(draftId, 180);
+    const safeDraftId = draftId.trim();
     if (!/^[A-Za-z0-9_-]{1,180}$/.test(safeDraftId)) {
       return NextResponse.json({ error: "Rascunho invalido." }, { status: 400 });
     }
@@ -144,16 +154,37 @@ export async function POST(
         if (!current.exists || value?.status !== "pending_review" || value?.tenantId !== tenantId || value?.userId !== user.uid) {
           throw new CommandError("DRAFT_STATE_CHANGED", 409);
         }
-        transaction.set(draftRef, { status: "approved_pending_apply", reviewedAt: FieldValue.serverTimestamp(), reviewedBy: user.uid, reviewedByName: user.name, reviewDecision: "autonomous_policy", updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+        let appointmentReview: Record<string, unknown> = {};
+        if (value.type === "create_appointment") {
+          const actor = await assertTransactionalTenantAuthority(transaction, {tenantId, userId: user.uid, capability: "edit_leads", module: "crm"});
+          const currentSettings = (await transaction.get(adminDb.collection("tenant_settings").doc(tenantId))).data();
+          const scopes = Array.isArray(value.requiredScopes) ? value.requiredScopes : [];
+          if (currentSettings?.mcp?.writeMode !== "autonomous" || value.source !== "mcp" || value.autonomousEligible !== true ||
+            ["calendar:write", "crm:read"].some(scope => !user.scopes.includes(scope) || !scopes.includes(scope)) || scopes.some((scope: unknown) => typeof scope !== "string" || !user.scopes.includes(scope))) throw new CommandError("FORBIDDEN", 403);
+          const proposed = record(value.proposedChange), leadId = clean(proposed.leadId, 180);
+          if (proposed.leadId !== undefined && (!leadId || leadId !== proposed.leadId || leadId.includes("/"))) throw new CommandError("DRAFT_STATE_CHANGED", 409);
+          const lead = leadId ? await transaction.get(adminDb.collection("leads").doc(leadId)) : null;
+          if (lead && (!lead.exists || lead.data()?.tenantId !== tenantId)) throw new CommandError("FORBIDDEN", 403);
+          if (lead) {
+            assertAssignedCommercialRecordAccess(actor, user.uid, lead.data()!);
+            appointmentReview = {reviewedLeadId: leadId, reviewedLeadVersion: lead.updateTime!, reviewedLeadGeneration: lead.createTime!};
+          }
+        }
+        transaction.set(draftRef, { status: "approved_pending_apply", reviewedAt: FieldValue.serverTimestamp(), reviewedBy: user.uid, reviewedByName: user.name, reviewDecision: "autonomous_policy",
+          ...appointmentReview,
+          ...((crmDraftTypes.has(String(value.type)) || ["create_lead", "create_appointment"].includes(String(value.type))) ? { reviewedChangeFingerprint: crmDraftFingerprint(value) } : {}), updatedAt: FieldValue.serverTimestamp() }, { merge: true });
         transaction.set(adminDb.collection("audit_logs").doc(), { type: "mcp_autonomous_action_approved", actorId: user.uid, actorName: user.name, tenantId, draftId: safeDraftId, createdAt: FieldValue.serverTimestamp() });
       });
       draftSnap = await draftRef.get();
       draft = draftSnap.data() as Record<string, unknown>;
     }
-    if (draft.status !== "approved_pending_apply") {
+    const resumableMessage = ["send_or_reply_conversation", "start_whatsapp_conversation"].includes(String(draft.type)) &&
+      record(draft.messageDelivery).protocol === 1 && ["applying", "applied"].includes(String(draft.status));
+    const replayableCrm = (crmDraftTypes.has(String(draft.type)) && record(draft.crmMutation).protocol === 1 || draft.type === "create_lead" && record(draft.creationMutation).protocol === 1 || draft.type === "create_appointment" && record(draft.appointmentMutation).protocol === 1) && draft.status === "applied";
+    if (draft.status !== "approved_pending_apply" && !resumableMessage && !replayableCrm) {
       return NextResponse.json({ error: "Aprove o rascunho antes de aplicar." }, { status: 409 });
     }
-    if (draft.appliedAt) return NextResponse.json({ error: "Rascunho ja aplicado." }, { status: 409 });
+    if (draft.appliedAt && !resumableMessage && !replayableCrm) return NextResponse.json({ error: "Rascunho ja aplicado." }, { status: 409 });
 
     const draftType = clean(draft.type, 120);
     const operationalTypes = new Set([
@@ -300,100 +331,39 @@ export async function POST(
       if (draftType === "update_pipeline") {
         assertTenantCapability(membership, "manage_pipeline");
         await assertTenantModule(tenantId, "crm");
+        const validationError = validateCustomizedPipelineStages(proposed.stages);
+        if (validationError) return NextResponse.json({ error: validationError }, { status: 409 });
         const stages = normalizePipelineStages(proposed.stages as Array<Record<string, unknown>>);
         if (stages.length < 2) return NextResponse.json({ error: "O funil precisa ter pelo menos duas etapas validas." }, { status: 409 });
         await claim();
-        await adminDb.collection("pipeline").doc(tenantId).set({ tenantId, stages, updatedAt: FieldValue.serverTimestamp(), updatedBy: user.uid, updatedByName: user.name }, { merge: true });
+        await saveTenantPipelineStages({ tenantId, stages, actorId: user.uid, actorName: user.name });
         await finish({ stages });
         return NextResponse.json({ ok: true, tenantId, draftId: safeDraftId, status: "applied", stages });
       }
 
       if (draftType === "create_lead") {
-        assertTenantCapability(membership, "edit_leads");
-        await assertTenantModule(tenantId, "crm");
-        const name = clean(proposed.name, 180);
-        const email = clean(proposed.email, 180).toLowerCase();
-        const phone = normalizePhoneBR(clean(proposed.phone, 60));
-        if (!name && !email && !phone) return NextResponse.json({ error: "Informe ao menos nome, telefone ou email." }, { status: 409 });
-        const tenantLeads = await adminDb.collection("leads").where("tenantId", "==", tenantId).get();
-        const duplicate = tenantLeads.docs.find((doc) => {
-          const value = doc.data() as Record<string, unknown>;
-          return Boolean((email && clean(value.email, 180).toLowerCase() === email) || (phone && normalizePhone(String(value.telefone || "")) === normalizePhone(phone)));
-        });
-        if (duplicate) return NextResponse.json({ error: "Este contato ja existe no CRM.", leadId: duplicate.id }, { status: 409 });
-        await assertTenantLimitAvailable({ tenantId, limitId: "contacts", currentUsage: tenantLeads.size, increment: 1 });
-        let ownerUserId = clean(proposed.ownerUserId, 180);
-        let ownerName = "";
-        if (ownerUserId) {
-          if (ownerUserId !== user.uid && !hasTeamWideCommercialAccess(membership)) return NextResponse.json({ error: "Somente gestores podem atribuir para outra pessoa." }, { status: 403 });
-          const ownerSnap = await adminDb.collection("tenant_users").doc(`${tenantId}_${ownerUserId}`).get();
-          if (!ownerSnap.exists || ownerSnap.data()?.tenantId !== tenantId || ownerSnap.data()?.status !== "active") return NextResponse.json({ error: "Responsavel nao esta ativo nesta empresa." }, { status: 409 });
-          ownerName = clean(ownerSnap.data()?.name, 180) || clean(ownerSnap.data()?.email, 180);
-        } else if (!hasTeamWideCommercialAccess(membership)) {
-          ownerUserId = user.uid;
-          ownerName = user.name;
+        const result = await applyApprovedLeadCreationDraft({ tenantId, draftId: safeDraftId, expectedDraftVersion: draftSnap.updateTime!,
+          membership, actorId: user.uid, actorName: user.name, viaMcp: user.viaMcp });
+        if (!result.replayed) {
+          const lead = (await adminDb.collection("leads").doc(String(result.application.leadId)).get()).data();
+          if (lead?.tenantId === tenantId) await upsertContactProfile({ tenantId, phone: lead.telefone, email: lead.email,
+            leadId: String(result.application.leadId), channel: lead.channel, name: lead.nome, company: lead.empresa })
+            .catch(error => console.error("Contato aprovado salvo; perfil auxiliar pendente:", error));
         }
-        const leadRef = adminDb.collection("leads").doc();
-        const pipelineStage = normalizePipelineStageId(clean(proposed.pipelineStage, 80) || "captado");
-        const potentialValue = typeof proposed.potentialValue === "number" && Number.isFinite(proposed.potentialValue) ? Math.max(0, proposed.potentialValue) : 0;
-        const payload = {
-          tenantId, nome: name || "Contato sem nome", email, telefone: phone,
-          empresa: clean(proposed.company, 180), origem: clean(proposed.source, 120) || "mcp",
-          channel: clean(proposed.channel, 80) || "mcp", sourceType: "mcp", status: "novo",
-          stage: pipelineStage, pipelineStage, priority: clean(proposed.priority, 40) || "medium",
-          heat: clean(proposed.heat, 20) || "morno", potentialValue, valorPotencial: potentialValue,
-          notes: clean(proposed.notes, 4000), ownerId: ownerUserId || null, ownerUserId: ownerUserId || null,
-          assignedTo: ownerUserId || null, owner: ownerName || null, ownerName: ownerName || null,
-          assignedUserName: ownerName || null, createdAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp(),
-        };
-        await claim();
-        await Promise.all([
-          leadRef.set(payload),
-          leadRef.collection("events").add({ type: "system", title: "Contato criado", detail: `Cadastrado pelo ${user.name}.`, actorId: user.uid, actorName: user.name, createdAt: FieldValue.serverTimestamp() }),
-          upsertContactProfile({ tenantId, phone, email, leadId: leadRef.id, channel: payload.channel, name: payload.nome, company: payload.empresa }),
-        ]);
-        await runLeadAutomations({ tenantId, trigger: "lead_created", leadId: leadRef.id, actorId: user.uid, actorName: user.name }).catch(() => undefined);
-        await finish({ leadId: leadRef.id, name: payload.nome, pipelineStage, ownerUserId: ownerUserId || null });
-        return NextResponse.json({ ok: true, tenantId, draftId: safeDraftId, status: "applied", leadId: leadRef.id });
+        await processIntakeCreation(result.creationJobId, tenantId)
+          .catch(error => console.error("Contato aprovado salvo; automacao inicial pendente:", error));
+        return NextResponse.json({ ok: true, tenantId, draftId: safeDraftId, status: "applied", ...result.application, replayed: result.replayed });
       }
-
-      if (draftType === "update_lead" || draftType === "assign_lead") {
-        assertTenantCapability(membership, "edit_leads");
+      if (crmDraftTypes.has(draftType)) {
+        assertTenantCapability(membership, draftType === "create_proposal" ? "manage_commercial" : "edit_leads");
         await assertTenantModule(tenantId, "crm");
-        const leadId = clean(proposed.leadId, 180);
-        const leadRef = adminDb.collection("leads").doc(leadId);
-        const leadSnap = await leadRef.get();
-        if (!leadSnap.exists || leadSnap.data()?.tenantId !== tenantId) return NextResponse.json({ error: "Cliente ou oportunidade nao encontrado." }, { status: 404 });
-        const lead = leadSnap.data() as Record<string, unknown>;
-        assertAssignedCommercialRecordAccess(membership, user.uid, lead);
-        let patch: Record<string, unknown> = {};
-        if (draftType === "assign_lead") {
-          const ownerUserId = clean(proposed.ownerUserId, 180);
-          if (ownerUserId !== user.uid && !hasTeamWideCommercialAccess(membership)) return NextResponse.json({ error: "Somente gestores podem atribuir para outra pessoa." }, { status: 403 });
-          const ownerSnap = await adminDb.collection("tenant_users").doc(`${tenantId}_${ownerUserId}`).get();
-          if (!ownerSnap.exists || ownerSnap.data()?.tenantId !== tenantId || ownerSnap.data()?.status !== "active") return NextResponse.json({ error: "Responsavel nao esta ativo nesta empresa." }, { status: 409 });
-          patch = { ownerId: ownerUserId, assignedTo: ownerUserId, ownerUserId, owner: clean(ownerSnap.data()?.name, 180) || clean(ownerSnap.data()?.email, 180) };
-        } else {
-          const rawPatch = record(proposed.patch);
-          patch = {
-            ...(rawPatch.name !== undefined ? { nome: clean(rawPatch.name, 180) } : {}),
-            ...(rawPatch.company !== undefined ? { empresa: clean(rawPatch.company, 180) } : {}),
-            ...(rawPatch.email !== undefined ? { email: clean(rawPatch.email, 180) } : {}),
-            ...(rawPatch.phone !== undefined ? { telefone: clean(rawPatch.phone, 40) } : {}),
-            ...(rawPatch.status !== undefined ? { status: clean(rawPatch.status, 40) } : {}),
-            ...(rawPatch.pipelineStage !== undefined ? { pipelineStage: normalizePipelineStageId(rawPatch.pipelineStage), stage: normalizePipelineStageId(rawPatch.pipelineStage), stageUpdatedAt: FieldValue.serverTimestamp() } : {}),
-            ...(rawPatch.priority !== undefined ? { priority: clean(rawPatch.priority, 20) } : {}),
-            ...(rawPatch.heat !== undefined ? { heat: clean(rawPatch.heat, 20) } : {}),
-            ...(typeof rawPatch.potentialValue === "number" ? { potentialValue: rawPatch.potentialValue, valorPotencial: rawPatch.potentialValue } : {}),
-            ...(Array.isArray(rawPatch.tags) ? { tags: rawPatch.tags.map((item) => clean(item, 40)).filter(Boolean).slice(0, 30) } : {}),
-            ...(rawPatch.notes !== undefined ? { notes: clean(rawPatch.notes, 6000) } : {}),
-            ...(rawPatch.customFields && typeof rawPatch.customFields === "object" ? { customFields: { ...record(lead.customFields), ...record(rawPatch.customFields) } } : {}),
-          };
+        const result = await applyApprovedCrmDraft({ tenantId, draftId: safeDraftId, expectedDraftVersion: draftSnap.updateTime!, membership,
+          actorId: user.uid, actorName: user.name, viaMcp: user.viaMcp });
+        if (draftType === "create_proposal" && !result.replayed) {
+          await trackProposalOutcome({ tenantId, leadId: String(result.application.leadId), budgetId: String(result.application.proposalId), status: "Rascunho" })
+            .catch(error => console.error("Proposta gravada; falha no registro auxiliar de aprendizado:", error));
         }
-        await claim();
-        await leadRef.set({ ...patch, updatedAt: FieldValue.serverTimestamp(), updatedBy: user.uid, updatedByName: user.name }, { merge: true });
-        await finish({ leadId, patch });
-        return NextResponse.json({ ok: true, tenantId, draftId: safeDraftId, status: "applied", leadId, patch });
+        return NextResponse.json({ ok: true, tenantId, draftId: safeDraftId, status: "applied", ...result.application, replayed: result.replayed });
       }
 
       if (draftType === "add_lead_note" || draftType === "create_lead_task") {
@@ -421,7 +391,7 @@ export async function POST(
         await claim();
         const taskRef = adminDb.collection("lead_tasks").doc();
         await Promise.all([
-          taskRef.set({ tenantId, leadId, title, type: clean(proposed.type, 40) || "follow_up", priority: clean(proposed.priority, 20) || "medium", dueAt, status: "pending", createdAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp(), createdBy: user.uid, createdByName: user.name }),
+          taskRef.set(withCommercialTaskIndex({ tenantId, leadId, title, type: clean(proposed.type, 40) || "follow_up", priority: clean(proposed.priority, 20) || "medium", dueAt, status: "pending", createdAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp(), createdBy: user.uid, createdByName: user.name })),
           leadRef.collection("events").add({ type: "task_created", title: "Tarefa criada", detail: title, actorId: user.uid, actorName: user.name, createdAt: FieldValue.serverTimestamp() }),
         ]);
         await finish({ leadId, taskId: taskRef.id });
@@ -597,73 +567,9 @@ export async function POST(
       }
 
       if (draftType === "create_appointment") {
-        assertTenantCapability(membership, "edit_leads");
-        await assertTenantModule(tenantId, "crm");
-        const leadId = clean(proposed.leadId, 180);
-        let lead: Record<string, unknown> = {};
-        if (leadId) {
-          const leadSnap = await adminDb.collection("leads").doc(leadId).get();
-          if (!leadSnap.exists || leadSnap.data()?.tenantId !== tenantId) return NextResponse.json({ error: "Lead nao encontrado." }, { status: 404 });
-          lead = leadSnap.data() as Record<string, unknown>;
-          assertAssignedCommercialRecordAccess(membership, user.uid, lead);
-        }
-        const ownerUserId = clean(proposed.ownerUserId, 180) || clean(lead.ownerId, 180) || user.uid;
-        if (ownerUserId !== user.uid && !hasTeamWideCommercialAccess(membership)) return NextResponse.json({ error: "Somente gestores podem agendar para outra pessoa." }, { status: 403 });
-        const startAt = new Date(String(proposed.startAt || ""));
-        const endAt = proposed.endAt ? new Date(String(proposed.endAt)) : new Date(startAt.getTime() + 60 * 60 * 1000);
-        if (!Number.isFinite(startAt.getTime()) || !Number.isFinite(endAt.getTime()) || endAt <= startAt) return NextResponse.json({ error: "Horario do compromisso invalido." }, { status: 409 });
-        const ref = adminDb.collection("appointments").doc();
-        await claim();
-        await ref.set({ tenantId, leadId: leadId || null, leadName: clean(lead.nome, 180) || null, leadCompany: clean(lead.empresa, 180) || null, title: clean(proposed.title, 180), type: clean(proposed.type, 80) || "reuniao", status: "scheduled", startAt: startAt.toISOString(), endAt: endAt.toISOString(), location: clean(proposed.location, 240) || null, meetingUrl: clean(proposed.meetingUrl, 1200) || null, notes: clean(proposed.notes, 4000) || null, ownerUserId, createdBy: user.uid, createdByName: user.name, createdAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp() });
-        await finish({ appointmentId: ref.id, startAt: startAt.toISOString(), endAt: endAt.toISOString() });
-        return NextResponse.json({ ok: true, tenantId, draftId: safeDraftId, status: "applied", appointmentId: ref.id });
-      }
-
-      if (draftType === "create_proposal") {
-        assertTenantCapability(membership, "manage_commercial");
-        await assertTenantModule(tenantId, "crm");
-        const leadId = clean(proposed.leadId, 180);
-        const leadRef = adminDb.collection("leads").doc(leadId);
-        const leadSnap = await leadRef.get();
-        if (!leadSnap.exists || leadSnap.data()?.tenantId !== tenantId) return NextResponse.json({ error: "Cliente ou oportunidade nao encontrado." }, { status: 404 });
-        const lead = leadSnap.data() as Record<string, unknown>;
-        assertAssignedCommercialRecordAccess(membership, user.uid, lead);
-        const title = clean(proposed.title, 180);
-        if (!title) return NextResponse.json({ error: "Titulo da proposta invalido." }, { status: 409 });
-        const totalValue = proposed.totalValue === null || proposed.totalValue === undefined ? null : Number(proposed.totalValue);
-        if (totalValue !== null && (!Number.isFinite(totalValue) || totalValue < 0 || totalValue > 1_000_000_000)) return NextResponse.json({ error: "Valor da proposta invalido." }, { status: 409 });
-        const validUntil = proposed.validUntil === null || proposed.validUntil === undefined ? null : clean(proposed.validUntil, 10);
-        const proposalRef = adminDb.collection("orcamentos").doc();
-        const settings = await getTenantSettings(tenantId);
-        await claim();
-        await Promise.all([
-          proposalRef.set({
-            tenantId,
-            clientId: tenantId,
-            clientName: clean(settings?.name, 180) || "Cliente",
-            leadId,
-            leadName: clean(lead.nome, 180) || "Lead",
-            leadCompany: clean(lead.empresa, 180) || null,
-            titulo: title,
-            tipo: clean(proposed.type, 80) || "Proposta comercial",
-            status: "Rascunho",
-            valorTotal: totalValue,
-            validade: validUntil,
-            resumo: clean(proposed.summary, 4000) || null,
-            ownerId: clean(lead.ownerId || lead.assignedTo, 180) || user.uid,
-            owner: clean(lead.owner || lead.ownerName, 180) || user.name,
-            createdBy: user.uid,
-            createdByName: user.name,
-            source: "mcp",
-            createdAt: FieldValue.serverTimestamp(),
-            updatedAt: FieldValue.serverTimestamp(),
-          }),
-          leadRef.collection("events").add({ type: "budget_created", title: "Proposta criada", detail: `${title} criada pelo MCP apos aprovacao.`, budgetId: proposalRef.id, actorId: user.uid, actorName: user.name, createdAt: FieldValue.serverTimestamp() }),
-        ]);
-        await trackProposalOutcome({ tenantId, leadId, budgetId: proposalRef.id, status: "Rascunho" });
-        const application = { proposalId: proposalRef.id, leadId, proposalStatus: "Rascunho", totalValue, validUntil };
-        await finish(application);
-        return NextResponse.json({ ok: true, tenantId, draftId: safeDraftId, status: "applied", ...application });
+        const applied = await applyApprovedAppointmentDraft({tenantId, draftId: safeDraftId, expectedDraft: draftSnap,
+          actorId: user.uid, actorName: user.name, viaMcp: user.viaMcp, scopes: user.scopes});
+        return NextResponse.json({ok: true, tenantId, draftId: safeDraftId, status: "applied", ...applied.application, replayed: applied.replayed});
       }
 
       if (draftType === "update_channel") {
@@ -685,10 +591,8 @@ export async function POST(
         await assertTenantModule(tenantId, "inbox");
         const conversationId = clean(proposed.conversationId, 180);
         await assertChatCommercialAccess({ membership, userId: user.uid, tenantId, chatId: conversationId });
-        await claim();
-        const result = await sendTenantChatText({ tenantId, chatId: conversationId, text: clean(proposed.text, 4000), replyToId: clean(proposed.replyToId, 180) || null, actor: { id: user.uid, name: user.name }, pauseAi: true, pauseMinutes: 30 });
-        const application = { conversationId, channel: result.channel, messageId: result.metaMessageId || null };
-        await finish(application);
+        const application = await deliverApprovedMcpMessage({ tenantId, draftId: safeDraftId, chatId: conversationId,
+          approvedFingerprint: mcpMessageFingerprint(draft), actor: { id: user.uid, name: user.name } });
         return NextResponse.json({ ok: true, tenantId, draftId: safeDraftId, status: "applied", ...application });
       }
 
@@ -702,35 +606,33 @@ export async function POST(
         assertAssignedCommercialRecordAccess(membership, user.uid, lead);
         const phone = normalizePhoneBR(clean(lead.telefone, 60));
         if (!phone) return NextResponse.json({ error: "O lead nao possui telefone valido." }, { status: 409 });
-        const channel = await getWhatsAppChannelForTenant(tenantId, { allowAgencyFallback: false, channelId: clean(proposed.channelId, 180) || null });
+        const boundChatId = clean(record(draft.messageDelivery).chatId, 180);
+        const boundChat = boundChatId ? await assertChatCommercialAccess({ membership, userId: user.uid, tenantId, chatId: boundChatId }) : null;
+        const channel = await getWhatsAppChannelForTenant(tenantId, { allowAgencyFallback: false, channelId: clean(proposed.channelId, 180) || clean(record(boundChat).channelId, 180) || null });
         if (!channel) return NextResponse.json({ error: "Canal WhatsApp ativo nao configurado para esta empresa." }, { status: 409 });
         if (channel.channelScope === "personal" && channel.ownerUserId !== user.uid && !hasTeamWideCommercialAccess(membership)) return NextResponse.json({ error: "Este WhatsApp pessoal pertence a outro vendedor." }, { status: 403 });
         const chatsSnap = await adminDb.collection("chats").where("tenantId", "==", tenantId).where("contactPhoneNormalized", "==", phone).limit(20).get();
         const existing = chatsSnap.docs.find((doc) => clean(doc.data().channelId, 180) === channel.id);
         const templateName = clean(proposed.templateName, 180);
-        const text = clean(proposed.text, 4000);
         if (!existing && isOfficialWhatsAppProvider(channel.provider) && !templateName) {
           return NextResponse.json({ error: "A API oficial exige templateName aprovado para iniciar uma conversa nova." }, { status: 409 });
         }
         if (existing) await assertChatCommercialAccess({ membership, userId: user.uid, tenantId, chatId: existing.id });
-        await claim();
-        const chatRef = existing?.ref || adminDb.collection("chats").doc();
-        if (!existing) {
-          await chatRef.set({ tenantId, leadId, contactName: clean(lead.nome, 180) || phone, contactPhone: phone, contactPhoneNormalized: phone, status: "open", ownerId: clean(lead.ownerId || lead.assignedTo, 180) || user.uid, ownerName: clean(lead.owner || lead.ownerName, 180) || user.name, channel: "whatsapp", channelId: channel.id, channelPhoneNumberId: channel.phoneNumberId, createdAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp(), lastMessageTime: FieldValue.serverTimestamp(), lastMessage: "" });
-        } else if (clean(existing.data().leadId, 180) !== leadId) {
-          await chatRef.set({ leadId, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
-        }
-        let result;
-        try {
-          result = templateName
-            ? await sendTenantChatTemplate({ tenantId, chatId: chatRef.id, templateName, languageCode: clean(proposed.templateLanguage, 20) || "pt_BR", bodyParams: Array.isArray(proposed.templateParams) ? proposed.templateParams.map((item) => clean(item, 500)).filter(Boolean).slice(0, 20) : [], displayText: clean(proposed.displayText, 4000) || text || null, actor: { id: user.uid, name: user.name }, pauseAi: true, pauseMinutes: 30 })
-            : await sendTenantChatText({ tenantId, chatId: chatRef.id, text, actor: { id: user.uid, name: user.name }, pauseAi: true, pauseMinutes: 30 });
-        } catch {
-          // Provider details may contain account identifiers. Expose only a safe code.
-          throw new CommandError("WHATSAPP_PROVIDER_ERROR", 502);
-        }
-        const application = { leadId, conversationId: chatRef.id, channelId: channel.id, messageId: result.metaMessageId || null, templateName: templateName || null };
-        await finish(application);
+        const resolved = boundChatId ? { chatRef: adminDb.collection("chats").doc(boundChatId) }
+          : await resolveCanonicalWhatsAppChat({ tenantId, channelId: channel.id, phone, requireExactChannel: true,
+            createData: { tenantId, leadId, contactName: clean(lead.nome, 180) || phone, contactPhone: phone, contactPhoneNormalized: phone, status: "open",
+              ownerId: clean(lead.ownerId || lead.assignedTo, 180) || user.uid, ownerName: clean(lead.owner || lead.ownerName, 180) || user.name,
+              channel: "whatsapp", channelId: channel.id, channelPhoneNumberId: channel.phoneNumberId,
+              createdAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp(), lastMessageTime: FieldValue.serverTimestamp(), lastMessage: "" } });
+        await assertChatCommercialAccess({ membership, userId: user.uid, tenantId, chatId: resolved.chatRef.id });
+        await adminDb.runTransaction(async tx => {
+          const chat = await tx.get(resolved.chatRef);
+          if (chat.data()?.tenantId !== tenantId || chat.data()?.channelId !== channel.id || chat.data()?.isGroup === true ||
+            (chat.data()?.leadId && chat.data()?.leadId !== leadId)) throw new CommandError("CONVERSATION_SCOPE_CHANGED", 409);
+          if (!chat.data()?.leadId) tx.update(resolved.chatRef, { leadId, updatedAt: FieldValue.serverTimestamp() });
+        });
+        const application = await deliverApprovedMcpMessage({ tenantId, draftId: safeDraftId, chatId: resolved.chatRef.id,
+          approvedFingerprint: mcpMessageFingerprint(draft), actor: { id: user.uid, name: user.name } });
         return NextResponse.json({ ok: true, tenantId, draftId: safeDraftId, status: "applied", ...application });
       }
       throw new Error("UNSUPPORTED_OPERATIONAL_DRAFT");
@@ -1085,6 +987,11 @@ export async function POST(
       headers: { "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" },
     });
   } catch (error) {
+    if (error instanceof AppointmentChangeError) return NextResponse.json({error: error.message, code: error.code}, {status: error.status});
+    if (error instanceof CrmDraftMutationConflict) return NextResponse.json({ error: error.message, code: "CRM_DRAFT_CONFLICT" }, { status: 409 });
+    if (error instanceof McpMessageDeliveryPendingError) return NextResponse.json({ ok: false, pending: true, status: "applying", jobId: error.jobId, error: error.message }, { status: 409 });
+    if (error instanceof McpMessageDeliveryBlockedError) return NextResponse.json({ ok: false, pending: false, code: "delivery_blocked", jobId: error.jobId, error: error.message }, { status: 409 });
+    if (error instanceof ChatOutboundIdempotencyError) return NextResponse.json({ error: error.message, code: error.code }, { status: 409 });
     if (error instanceof RouteAuthError) return NextResponse.json({ error: error.message, code: error.code }, { status: error.status });
     if (error instanceof TenantAccessError) return NextResponse.json({ error: error.message, code: error.code }, { status: 403 });
     if (error instanceof CommandError) return NextResponse.json({ error: error.code, code: error.code }, { status: error.status });

@@ -26,14 +26,14 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   const canonical = `${SITE_URL}/segmentos/${item.slug}`;
 
   return {
-    title: `${item.name}: IA, automacao e WhatsApp para leads B2B | ALTUM`,
+    title: `${item.name}: IA e WhatsApp para vendas`,
     description: `Estrategia para ${item.name.toLowerCase()} com foco em ${item.offerFocus}, qualificacao de demanda e operacao comercial previsivel.`,
     alternates: {
       canonical,
     },
     openGraph: {
       type: "website",
-      title: `${item.name}: IA, automacao e WhatsApp para leads B2B | ALTUM`,
+      title: `${item.name}: IA e WhatsApp para vendas | ALTUM`,
       description: `Modelo para ${item.name.toLowerCase()} com landing pages, IA na triagem e WhatsApp para gerar demanda qualificada.`,
       url: canonical,
     },

@@ -1,20 +1,24 @@
 import { NextResponse } from "next/server";
+import { commercialRecordIdentity, commercialPotentialValue, parseCommercialPotentialValue } from "@/lib/crm-commercial-record";
 import { FieldValue } from "firebase-admin/firestore";
 import { adminDb } from "@/app/lib/server/firebase-admin";
 import { requireRequestUser, RouteAuthError } from "@/app/lib/server/route-auth";
 import { assertTenantAccess, assertTenantCapability, assertTenantRole, TenantAccessError } from "@/lib/server/tenant";
 import { normalizePipelineStageId } from "@/lib/pipeline";
-import { runLeadAutomations } from "@/lib/server/automations";
+import { processManualStageTransition } from "@/lib/server/crm/manual-stage-transition";
+import { InvalidPipelineStageError, TenantPipelineConfigurationError } from "@/lib/server/crm/pipeline";
 import { trackLeadStageOutcome } from "@/lib/server/ai/learning-outcomes";
 import { analyzeLeadCommercialState, syncLeadCommercialState } from "@/lib/server/crm/operations";
 import { dispatchLeadConversionEvents } from "@/lib/server/pixels/conversions";
 import { mapPipelineStageToConversionStep, recordLeadConversionStep } from "@/lib/server/conversion-trail";
-import { deleteTenantLead, recordDeletionAudit } from "@/lib/server/tenant-data-deletion";
+import { deleteTenantLead, recordDeletionAudit, TenantDeletionConflict } from "@/lib/server/tenant-data-deletion";
 import { upsertLeadCommercialDossier } from "@/lib/server/ai/lead-dossier";
 import { normalizePhoneBR } from "@/app/lib/server/phone";
 import { upsertContactProfile } from "@/lib/server/contact-profile";
 import { assertTenantModule } from "@/lib/server/tenant-entitlements";
 import { assertAssignedCommercialRecordAccess } from "@/lib/server/commercial-access";
+import { isCrmFieldManuallyOwned, ownedCrmFields } from "@/lib/server/crm/field-ownership";
+import { commitManualLeadPatch, ManualLeadUpdateConflict } from "@/lib/server/crm/manual-update";
 
 type LeadDoc = Record<string, unknown> & {
   tenantId?: string;
@@ -134,7 +138,7 @@ async function getLeadRef(tenantId: string, leadId: string) {
     throw new RouteAuthError(403, "forbidden_tenant", "Lead fora do tenant informado.");
   }
 
-  return { leadRef, lead };
+  return { leadRef, lead, version: leadSnap.updateTime! };
 }
 
 async function listNotes(tenantId: string, leadId: string) {
@@ -364,17 +368,13 @@ export async function GET(
       lead: {
         id: leadId,
         ...lead,
+        ...commercialRecordIdentity(lead),
         photoUrl: cleanString(lead.photoUrl, 1000),
         profilePhotoUrl: cleanString(lead.profilePhotoUrl, 1000),
         contactPhotoUrl:
           cleanString(lead.contactPhotoUrl, 1000) ||
           cleanString(relatedChats[0]?.contactPhotoUrl, 1000),
-        potentialValue:
-          typeof lead.potentialValue === "number"
-            ? lead.potentialValue
-            : typeof lead.valorPotencial === "number"
-              ? lead.valorPotencial
-              : null,
+        potentialValue: commercialPotentialValue(lead),
         tags: parseTags(lead.tags),
         customFields:
           lead.customFields && typeof lead.customFields === "object"
@@ -419,7 +419,7 @@ export async function PATCH(
     await assertTenantModule(tenantId, "crm");
     assertTenantCapability(membership, "edit_leads");
 
-    const { leadRef, lead } = await getLeadRef(tenantId, leadId);
+    const { lead, version } = await getLeadRef(tenantId, leadId);
     assertAssignedCommercialRecordAccess(membership, user.uid, lead);
     const body = (await req.json()) as Body;
     const previousStage = normalizePipelineStageId(lead.pipelineStage || lead.stage || "captado");
@@ -471,12 +471,12 @@ export async function PATCH(
       changes.push(`status: ${status || "novo"}`);
     }
 
-    const pipelineStage = normalizePipelineStageId(body.pipelineStage || "");
-    if (body.pipelineStage !== undefined && pipelineStage !== previousStage) {
+    const pipelineStage = normalizePipelineStageId(body.pipelineStage, "");
+    if (body.pipelineStage !== undefined) {
       patch.pipelineStage = pipelineStage;
       patch.stage = pipelineStage;
-      patch.stageUpdatedAt = FieldValue.serverTimestamp();
-      changes.push(`stage: ${pipelineStage || "captado"}`);
+      if (pipelineStage !== previousStage) patch.stageUpdatedAt = FieldValue.serverTimestamp();
+      changes.push(`stage: ${pipelineStage || "nao informada"}`);
     }
 
     const score = cleanNumber(body.score);
@@ -498,16 +498,13 @@ export async function PATCH(
       changes.push(`prioridade: ${priority || "low"}`);
     }
 
-    const potentialValue = cleanNumber(body.potentialValue);
-    const currentPotentialValue =
-      typeof lead.potentialValue === "number"
-        ? lead.potentialValue
-        : typeof lead.valorPotencial === "number"
-          ? lead.valorPotencial
-          : null;
+    const parsedPotential = parseCommercialPotentialValue(body.potentialValue);
+    if (!parsedPotential.ok) return NextResponse.json({ error: "Informe um valor previsto válido ou deixe vazio." }, { status: 400 });
+    const potentialValue = parsedPotential.value;
+    const currentPotentialValue = commercialPotentialValue(lead);
     if (body.potentialValue !== undefined && potentialValue !== currentPotentialValue) {
       patch.potentialValue = potentialValue;
-      changes.push(`potencial: ${potentialValue ?? 0}`);
+      changes.push(`potencial: ${potentialValue === null ? "não informado" : potentialValue}`);
     }
 
     const notes = cleanString(body.notes, 4000);
@@ -522,6 +519,8 @@ export async function PATCH(
       changes.push(`tags: ${tags.length ? tags.join(", ") : "sem tags"}`);
     }
 
+    const manualFields = ownedCrmFields.filter(field => body[field] !== undefined);
+    if (manualFields.some(field => !isCrmFieldManuallyOwned(lead, field))) changes.push("campos definidos sob controle manual");
     if (changes.length === 0) {
       return NextResponse.json({ ok: true, tenantId, leadId, unchanged: true });
     }
@@ -544,17 +543,9 @@ export async function PATCH(
       }
     }
 
-    await Promise.all([
-      leadRef.set(patch, { merge: true }),
-      leadRef.collection("events").add({
-        type: "lead_profile_update",
-        title: "Lead atualizado",
-        detail: changes.join(" | "),
-        actorId: user.uid,
-        actorName: user.name,
-        createdAt: FieldValue.serverTimestamp(),
-      }),
-      upsertContactProfile({
+    const mutation = await commitManualLeadPatch({ tenantId, leadId, expectedVersion: version, patch, fields: manualFields,
+      actorId: user.uid, actorName: user.name, detail: changes.join(" | ") });
+    await upsertContactProfile({
         tenantId,
         phone: body.telefone !== undefined ? telefone : cleanString(lead.telefone, 40),
         email: body.email !== undefined ? email : cleanString(lead.email, 180),
@@ -562,19 +553,10 @@ export async function PATCH(
         channel: body.channel !== undefined ? channel : cleanString(lead.channel, 80),
         name: body.nome !== undefined ? nome : cleanString(lead.nome, 180),
         company: body.empresa !== undefined ? empresa : cleanString(lead.empresa, 180),
-      }),
-    ]);
+      });
 
     if (body.pipelineStage !== undefined && pipelineStage !== previousStage) {
-      await runLeadAutomations({
-        tenantId,
-        trigger: "lead_stage_changed",
-        leadId,
-        actorId: user.uid,
-        actorName: user.name,
-        previousStage,
-        nextStage: pipelineStage,
-      });
+      if (mutation.stageTransitionId) await processManualStageTransition(mutation.stageTransitionId, tenantId);
 
       await trackLeadStageOutcome({
         tenantId,
@@ -659,6 +641,9 @@ export async function PATCH(
     if (error instanceof TenantAccessError) {
       return NextResponse.json({ error: error.message, code: error.code }, { status: 403 });
     }
+    if (error instanceof InvalidPipelineStageError) return NextResponse.json({ error: error.message, code: "invalid_pipeline_stage" }, { status: 400 });
+    if (error instanceof TenantPipelineConfigurationError) return NextResponse.json({ error: error.message, code: "pipeline_configuration_invalid" }, { status: 409 });
+    if (error instanceof ManualLeadUpdateConflict) return NextResponse.json({ error: error.message, code: "lead_update_conflict" }, { status: 409 });
     console.error("Erro ao atualizar lead do tenant:", error);
     return NextResponse.json({ error: "Falha ao atualizar lead." }, { status: 500 });
   }
@@ -676,7 +661,7 @@ export async function DELETE(
     assertTenantCapability(membership, "edit_leads");
     const { lead } = await getLeadRef(tenantId, leadId);
     assertAssignedCommercialRecordAccess(membership, user.uid, lead);
-    const result = await deleteTenantLead({ tenantId, leadId });
+    const result = await deleteTenantLead({ tenantId, leadId, authority: { userId: user.uid, capability: "edit_leads" }, authorize: current => assertAssignedCommercialRecordAccess(membership, user.uid, current) });
     await recordDeletionAudit({
       tenantId,
       actorId: user.uid,
@@ -688,6 +673,7 @@ export async function DELETE(
   } catch (error) {
     if (error instanceof RouteAuthError) return NextResponse.json({ error: error.message, code: error.code }, { status: error.status });
     if (error instanceof TenantAccessError) return NextResponse.json({ error: error.message, code: error.code }, { status: 403 });
+    if (error instanceof TenantDeletionConflict) return NextResponse.json({ error: error.message, code: "deletion_conflict" }, { status: 409 });
     console.error("Erro ao apagar lead:", error);
     return NextResponse.json({ error: "Falha ao apagar lead." }, { status: 500 });
   }

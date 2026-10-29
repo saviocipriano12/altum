@@ -22,6 +22,11 @@ export function canIncreaseAiConversationRollout(input: {
 export function isAiEvaluationFreshForSettings(input: {
   evaluatedAtMs: number;
   settingsUpdatedAtMs: number;
+  scenarioVersion?: string | null;
+  expectedScenarioVersion?: string | null;
 }) {
-  return input.evaluatedAtMs > 0 && (input.settingsUpdatedAtMs === 0 || input.evaluatedAtMs >= input.settingsUpdatedAtMs);
+  const versionMatches = input.expectedScenarioVersion
+    ? input.scenarioVersion === input.expectedScenarioVersion
+    : true;
+  return versionMatches && input.evaluatedAtMs > 0 && (input.settingsUpdatedAtMs === 0 || input.evaluatedAtMs >= input.settingsUpdatedAtMs);
 }

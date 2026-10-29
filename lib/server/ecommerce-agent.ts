@@ -1,13 +1,16 @@
 import crypto from "node:crypto";
 import { FieldValue } from "firebase-admin/firestore";
 import { adminDb } from "@/app/lib/server/firebase-admin";
-import { normalizePhone } from "@/app/lib/server/phone";
-import { sendTenantChatTemplate } from "@/lib/server/chat-dispatch";
+import { deliverEcommerceActionTemplate, EcommerceDeliveryPendingError } from "@/lib/server/ecommerce-action-delivery";
 import { decideEcommerceAgentExecution } from "@/lib/ecommerce-agent-policy";
+import { freezeShopifyActionPlan, shopifyActionFingerprint, EcommerceActionAuthorizationError, EcommerceActionPreparingError } from "@/lib/server/commerce/shopify-action-authority";
+import { readAuthorizedShopifyOccurrence } from "@/lib/server/commerce/shopify-occurrence";
+import { commerceSnapshotDigest } from "@/lib/server/commerce/event-identity";
 import {
   automationTemplateForAction,
   interpolateEcommerceTemplateParams,
   normalizeEcommerceActionType,
+  normalizeEcommerceAutomationSettings,
   type EcommerceAutomationSettings,
 } from "@/lib/server/ecommerce";
 
@@ -24,57 +27,42 @@ function toMillis(value: unknown) {
   return Number.isNaN(parsed.getTime()) ? 0 : parsed.getTime();
 }
 
-async function ensureWhatsAppChat(input: {
-  tenantId: string;
-  leadId: string;
-  phone: string;
-  name: string;
-  actorName: string;
-}) {
-  const phone = normalizePhone(input.phone);
-  if (!phone) throw new Error("Acao sem telefone valido para WhatsApp.");
-  const existing = await adminDb.collection("chats")
-    .where("tenantId", "==", input.tenantId)
-    .where("contactPhone", "==", phone)
-    .limit(1)
-    .get();
-  if (!existing.empty) {
-    const doc = existing.docs[0];
-    await doc.ref.set({
-      leadId: input.leadId || clean(doc.data().leadId, 180) || null,
-      contactName: input.name || clean(doc.data().contactName, 180) || phone,
-      channel: "whatsapp",
-      updatedAt: FieldValue.serverTimestamp(),
-    }, { merge: true });
-    return doc.id;
-  }
-  const created = await adminDb.collection("chats").add({
-    tenantId: input.tenantId,
-    leadId: input.leadId || null,
-    channel: "whatsapp",
-    contactName: input.name || phone,
-    contactPhone: phone,
-    contactPhoneNormalized: phone,
-    status: "open",
-    ownerName: input.actorName,
-    createdAt: FieldValue.serverTimestamp(),
-    updatedAt: FieldValue.serverTimestamp(),
-    lastMessageTime: FieldValue.serverTimestamp(),
-    lastMessage: "",
-  });
-  return created.id;
-}
-
-async function claimAction(ref: FirebaseFirestore.DocumentReference, runId: string) {
+async function claimAction(ref: FirebaseFirestore.DocumentReference, runId: string, tenantId: string, expected: Record<string, unknown>, configurationDigest: string) {
   return adminDb.runTransaction(async (tx) => {
     const snap = await tx.get(ref);
-    if (!snap.exists || clean(snap.data()?.status, 40) !== "pending") return false;
+    if (!snap.exists || clean(snap.data()?.status, 40) !== "pending") return "busy";
+    if (snap.data()?.tenantId !== tenantId) return "blocked";
+    if (expected.sourceProtocolVersion === 1) {
+      if (snap.data()?.sourceActionFingerprint !== expected.sourceActionFingerprint || shopifyActionFingerprint(snap.data()!) !== expected.sourceActionFingerprint) return "blocked";
+      try {
+        const source = await readAuthorizedShopifyOccurrence(tx, String(expected.sourceEventId), tenantId);
+        const settings = (await tx.get(adminDb.collection("tenant_settings").doc(tenantId))).data();
+        if (commerceSnapshotDigest(normalizeEcommerceAutomationSettings(settings?.ecommerceAutomation)) !== configurationDigest) return "blocked";
+        const plan = source.occurrence.actionPlan;
+        if (!plan && source.occurrence.status !== "done") return "preparing";
+        if (plan && (plan.protocolVersion !== 1 || plan.configurationDigest !== configurationDigest || !Array.isArray(plan.actions)
+          || !plan.actions.some((entry: { id: string; fingerprint: string }) => entry.id === ref.id && entry.fingerprint === expected.sourceActionFingerprint))) return "blocked";
+      } catch (error) {
+        if (error instanceof Error && /^SHOPIFY_OCCURRENCE_[A-Z_]+$/.test(error.message)) return "blocked";
+        throw error;
+      }
+    }
     tx.set(ref, {
       status: "processing",
       processingRunId: runId,
+      deliveryProtocolVersion: 1,
       processingStartedAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
     }, { merge: true });
+    return "claimed";
+  });
+}
+
+async function settleActionClaim(ref: FirebaseFirestore.DocumentReference, runId: string, patch: Record<string, unknown>) {
+  return adminDb.runTransaction(async tx => {
+    const current = await tx.get(ref);
+    if (!current.exists || current.data()?.status !== "processing" || current.data()?.processingRunId !== runId) return false;
+    tx.set(ref, patch, { merge: true });
     return true;
   });
 }
@@ -119,12 +107,13 @@ async function recoverExpiredActionClaims(tenantId: string, now: number) {
       const current = await tx.get(doc.ref);
       if (!current.exists || clean(current.data()?.status, 40) !== "processing") return false;
       if (toMillis(current.data()?.processingStartedAt) > staleBefore) return false;
+      const safeRecovery = current.data()?.deliveryProtocolVersion === 1;
       tx.set(doc.ref, {
-        status: "pending",
+        status: safeRecovery ? "pending" : "failed",
         processingRunId: null,
         processingStartedAt: null,
         nextAttemptAt: new Date(now),
-        lastSendError: "processing_lease_expired",
+        lastSendError: safeRecovery ? "processing_lease_expired" : "legacy_delivery_outcome_requires_review",
         lastSendErrorAt: FieldValue.serverTimestamp(),
         updatedAt: FieldValue.serverTimestamp(),
       }, { merge: true });
@@ -137,7 +126,7 @@ async function recoverExpiredActionClaims(tenantId: string, now: number) {
 
 export type EcommerceAgentProcessResult = {
   actionId: string;
-  status: "sent" | "ready" | "observed" | "skipped" | "busy" | "failed";
+  status: "sent" | "ready" | "observed" | "skipped" | "busy" | "failed" | "pending";
   reason?: string;
   chatId?: string;
 };
@@ -149,20 +138,24 @@ export async function processTenantEcommerceActions(input: {
   dryRun?: boolean;
   actor: { id: string; name: string };
   source: "manual" | "webhook" | "scheduled";
+  shopifySourceEventId?: string;
 }) {
   const startedAt = Date.now();
   const runId = crypto.randomUUID();
   const limit = Math.max(1, Math.min(25, Number(input.limit || input.automation.agent.maxActionsPerRun)));
-  const schedulingBackfilled = await backfillPendingActionSchedules(input.tenantId, new Date(startedAt));
-  const recoveredClaims = await recoverExpiredActionClaims(input.tenantId, startedAt);
-  const actionsSnap = await adminDb.collection("ecommerce_commercial_actions")
+  if (input.shopifySourceEventId && input.source !== "webhook") throw new EcommerceActionAuthorizationError("SOURCE_CONTEXT_INVALID");
+  const plan = input.shopifySourceEventId ? await freezeShopifyActionPlan(input.tenantId, input.shopifySourceEventId, input.automation, true) : null;
+  const schedulingBackfilled = plan ? 0 : await backfillPendingActionSchedules(input.tenantId, new Date(startedAt));
+  const recoveredClaims = plan ? 0 : await recoverExpiredActionClaims(input.tenantId, startedAt);
+  const candidates = plan ? (plan.actions.length ? await adminDb.getAll(...plan.actions.map(action => adminDb.collection("ecommerce_commercial_actions").doc(action.id))) : [])
+    : (await adminDb.collection("ecommerce_commercial_actions")
     .where("tenantId", "==", input.tenantId)
     .where("status", "==", "pending")
     .orderBy("nextAttemptAt", "asc")
     .limit(Math.min(100, limit * 4))
-    .get();
-  const actionDocs = actionsSnap.docs
-    .filter((doc) => toMillis(doc.data().nextAttemptAt) <= Date.now())
+    .get()).docs;
+  const actionDocs = candidates
+    .filter((doc) => doc.exists && doc.data()?.status === "pending" && toMillis(doc.data()?.nextAttemptAt) <= Date.now())
     .slice(0, limit);
   const results: EcommerceAgentProcessResult[] = [];
 
@@ -180,6 +173,8 @@ export async function processTenantEcommerceActions(input: {
       hasTemplate: Boolean(template?.templateName),
       hasPhone: Boolean(clean(action.customerPhone, 80)),
     });
+    const claim = actionType && !input.dryRun && decision.shouldSend
+      ? await claimAction(doc.ref, runId, input.tenantId, action, commerceSnapshotDigest(input.automation)) : null;
     let result: EcommerceAgentProcessResult;
 
     if (!actionType) {
@@ -192,35 +187,28 @@ export async function processTenantEcommerceActions(input: {
         status: decision.reason === "shadow_only" ? "observed" : "skipped",
         reason: decision.reason,
       };
-    } else if (!(await claimAction(doc.ref, runId))) {
-      result = { actionId: doc.id, status: "busy", reason: "already_claimed" };
+    } else if (claim !== "claimed") {
+      result = { actionId: doc.id, status: claim === "busy" ? "busy" : "skipped", reason: claim === "busy" ? "already_claimed" : claim === "preparing" ? "source_preparing" : "authorization_changed" };
     } else {
       try {
         const params = interpolateEcommerceTemplateParams(template?.params || [], action);
-        const chatId = await ensureWhatsAppChat({
+        const sent = await deliverEcommerceActionTemplate({
           tenantId: input.tenantId,
-          leadId: clean(action.leadId, 180),
-          phone: clean(action.customerPhone, 80),
-          name: clean(action.customerName, 180),
-          actorName: input.actor.name,
-        });
-        const sent = await sendTenantChatTemplate({
-          tenantId: input.tenantId,
-          chatId,
+          actionId: doc.id,
           templateName: template?.templateName || "",
           languageCode: template?.languageCode || "pt_BR",
           bodyParams: params,
           actor: input.actor,
-          pauseAi: true,
-          pauseMinutes: 30,
+          automatic: true,
         });
-        await doc.ref.set({
+        const chatId = sent.chatId;
+        const finalized = await settleActionClaim(doc.ref, runId, {
           status: "done",
           agentVersion: decision.assignedVersion,
           agentRunId: runId,
           whatsappSentAt: FieldValue.serverTimestamp(),
-          whatsappSentBy: input.actor.id,
-          whatsappSentByName: input.actor.name,
+          whatsappSentBy: sent.actor.id,
+          whatsappSentByName: sent.actor.name,
           whatsappChatId: chatId,
           whatsappTemplateName: template?.templateName,
           whatsappTemplateLanguage: template?.languageCode,
@@ -230,23 +218,26 @@ export async function processTenantEcommerceActions(input: {
           resolvedBy: input.actor.id,
           resolvedByName: input.actor.name,
           updatedAt: FieldValue.serverTimestamp(),
-        }, { merge: true });
-        result = { actionId: doc.id, status: "sent", chatId };
+        });
+        result = { actionId: doc.id, status: finalized ? "sent" : "busy", chatId };
       } catch (error) {
         const message = error instanceof Error ? error.message : "send_failed";
-        const attempts = Math.max(0, Number(action.sendAttempts || 0)) + 1;
-        const deadLettered = attempts >= 5;
+        const policyBlocked = error instanceof EcommerceActionAuthorizationError;
+        const pendingDelivery = error instanceof EcommerceDeliveryPendingError || error instanceof EcommerceActionPreparingError;
+        const attempts = Math.max(0, Number(action.sendAttempts || 0)) + (pendingDelivery || policyBlocked ? 0 : 1);
+        const deadLettered = policyBlocked || attempts >= 5;
         const retryDelayMinutes = Math.min(360, 5 * (2 ** Math.max(0, attempts - 1)));
-        await doc.ref.set({
+        const finalized = await settleActionClaim(doc.ref, runId, {
           status: deadLettered ? "failed" : "pending",
           sendAttempts: attempts,
           lastSendError: message,
           lastSendErrorAt: FieldValue.serverTimestamp(),
           nextAttemptAt: deadLettered ? null : new Date(Date.now() + retryDelayMinutes * 60_000),
           processingRunId: null,
+          ...(policyBlocked ? { policyBlocked: true } : {}),
           updatedAt: FieldValue.serverTimestamp(),
-        }, { merge: true });
-        if (deadLettered) {
+        });
+        if (deadLettered && finalized) {
           await adminDb.collection("ecommerce_agent_dead_letters").doc(doc.id).set({
             tenantId: input.tenantId,
             actionId: doc.id,
@@ -261,7 +252,7 @@ export async function processTenantEcommerceActions(input: {
             updatedAt: FieldValue.serverTimestamp(),
           }, { merge: true });
         }
-        result = { actionId: doc.id, status: "failed", reason: message };
+        result = { actionId: doc.id, status: !finalized ? "busy" : policyBlocked ? "skipped" : pendingDelivery ? "pending" : "failed", reason: message };
       }
     }
 
@@ -296,6 +287,7 @@ export async function processTenantEcommerceActions(input: {
     processed: results.length,
     sent: results.filter((item) => item.status === "sent").length,
     failed: results.filter((item) => item.status === "failed").length,
+    pendingDelivery: results.filter((item) => item.status === "pending").length,
     observed: results.filter((item) => item.status === "observed").length,
     skipped: results.filter((item) => item.status === "skipped" || item.status === "busy").length,
     recoveredClaims,

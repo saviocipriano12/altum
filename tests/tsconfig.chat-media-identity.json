@@ -1,0 +1,6 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": { "incremental": false },
+  "include": ["./chat-media-identity.emulator.mts", "./chat-media-playback.emulator.mts", "../lib/server/firebase-storage.ts"],
+  "exclude": ["../node_modules", "../.next", "../.qa-artifacts"]
+}

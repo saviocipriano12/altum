@@ -1,4 +1,6 @@
 import { adminDb } from "@/app/lib/server/firebase-admin";
+import { purchaseConversationWindow } from "./purchase-conversation-window";
+import { observedMessageContent } from "@/lib/server/ai/inbound-enrichment-source";
 
 type GenericRow = { id: string } & Record<string, unknown>;
 type ChatMessageRow = GenericRow & { chatId: string };
@@ -87,15 +89,17 @@ async function listRelatedChats(tenantId: string, leadId: string, phone: string)
 
   const unique = new Map<string, Record<string, unknown>>();
   for (const doc of byLeadSnap.docs) {
-    unique.set(doc.id, { id: doc.id, ...(doc.data() as Record<string, unknown>) });
+    unique.set(doc.id, { ...(doc.data() as Record<string, unknown>), id: doc.id });
   }
   for (const doc of byPhoneSnap?.docs || []) {
-    unique.set(doc.id, { id: doc.id, ...(doc.data() as Record<string, unknown>) });
+    unique.set(doc.id, { ...(doc.data() as Record<string, unknown>), id: doc.id });
   }
 
-  return Array.from(unique.values())
+  const chats = Array.from(unique.values()).filter(chat => !chat.leadId || chat.leadId === leadId)
     .sort((a, b) => toTime(b.lastMessageTime || b.updatedAt) - toTime(a.lastMessageTime || a.updatedAt))
     .slice(0, 3);
+  const windows = await Promise.all(chats.map(chat => purchaseConversationWindow(tenantId, leadId, chat as GenericRow, true)));
+  return windows.filter((window): window is NonNullable<typeof window> => window !== null);
 }
 
 export async function buildLeadHandoffContext(input: {
@@ -109,24 +113,20 @@ export async function buildLeadHandoffContext(input: {
   recommendedOwnerId?: string | null;
   recommendedOwnerName?: string | null;
 }) {
-  const chats = await listRelatedChats(input.tenantId, input.leadId, cleanText(input.lead.telefone, 40));
-  const chatIds = chats.map((item) => cleanText(item.id, 140)).filter(Boolean);
+  const windows = await listRelatedChats(input.tenantId, input.leadId, cleanText(input.lead.telefone, 40));
+  const chats = windows.map(window => window.chat);
 
   const [messagesByChat, notesSnap, tasksSnap] = await Promise.all([
-    Promise.all(
-      chatIds.map(async (chatId) => {
-        const snap = await adminDb
-          .collection("messages")
-          .where("chatId", "==", chatId)
-          .limit(12)
-          .get();
-
-        return snap.docs
+    Promise.resolve(
+      windows.map(window => {
+        const chatId = window.chat.id;
+        return window.messages
           .map(
             (doc): ChatMessageRow => ({
+              ...(doc.data() as Record<string, unknown>),
               id: doc.id,
               chatId,
-              ...(doc.data() as Record<string, unknown>),
+              text: observedMessageContent(doc.data(), doc.createTime).text,
             })
           )
           .sort((a, b) => toTime(a.createdAt || a.timestamp) - toTime(b.createdAt || b.timestamp))

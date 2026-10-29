@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { FieldValue } from "firebase-admin/firestore";
 import { adminDb } from "@/app/lib/server/firebase-admin";
+import { withCommercialTaskIndex } from "@/lib/crm-task-index";
 import { requireRequestUser, RouteAuthError } from "@/app/lib/server/route-auth";
 import { assertTenantAccess, hasTenantCapability, TenantAccessError } from "@/lib/server/tenant";
 import { normalizePhone } from "@/app/lib/server/phone";
@@ -149,7 +150,7 @@ export async function POST(
 
     if (contextData.leadId) {
       writes.push(
-        adminDb.collection("lead_tasks").add({
+        adminDb.collection("lead_tasks").add(withCommercialTaskIndex({
           tenantId,
           leadId: contextData.leadId,
           title,
@@ -162,7 +163,7 @@ export async function POST(
           updatedAt: FieldValue.serverTimestamp(),
           createdBy: user.uid,
           createdByName: user.name,
-        }),
+        })),
         adminDb.collection("leads").doc(contextData.leadId).collection("events").add({
           type: "call_started",
           title: "Ligacao iniciada",

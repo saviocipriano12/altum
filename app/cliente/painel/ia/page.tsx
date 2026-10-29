@@ -47,6 +47,7 @@ import {
 
 type AiSettings = {
   enabled: boolean;
+  responsePaused?: boolean;
   agentName?: string;
   assistantRole?: AltumAssistantRole;
   toneOfVoice: string;
@@ -90,6 +91,8 @@ type AiSettings = {
   rolloutMode?: "automatic" | "shadow";
   rolloutPercent?: number;
   agentVersion?: string;
+  testOnly?: boolean;
+  testChatIds?: string[];
   rolloutQuality?: {
     gate?: "ready" | "watch" | "blocked" | null;
     evaluatedAt?: unknown;
@@ -232,7 +235,7 @@ type ActionSignal = {
 type CommercialBrainSettings = NonNullable<AiSettings["commercialBrain"]>;
 
 type PreviewScenario = (typeof AI_EVALUATION_SCENARIOS)[number];
-type PreviewResult = AiEvaluationPreview;
+type PreviewResult = AiEvaluationPreview & { commerce?: { context?: unknown; status?: string; checkedAt?: string | null } | null };
 type PreviewBatchRun = AiEvaluationRunItem;
 
 type AiEvaluationHistoryRun = {
@@ -301,6 +304,8 @@ const EMPTY_SETTINGS: AiSettings = {
   rolloutMode: "automatic",
   rolloutPercent: 100,
   agentVersion: "conversation-v1",
+  testOnly: false,
+  testChatIds: [],
 };
 
 function audioBase64ToObjectUrl(base64: string, mimeType = "audio/mpeg") {
@@ -1077,7 +1082,9 @@ export default function ClienteIaPage() {
         leadMemory: scenario.leadMemory || null,
         assistantRole: scenario.assistantRole,
         businessProfileId: scenario.businessProfileId,
-        evaluationScenarioId: scenario.id,
+        // Custom conversation is not an official evaluation scenario/proof.
+        evaluationScenarioId: customMessage && customMessage.trim() !== scenario.message.trim() ? undefined : scenario.id,
+        commerceContext: customMessage ? previewResult?.commerce?.context : undefined,
       }),
     });
     const payload = (await res.json()) as { error?: string; preview?: PreviewResult };
@@ -1519,7 +1526,7 @@ export default function ClienteIaPage() {
       <SectionHeader
         title="Assistente Altum"
         subtitle="Ensine como a IA deve atender, qualificar, vender e chamar uma pessoa quando a conversa pedir cuidado."
-        action={<StateBadge label={settings.enabled ? "Assistente ativo" : "Assistente pausado"} tone={settings.enabled ? "success" : "warning"} />}
+        action={<StateBadge label={settings.enabled && !settings.responsePaused ? (settings.testOnly ? "Teste restrito ativo" : "Assistente ativo") : "Assistente pausado"} tone={settings.enabled && !settings.responsePaused ? "success" : "warning"} />}
       />
 
       <nav aria-label="Etapas de configuracao do assistente" className="grid gap-2 rounded-[22px] border border-[var(--cliente-border)] bg-[var(--cliente-card)] p-3 shadow-[var(--cliente-shadow-soft)] sm:grid-cols-2 xl:grid-cols-5">
@@ -1775,15 +1782,15 @@ export default function ClienteIaPage() {
         <PanelCard className="p-5 md:p-6">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <CardTitle title="Comando do assistente" subtitle="O que define se a IA pode operar com seguranca no WhatsApp." />
-            <StateBadge label={settings.enabled ? "publicado" : "pausado"} tone={settings.enabled ? "success" : "warning"} />
+            <StateBadge label={settings.enabled && !settings.responsePaused ? (settings.testOnly ? "teste restrito" : "publicado") : "pausado"} tone={settings.enabled && !settings.responsePaused ? "success" : "warning"} />
           </div>
           <div className="mt-5 space-y-3">
             <OperationRow
               icon={Bot}
               title="Atendimento automatico"
-              value={settings.enabled ? "Ativo" : "Pausado"}
-              detail={settings.enabled ? "A IA pode responder quando a conversa estiver dentro das regras." : "A equipe humana fica responsavel pelas respostas."}
-              tone={settings.enabled ? "success" : "warning"}
+              value={settings.enabled && !settings.responsePaused ? (settings.testOnly ? "Somente conversas de teste" : "Ativo") : "Pausado"}
+              detail={settings.responsePaused ? "O envio de respostas esta pausado. Revise a pausa operacional nos controles avancados." : settings.enabled ? "A IA pode responder somente nas conversas autorizadas e dentro das regras." : "A equipe humana fica responsavel pelas respostas."}
+              tone={settings.enabled && !settings.responsePaused ? "success" : "warning"}
             />
             <OperationRow
               icon={Mic2}
@@ -2613,6 +2620,28 @@ export default function ClienteIaPage() {
               <p className="mt-1 text-xs leading-5 text-[var(--cliente-card-text-soft)]">
                 Use para liberar uma nova versão por etapas. Em 0%, nenhuma conversa recebe resposta automática; em modo sombra, a resposta é calculada e fica na auditoria, mas nada é enviado nem altera a operação. Para aumentar respostas automáticas depois de reduzir o percentual, a bateria de qualidade precisa estar aprovada.
               </p>
+              <div className="mt-3 rounded-xl border border-[var(--cliente-border)] p-3">
+                <label className="flex items-center gap-2 text-sm">
+                  <input type="checkbox" checked={settings.responsePaused === true} disabled={!canManage}
+                    onChange={(event) => setSettings((prev) => ({ ...prev, responsePaused: event.target.checked }))} />
+                  Pausar envio de respostas da IA
+                </label>
+                <p className="mt-1 text-xs">Esta pausa impede o envio mesmo com o assistente ligado. Retira-la nao remove o teste exclusivo nem as pausas por atendimento humano.</p>
+              </div>
+              <div className="mt-3 rounded-xl border border-[var(--cliente-border)] p-3">
+                <label className="flex items-center gap-2 text-sm">
+                  <input type="checkbox" checked={settings.testOnly === true} disabled={!canManage}
+                    onChange={(event) => setSettings((prev) => ({ ...prev, testOnly: event.target.checked }))} />
+                  Teste exclusivo por conversa
+                </label>
+                <p className="mt-1 text-xs">Quando publicado, somente as conversas indicadas podem receber atendimento da IA. As demais seguem com a equipe. Não termina automaticamente.</p>
+                <label className="mt-2 block text-xs">
+                  IDs das conversas de teste (um por linha)
+                  <textarea className="client-input mt-1 w-full rounded-xl border p-2" rows={3}
+                    value={(settings.testChatIds || []).join("\n")} disabled={!canManage}
+                    onChange={(event) => setSettings((prev) => ({ ...prev, testChatIds: event.target.value.split("\n") }))} />
+                </label>
+              </div>
               <div className="mt-3 grid gap-3 md:grid-cols-3">
                 <label className="block text-xs text-[var(--cliente-card-text-soft)]">
                   Modo

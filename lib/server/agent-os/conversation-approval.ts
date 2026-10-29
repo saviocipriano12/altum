@@ -1,5 +1,6 @@
 import { FieldValue } from "firebase-admin/firestore";
 import { adminDb } from "@/app/lib/server/firebase-admin";
+import { assertTaskTransition, isTaskStatus } from "@/lib/server/agent-os/task-lifecycle";
 
 type Actor = { uid: string; name: string };
 
@@ -13,7 +14,7 @@ export function isExplicitApprovalMessage(message: string) {
 
 export type ConversationApprovalResult =
   | { found: false }
-  | { found: true; kind: "media" | "landing" | "avatar" | "action"; title: string };
+  | { found: true; kind: "media" | "landing" | "avatar" | "action"; title: string; runtimeResume: { missionId: string; task: { id: string; title: string; agent: string; capability: string; agentCandidateId: string | null; agentCandidateSource: string | null; agentCandidateStatus: "review_required" | "active" | "disabled" | "deprecated" | null } } | null };
 
 /** Approves only the newest pending action belonging to this exact chat. A
  * media job becomes auto-startable; the durable worker performs the paid call
@@ -31,10 +32,33 @@ export async function approveLatestConversationAction(input: { tenantId: string;
   let kind: "media" | "landing" | "avatar" | "action" = "action";
   let title = "esta ação";
   let applied = false;
+  let runtimeResume: Extract<ConversationApprovalResult, { found: true }> ["runtimeResume"] = null;
   await adminDb.runTransaction(async (transaction) => {
     const snap = await transaction.get(ref.ref);
     if (!snap.exists || snap.get("status") !== "pending") return;
     const data = snap.data()!;
+    const taskRef = typeof data.taskId === "string" && data.taskId ? adminDb.collection("agent_tasks").doc(data.taskId) : null;
+    const task = taskRef ? await transaction.get(taskRef) : null;
+    if (taskRef) {
+      if (!task?.exists) return;
+      const rawStatus = task.get("status");
+      const current = isTaskStatus(rawStatus) ? rawStatus : "queued";
+      try { assertTaskTransition(current, "ready"); }
+      catch { return; }
+      const candidateStatus = task.get("agentCandidate")?.status;
+      runtimeResume = {
+        missionId: String(data.missionId || ""),
+        task: {
+          id: taskRef.id,
+          title: String(task.get("title") || "Etapa da missão"),
+          agent: String(task.get("agent") || "Altum Agent"),
+          capability: String(task.get("capability") || "PLAN_MISSION"),
+          agentCandidateId: typeof task.get("agentCandidateId") === "string" ? task.get("agentCandidateId") : null,
+          agentCandidateSource: typeof task.get("agentCandidate")?.source === "string" ? task.get("agentCandidate").source : null,
+          agentCandidateStatus: candidateStatus === "review_required" || candidateStatus === "active" || candidateStatus === "disabled" || candidateStatus === "deprecated" ? candidateStatus : null,
+        },
+      };
+    }
     applied = true;
     title = String(data.title || title);
     if (typeof data.creativeJobId === "string" && data.creativeJobId) kind = "media";
@@ -42,12 +66,12 @@ export async function approveLatestConversationAction(input: { tenantId: string;
     else if (typeof data.avatarJobId === "string" && data.avatarJobId) kind = "avatar";
     transaction.set(ref.ref, { status: "approved", decisionNote: "Autorização explícita registrada na conversa.", decidedBy: input.actor.uid, decidedByName: input.actor.name, decidedAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp() }, { merge: true });
     if (typeof data.missionId === "string" && data.missionId) transaction.set(adminDb.collection("agent_missions").doc(data.missionId), { status: "running", updatedAt: FieldValue.serverTimestamp() }, { merge: true });
-    if (typeof data.taskId === "string" && data.taskId) transaction.set(adminDb.collection("agent_tasks").doc(data.taskId), { status: "ready", updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+    if (taskRef) transaction.set(taskRef, { status: "ready", updatedAt: FieldValue.serverTimestamp() }, { merge: true });
     if (typeof data.creativeJobId === "string" && data.creativeJobId) transaction.set(adminDb.collection("creative_jobs").doc(data.creativeJobId), { status: "queued", autoStart: true, approvedBy: input.actor.uid, approvedByName: input.actor.name, approvedAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp() }, { merge: true });
     if (typeof data.avatarJobId === "string" && data.avatarJobId) transaction.set(adminDb.collection("avatar_jobs").doc(data.avatarJobId), { status: "approved_for_anchor", approvedBy: input.actor.uid, approvedByName: input.actor.name, approvedAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp() }, { merge: true });
     if (typeof data.captureFormId === "string" && data.captureFormId) transaction.set(adminDb.collection("capture_forms").doc(data.captureFormId), { status: "active", publishedAt: FieldValue.serverTimestamp(), publishedBy: input.actor.uid, updatedAt: FieldValue.serverTimestamp(), updatedBy: input.actor.uid, updatedByName: input.actor.name }, { merge: true });
     transaction.set(adminDb.collection("audit_logs").doc(), { type: "agent_approval_approved_from_conversation", actorId: input.actor.uid, actorName: input.actor.name, tenantId: input.tenantId, missionId: data.missionId || null, approvalId: ref.id, actionType: data.actionType || null, createdAt: FieldValue.serverTimestamp() });
   });
   if (!applied) return { found: false };
-  return { found: true, kind, title };
+  return { found: true, kind, title, runtimeResume: kind === "action" ? runtimeResume : null };
 }

@@ -1,3 +1,4 @@
+import { readQueryPages } from "@/lib/server/query-pages";
 import { NextResponse } from "next/server";
 import { adminDb } from "@/app/lib/server/firebase-admin";
 import { requireRequestUser, RouteAuthError } from "@/app/lib/server/route-auth";
@@ -143,7 +144,7 @@ export async function GET(
     await assertTenantModule(tenantId, "automation");
     assertTenantRole(membership, "client_viewer");
 
-    const snap = await adminDb.collection("lead_tasks").where("tenantId", "==", tenantId).limit(300).get();
+    const snap = await readQueryPages(adminDb.collection("lead_tasks").where("tenantId", "==", tenantId));
 
     const tasks = snap.docs
       .map((doc) => ({ id: doc.id, ...(doc.data() as Record<string, unknown>) }) as TaskItem)
@@ -157,7 +158,7 @@ export async function GET(
     const leadIds = Array.from(new Set(tasks.map((task) => String(task.leadId || "")).filter(Boolean)));
     const [leadDocs, chatsSnap] = await Promise.all([
       Promise.all(leadIds.map((leadId) => adminDb.collection("leads").doc(leadId).get())),
-      adminDb.collection("chats").where("tenantId", "==", tenantId).limit(1200).get(),
+      readQueryPages(adminDb.collection("chats").where("tenantId", "==", tenantId)),
     ]);
 
     const leadsById = new Map<string, LeadItem>();

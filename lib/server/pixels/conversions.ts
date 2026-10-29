@@ -38,6 +38,7 @@ type MetaChannel = {
   accessToken: string;
   pixelId: string;
   testEventCode: string;
+  pageId: string;
 };
 
 type GoogleChannel = {
@@ -146,7 +147,7 @@ function toGoogleDateTime(value: unknown) {
 function buildFbc(fbclid: string, occurredAt: unknown) {
   const clickId = clean(fbclid, 240);
   if (!clickId) return "";
-  return `fb.1.${toUnixSeconds(occurredAt)}.${clickId}`;
+  return `fb.1.${toUnixSeconds(occurredAt) * 1000}.${clickId}`;
 }
 
 async function fetchLead(tenantId: string, leadId: string) {
@@ -175,7 +176,6 @@ async function fetchTenantChannels(tenantId: string) {
   const snap = await adminDb
     .collection("tenant_channels")
     .where("tenantId", "==", tenantId)
-    .limit(20)
     .get();
 
   return snap.docs.map((doc) => ({
@@ -212,6 +212,7 @@ function resolveMetaChannels(channels: Array<Record<string, unknown>>) {
         pixelId,
         accessToken,
         testEventCode: clean(metadata.testEventCode, 120) || clean(process.env.META_TEST_EVENT_CODE, 120),
+        pageId: clean(metadata.pageId || channel.pageId, 180),
       };
     })
     .filter((item): item is MetaChannel => Boolean(item));
@@ -279,6 +280,7 @@ async function getGoogleAdsAccessToken(input: { accessToken?: string; refreshTok
       refresh_token: refreshToken,
       grant_type: "refresh_token",
     }),
+    signal: AbortSignal.timeout(20_000),
     cache: "no-store",
   });
 
@@ -324,37 +326,95 @@ function getConversionDefinition(reason: DispatchReason): ConversionDefinition {
   return map[reason];
 }
 
-async function claimDispatch(dedupeKey: string, force = false) {
-  const docId = sanitizeId(dedupeKey, 240);
+const CONVERSION_LEASE_MS = 5 * 60_000;
+const CONVERSION_MAX_ATTEMPTS = 8;
+
+function dateFromUnknown(value: unknown) {
+  if (value instanceof Date) return value;
+  if (value && typeof value === "object" && "toDate" in value && typeof (value as { toDate?: unknown }).toDate === "function") {
+    return (value as { toDate: () => Date }).toDate();
+  }
+  if (typeof value === "string" || typeof value === "number") {
+    const parsed = new Date(value);
+    if (!Number.isNaN(parsed.getTime())) return parsed;
+  }
+  return null;
+}
+
+function retryDelayMs(attempt: number) {
+  return Math.min(6 * 60 * 60_000, 30_000 * 2 ** Math.max(0, attempt - 1));
+}
+
+async function enqueueDispatch(input: {
+  dedupeKey: string;
+  tenantId: string;
+  leadId: string;
+  appointmentId: string | null;
+  provider: "meta" | "google";
+  channelId: string;
+  eventName: string;
+  reason: DispatchReason;
+  conversionKey: string;
+  conversionValue?: number;
+  currency?: string;
+  occurredAt?: string | Date;
+  orderId?: string;
+  force?: boolean;
+  leadSnapshot: Record<string, unknown>;
+  appointmentSnapshot: Record<string, unknown> | null;
+  destination: Record<string, string>;
+}) {
+  // Preserve existing short IDs; hash long identities instead of truncating their suffix.
+  const docId = input.dedupeKey.length <= 240 && sanitizeId(input.dedupeKey, 240) === input.dedupeKey
+    ? input.dedupeKey : `conversion_${sha256(input.dedupeKey)}`;
   const ref = adminDb.collection("conversion_dispatches").doc(docId);
 
   const result = await adminDb.runTransaction(async (tx) => {
     const snap = await tx.get(ref);
     if (!snap.exists) {
       tx.set(ref, {
-        status: "claimed",
-        attempts: 1,
+        tenantId: input.tenantId,
+        leadId: input.leadId,
+        appointmentId: input.appointmentId,
+        provider: input.provider,
+        channelId: input.channelId,
+        eventName: input.eventName,
+        reason: input.reason,
+        conversionKey: input.conversionKey || null,
+        conversionValue: Number.isFinite(input.conversionValue) ? input.conversionValue : null,
+        currency: currencyCode(input.currency),
+        occurredAt: dateFromUnknown(input.occurredAt) || new Date(),
+        orderId: clean(input.orderId, 180) || null,
+        leadSnapshot: firestoreSafe(input.leadSnapshot),
+        appointmentSnapshot: firestoreSafe(input.appointmentSnapshot),
+        destination: input.destination,
+        eventId: docId,
+        status: "pending",
+        attempts: 0,
+        maxAttempts: CONVERSION_MAX_ATTEMPTS,
+        nextAttemptAt: new Date(),
         createdAt: FieldValue.serverTimestamp(),
         updatedAt: FieldValue.serverTimestamp(),
       });
-      return { proceed: true, ref, eventId: docId };
+      return { enqueued: true, ref, eventId: docId, status: "pending" };
     }
 
     const data = snap.data() as { status?: string };
-    if (data.status === "processed" && !force) {
-      return { proceed: false, ref, eventId: docId };
+    const status = clean(data.status, 60);
+    if (status === "processed" || status === "processing" || status === "pending" || status === "retry") {
+      return { enqueued: false, ref, eventId: docId, status };
     }
+    if (!input.force) return { enqueued: false, ref, eventId: docId, status };
 
-    tx.set(
-      ref,
-      {
-        status: "claimed",
-        attempts: FieldValue.increment(1),
-        updatedAt: FieldValue.serverTimestamp(),
-      },
-      { merge: true }
-    );
-    return { proceed: true, ref, eventId: docId };
+    tx.set(ref, {
+      status: "pending",
+      attempts: 0,
+      nextAttemptAt: FieldValue.serverTimestamp(),
+      leaseUntil: FieldValue.delete(),
+      error: FieldValue.delete(),
+      updatedAt: FieldValue.serverTimestamp(),
+    }, { merge: true });
+    return { enqueued: true, ref, eventId: docId, status: "pending" };
   });
 
   return result;
@@ -383,6 +443,11 @@ async function sendMetaConversion(input: {
   const firstName = normalizeNameForHash(input.lead.nome);
   const referrer = clean(lastTouch.referrer || input.lead.referrer, 500);
   const landingPage = clean(lastTouch.landingPage || input.lead.landingPage, 500);
+  const messagingChannel = clean(attribution.channel || input.lead.channel, 80).toLowerCase();
+  const isMessaging = ["whatsapp", "instagram", "messenger", "facebook_messenger"].includes(messagingChannel);
+  if (isMessaging && !input.channel.pageId) {
+    throw new Error("Page ID Meta nao configurado para conversoes de mensagens.");
+  }
 
   const userData: Record<string, unknown> = {
     em: email ? [sha256(email)] : undefined,
@@ -391,6 +456,8 @@ async function sendMetaConversion(input: {
     external_id: input.leadId ? [sha256(`${input.tenantId}:${input.leadId}`)] : undefined,
     fbp: clean(lastTouchRecord.fbp || input.lead.fbp, 240) || undefined,
     fbc: clean(lastTouchRecord.fbc || input.lead.fbc, 300) || buildFbc(lastTouch.fbclid || clean(input.lead.fbclid, 240), lastTouch.occurredAt || input.lead.updatedAt),
+    ctwa_clid: clean(lastTouchRecord.ctwaClid || input.lead.ctwaClid, 300) || undefined,
+    page_id: isMessaging ? input.channel.pageId || undefined : undefined,
   };
   const qualification =
     input.lead.qualification && typeof input.lead.qualification === "object"
@@ -433,8 +500,9 @@ async function sendMetaConversion(input: {
         event_name: input.eventName,
         event_time: toUnixSeconds(input.occurredAt || input.appointment?.updatedAt || input.lead.updatedAt || input.lead.createdAt),
         event_id: input.eventId,
-        action_source: "website",
-        event_source_url: landingPage || undefined,
+        action_source: isMessaging ? "business_messaging" : "website",
+        messaging_channel: isMessaging ? (messagingChannel === "facebook_messenger" ? "messenger" : messagingChannel) : undefined,
+        event_source_url: !isMessaging ? landingPage || undefined : undefined,
         user_data: Object.fromEntries(Object.entries(userData).filter(([, value]) => value)),
         custom_data: customData,
       },
@@ -451,6 +519,7 @@ async function sendMetaConversion(input: {
         "Content-Type": "application/json",
       },
       body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(20_000),
       cache: "no-store",
     }
   );
@@ -459,7 +528,9 @@ async function sendMetaConversion(input: {
   if (!response.ok) {
     throw new Error(clean(result.error && typeof result.error === "object" ? (result.error as Record<string, unknown>).message : "", 500) || "Falha ao enviar Meta CAPI.");
   }
-
+  if (Number(result.events_received || 0) < 1) {
+    throw new Error("Meta nao confirmou o recebimento da conversao.");
+  }
   return {
     request: payload,
     response: result,
@@ -528,6 +599,7 @@ async function sendGoogleConversion(input: {
         ...(input.channel.loginCustomerId ? { "login-customer-id": input.channel.loginCustomerId.replace(/[^\d]/g, "") } : {}),
       },
       body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(20_000),
       cache: "no-store",
     }
   );
@@ -536,10 +608,204 @@ async function sendGoogleConversion(input: {
   if (!response.ok) {
     throw new Error(clean(result.error && typeof result.error === "object" ? (result.error as Record<string, unknown>).message : "", 500) || "Falha ao enviar conversion para Google Ads.");
   }
+  if (result.partialFailureError) {
+    const partial = result.partialFailureError as Record<string, unknown>;
+    throw new Error(clean(partial.message, 500) || "Google Ads rejeitou parte da conversao.");
+  }
+  if (!Array.isArray(result.results) || result.results.length < 1) {
+    throw new Error("Google Ads nao confirmou o resultado da conversao.");
+  }
 
   return {
     request: payload,
     response: result,
+  };
+}
+
+type ConversionJob = {
+  tenantId: string;
+  leadId: string;
+  appointmentId?: string | null;
+  provider: "meta" | "google";
+  channelId: string;
+  eventName: string;
+  reason: DispatchReason;
+  conversionValue?: number | null;
+  currency?: string;
+  occurredAt?: unknown;
+  orderId?: string | null;
+  status?: string;
+  attempts?: number;
+  maxAttempts?: number;
+  nextAttemptAt?: unknown;
+  leaseUntil?: unknown;
+  leaseToken?: string;
+  leadSnapshot?: Record<string, unknown>;
+  appointmentSnapshot?: Record<string, unknown> | null;
+  destination?: Record<string, string>;
+};
+
+async function markCampaignDeliveryConverted(job: ConversionJob, eventId: string) {
+  const outboundDeliveries = await adminDb.collection("outbound_campaign_deliveries")
+    .where("leadId", "==", job.leadId).limit(20).get();
+  const latest = outboundDeliveries.docs
+    .filter((doc) => clean(doc.data().tenantId, 140) === job.tenantId)
+    .sort((a, b) => Number(b.data().sentAt?._seconds || 0) - Number(a.data().sentAt?._seconds || 0))[0];
+  if (!latest) return;
+  await latest.ref.set({
+    conversionReason: job.reason,
+    conversionEventId: eventId,
+    conversionProvider: job.provider,
+    convertedAt: FieldValue.serverTimestamp(),
+    updatedAt: FieldValue.serverTimestamp(),
+  }, { merge: true });
+}
+
+async function processConversionJob(ref: FirebaseFirestore.DocumentReference, tenantId?: string) {
+  const now = new Date();
+  const leaseToken = crypto.randomUUID();
+  const claimed = await adminDb.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    if (!snap.exists) return null;
+    const data = snap.data() as ConversionJob;
+    if (tenantId && data.tenantId !== tenantId) return null;
+    const status = clean(data.status, 60);
+    const leaseExpired = status === "processing" && (!dateFromUnknown(data.leaseUntil) || dateFromUnknown(data.leaseUntil)!.getTime() <= now.getTime());
+    const due = !dateFromUnknown(data.nextAttemptAt) || dateFromUnknown(data.nextAttemptAt)!.getTime() <= now.getTime();
+    if (!(status === "pending" || status === "retry" || status === "failed" || status === "claimed" || leaseExpired) || !due) return null;
+    const attempts = Number(data.attempts || 0) + 1;
+    if (attempts > Number(data.maxAttempts || CONVERSION_MAX_ATTEMPTS)) {
+      tx.set(ref, { status: "dead_letter", leaseUntil: FieldValue.delete(), updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+      return null;
+    }
+    tx.set(ref, {
+      status: "processing",
+      attempts,
+      leaseToken,
+      leaseUntil: new Date(now.getTime() + CONVERSION_LEASE_MS),
+      processingStartedAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
+    }, { merge: true });
+    return { ...data, attempts, leaseToken, eventId: ref.id };
+  });
+  if (!claimed) return { eventId: ref.id, skipped: true };
+
+  const finish = async (patch: Record<string, unknown>) => adminDb.runTransaction(async (tx) => {
+    const current = await tx.get(ref);
+    if (current.data()?.leaseToken !== leaseToken || current.data()?.status !== "processing") return false;
+    tx.set(ref, { ...patch, leaseToken: FieldValue.delete(), updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+    return true;
+  });
+
+  try {
+    const definition = getConversionDefinition(claimed.reason);
+    const lead = claimed.leadSnapshot && Object.keys(claimed.leadSnapshot).length
+      ? claimed.leadSnapshot
+      : (await fetchLead(claimed.tenantId, claimed.leadId)).data;
+    const appointment = claimed.appointmentSnapshot !== undefined
+      ? claimed.appointmentSnapshot
+      : (await fetchAppointment(claimed.tenantId, claimed.appointmentId))?.data || null;
+    if (definition.statusGuard && !definition.statusGuard(lead, appointment)) {
+      await finish({ status: "skipped", skipReason: "status_guard", leaseUntil: FieldValue.delete() });
+      return { eventId: ref.id, provider: claimed.provider, skipped: true, reason: "status_guard" };
+    }
+
+    const channels = await fetchTenantChannels(claimed.tenantId);
+    let sent: { request: unknown; response: unknown };
+    if (claimed.provider === "meta") {
+      const channel = resolveMetaChannels(channels).find((item) => item.id === claimed.channelId);
+      if (!channel) throw new Error("Canal Meta da conversao nao esta mais configurado.");
+      sent = await sendMetaConversion({
+        channel: claimed.destination ? {
+          ...channel,
+          pixelId: claimed.destination.pixelId,
+          // A missing Page ID can be repaired before the first messaging send.
+          // A previously configured Page ID remains pinned to the event.
+          pageId: claimed.destination.pageId || channel.pageId,
+          testEventCode: claimed.destination.testEventCode,
+        } : channel,
+        tenantId: claimed.tenantId, leadId: claimed.leadId, eventId: ref.id,
+        eventName: claimed.eventName || definition.metaEventName, lead, appointment,
+        conversionValue: claimed.conversionValue ?? undefined, currency: claimed.currency,
+        occurredAt: dateFromUnknown(claimed.occurredAt) || undefined, orderId: claimed.orderId || undefined,
+      });
+    } else {
+      const channel = resolveGoogleChannels(channels, claimed.reason).find((item) => item.id === claimed.channelId);
+      if (!channel) throw new Error("Canal Google Ads da conversao nao esta mais configurado.");
+      sent = await sendGoogleConversion({
+        channel: claimed.destination ? {
+          ...channel,
+          customerId: claimed.destination.customerId,
+          loginCustomerId: claimed.destination.loginCustomerId,
+          conversionActionId: claimed.destination.conversionActionId,
+        } : channel,
+        tenantId: claimed.tenantId, leadId: claimed.leadId, eventId: ref.id,
+        reason: claimed.reason, lead, appointment,
+        conversionValue: claimed.conversionValue ?? undefined, currency: claimed.currency,
+        occurredAt: dateFromUnknown(claimed.occurredAt) || undefined, orderId: claimed.orderId || undefined,
+      });
+    }
+
+    const confirmed = await finish({
+      status: "processed",
+      request: firestoreSafe(sent.request),
+      response: firestoreSafe(sent.response),
+      processedAt: FieldValue.serverTimestamp(),
+      leaseUntil: FieldValue.delete(),
+      error: FieldValue.delete(),
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+    if (!confirmed) return { eventId: ref.id, skipped: true, reason: "lease_lost" };
+    // Projection failure must never roll a provider-confirmed dispatch back to retry.
+    await markCampaignDeliveryConverted(claimed, ref.id).catch((error) => {
+      console.error("Falha na projecao de conversao da campanha:", error);
+    });
+    return { eventId: ref.id, provider: claimed.provider, channelId: claimed.channelId, ok: true };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Falha ao enviar conversao.";
+    const maxAttempts = Number(claimed.maxAttempts || CONVERSION_MAX_ATTEMPTS);
+    const exhausted = claimed.attempts >= maxAttempts;
+    await finish({
+      status: exhausted ? "dead_letter" : "retry",
+      error: clean(message, 1000),
+      lastFailedAt: FieldValue.serverTimestamp(),
+      nextAttemptAt: exhausted ? FieldValue.delete() : new Date(Date.now() + retryDelayMs(claimed.attempts)),
+      leaseUntil: FieldValue.delete(),
+      deadLetteredAt: exhausted ? FieldValue.serverTimestamp() : FieldValue.delete(),
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+    return { eventId: ref.id, provider: claimed.provider, channelId: claimed.channelId, ok: false, retrying: !exhausted, error: message };
+  }
+}
+
+export async function processConversionDispatchJobs(input: { limit?: number; tenantId?: string; jobIds?: string[] } = {}) {
+  const limit = Math.max(1, Math.min(200, Number(input.limit || 80)));
+  let refs: FirebaseFirestore.DocumentReference[];
+  if (input.jobIds?.length) {
+    refs = Array.from(new Set(input.jobIds)).slice(0, limit).map((id) => adminDb.collection("conversion_dispatches").doc(id));
+  } else {
+    const scoped = (query: FirebaseFirestore.Query) => input.tenantId ? query.where("tenantId", "==", input.tenantId) : query;
+    const collection = adminDb.collection("conversion_dispatches");
+    const [due, expired, legacy] = await Promise.all([
+      scoped(collection.where("status", "in", ["pending", "retry"]).where("nextAttemptAt", "<=", new Date()).orderBy("nextAttemptAt")).limit(limit).get(),
+      scoped(collection.where("status", "==", "processing").where("leaseUntil", "<=", new Date()).orderBy("leaseUntil")).limit(limit).get(),
+      scoped(collection.where("status", "in", ["failed", "claimed"])).limit(limit).get(),
+    ]);
+    refs = [...expired.docs, ...due.docs, ...legacy.docs].slice(0, limit).map((doc) => doc.ref);
+  }
+  const results = [];
+  const deadline = Date.now() + 45_000;
+  for (const ref of refs) {
+    if (Date.now() >= deadline) break;
+    results.push(await processConversionJob(ref, input.tenantId));
+  }
+  return {
+    ok: true,
+    scanned: refs.length,
+    attempted: results.filter((item) => !item.skipped).length,
+    processed: results.filter((item) => "ok" in item && item.ok === true).length,
+    failed: results.filter((item) => "ok" in item && item.ok === false).length,
+    results,
   };
 }
 
@@ -548,191 +814,32 @@ export async function dispatchLeadConversionEvents(input: DispatchInput) {
   const { data: lead } = await fetchLead(input.tenantId, input.leadId);
   const appointmentRecord = await fetchAppointment(input.tenantId, input.appointmentId);
   const appointment = appointmentRecord?.data || null;
-
   if (definition.statusGuard && !definition.statusGuard(lead, appointment)) {
-    return {
-      ok: true,
-      skipped: true,
-      reason: "status_guard",
-      results: [],
-    };
+    return { ok: true, skipped: true, reason: "status_guard", results: [] };
   }
 
   const channels = await fetchTenantChannels(input.tenantId);
-  const metaChannels = resolveMetaChannels(channels);
-  const googleChannels = resolveGoogleChannels(channels, input.reason);
-  const results: Array<Record<string, unknown>> = [];
+  const providers = [
+    ...resolveMetaChannels(channels).map((channel) => ({ provider: "meta" as const, channel, eventName: definition.metaEventName })),
+    ...resolveGoogleChannels(channels, input.reason).map((channel) => ({ provider: "google" as const, channel, eventName: definition.reason })),
+  ];
   const conversionKey = clean(input.conversionKey, 240);
-
-  for (const channel of metaChannels) {
-    const dedupeKey = `${input.tenantId}:${input.leadId}:${conversionKey || appointmentRecord?.id || "lead"}:meta:${channel.id}:${definition.reason}`;
-    const claim = await claimDispatch(dedupeKey, Boolean(input.force));
-    if (!claim.proceed) {
-      results.push({ provider: "meta", channelId: channel.id, skipped: true, eventId: claim.eventId });
-      continue;
-    }
-
-    try {
-      const sent = await sendMetaConversion({
-        channel,
-        tenantId: input.tenantId,
-        leadId: input.leadId,
-        eventId: claim.eventId,
-        eventName: definition.metaEventName,
-        lead,
-        appointment,
-        conversionValue: input.conversionValue,
-        currency: input.currency,
-        occurredAt: input.occurredAt,
-        orderId: input.orderId,
-      });
-
-      await claim.ref.set(
-        {
-          tenantId: input.tenantId,
-          leadId: input.leadId,
-          appointmentId: appointmentRecord?.id || null,
-          provider: "meta",
-          channelId: channel.id,
-          eventName: definition.metaEventName,
-          reason: definition.reason,
-          conversionKey: conversionKey || null,
-          orderId: clean(input.orderId, 180) || null,
-          eventId: claim.eventId,
-          status: "processed",
-          request: firestoreSafe(sent.request),
-          response: firestoreSafe(sent.response),
-          processedAt: FieldValue.serverTimestamp(),
-          updatedAt: FieldValue.serverTimestamp(),
-        },
-        { merge: true }
-      );
-      results.push({ provider: "meta", channelId: channel.id, eventId: claim.eventId, ok: true });
-    } catch (error) {
-      await claim.ref.set(
-        {
-          tenantId: input.tenantId,
-          leadId: input.leadId,
-          appointmentId: appointmentRecord?.id || null,
-          provider: "meta",
-          channelId: channel.id,
-          eventName: definition.metaEventName,
-          reason: definition.reason,
-          eventId: claim.eventId,
-          status: "failed",
-          error: error instanceof Error ? error.message : "Falha Meta CAPI.",
-          updatedAt: FieldValue.serverTimestamp(),
-        },
-        { merge: true }
-      );
-      results.push({
-        provider: "meta",
-        channelId: channel.id,
-        eventId: claim.eventId,
-        ok: false,
-        error: error instanceof Error ? error.message : "Falha Meta CAPI.",
-      });
-    }
+  const enqueued = [];
+  for (const item of providers) {
+    const dedupeKey = [input.tenantId, input.leadId, conversionKey || appointmentRecord?.id || "lead", item.provider, item.channel.id, definition.reason]
+      .map((part) => encodeURIComponent(part)).join(":");
+    enqueued.push(await enqueueDispatch({
+      dedupeKey, tenantId: input.tenantId, leadId: input.leadId,
+      appointmentId: appointmentRecord?.id || null, provider: item.provider,
+      channelId: item.channel.id, eventName: item.eventName, reason: definition.reason,
+      conversionKey, conversionValue: input.conversionValue, currency: input.currency,
+      occurredAt: input.occurredAt, orderId: input.orderId, force: input.force,
+      leadSnapshot: lead, appointmentSnapshot: appointment,
+      destination: item.provider === "meta"
+        ? { pixelId: item.channel.pixelId, pageId: item.channel.pageId, testEventCode: item.channel.testEventCode }
+        : { customerId: item.channel.customerId, loginCustomerId: item.channel.loginCustomerId, conversionActionId: item.channel.conversionActionId },
+    }));
   }
-
-  for (const channel of googleChannels) {
-    const dedupeKey = `${input.tenantId}:${input.leadId}:${conversionKey || appointmentRecord?.id || "lead"}:google:${channel.id}:${definition.reason}`;
-    const claim = await claimDispatch(dedupeKey, Boolean(input.force));
-    if (!claim.proceed) {
-      results.push({ provider: "google", channelId: channel.id, skipped: true, eventId: claim.eventId });
-      continue;
-    }
-
-    try {
-      const sent = await sendGoogleConversion({
-        channel,
-        tenantId: input.tenantId,
-        leadId: input.leadId,
-        eventId: claim.eventId,
-        reason: definition.reason,
-        lead,
-        appointment,
-        conversionValue: input.conversionValue,
-        currency: input.currency,
-        occurredAt: input.occurredAt,
-        orderId: input.orderId,
-      });
-
-      await claim.ref.set(
-        {
-          tenantId: input.tenantId,
-          leadId: input.leadId,
-          appointmentId: appointmentRecord?.id || null,
-          provider: "google",
-          channelId: channel.id,
-          eventName: definition.reason,
-          reason: definition.reason,
-          conversionKey: conversionKey || null,
-          orderId: clean(input.orderId, 180) || null,
-          eventId: claim.eventId,
-          status: "processed",
-          request: firestoreSafe(sent.request),
-          response: firestoreSafe(sent.response),
-          processedAt: FieldValue.serverTimestamp(),
-          updatedAt: FieldValue.serverTimestamp(),
-        },
-        { merge: true }
-      );
-      results.push({ provider: "google", channelId: channel.id, eventId: claim.eventId, ok: true });
-    } catch (error) {
-      await claim.ref.set(
-        {
-          tenantId: input.tenantId,
-          leadId: input.leadId,
-          appointmentId: appointmentRecord?.id || null,
-          provider: "google",
-          channelId: channel.id,
-          eventName: definition.reason,
-          reason: definition.reason,
-          eventId: claim.eventId,
-          status: "failed",
-          error: error instanceof Error ? error.message : "Falha Google conversion.",
-          updatedAt: FieldValue.serverTimestamp(),
-        },
-        { merge: true }
-      );
-      results.push({
-        provider: "google",
-        channelId: channel.id,
-        eventId: claim.eventId,
-        ok: false,
-        error: error instanceof Error ? error.message : "Falha Google conversion.",
-      });
-    }
-  }
-
-  const successfulResult = results.find((item) => item.ok === true);
-  if (successfulResult) {
-    const outboundDeliveries = await adminDb
-      .collection("outbound_campaign_deliveries")
-      .where("leadId", "==", input.leadId)
-      .limit(20)
-      .get();
-    const latestDelivery = outboundDeliveries.docs
-      .filter((doc) => String(doc.data().tenantId || "") === input.tenantId)
-      .sort((a, b) => Number(b.data().sentAt?._seconds || 0) - Number(a.data().sentAt?._seconds || 0))[0];
-    if (latestDelivery) {
-      await latestDelivery.ref.set(
-        {
-          conversionReason: definition.reason,
-          conversionEventId: String(successfulResult.eventId || ""),
-          conversionProvider: String(successfulResult.provider || ""),
-          convertedAt: FieldValue.serverTimestamp(),
-          updatedAt: FieldValue.serverTimestamp(),
-        },
-        { merge: true }
-      );
-    }
-  }
-
-  return {
-    ok: true,
-    skipped: false,
-    results,
-  };
+  const processResult = await processConversionDispatchJobs({ jobIds: enqueued.map((item) => item.eventId), limit: 200 });
+  return { ok: true, skipped: false, enqueued: enqueued.filter((item) => item.enqueued).length, results: processResult.results };
 }

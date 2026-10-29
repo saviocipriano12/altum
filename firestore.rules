@@ -122,6 +122,59 @@ service cloud.firestore {
       return isAgencyMember() || isTenantCommercialManager(tenantId);
     }
 
+    // Server-managed rollout: old tenants keep their existing SDK contract.
+    function requiresTaskIndexWrites(tenantId) {
+      let path = /databases/$(database)/documents/tenant_entitlements/$(tenantId);
+      let control = getAfter(path);
+      return control != null && control.data.get('taskIndexWriteProtocol', 0) == 1;
+    }
+
+    function normalizedTaskState(record) {
+      let status = record.get('status', 'pending');
+      return status in ['done', 'completed'] ? 'done' :
+        status in ['canceled', 'cancelled', 'no_show'] ? 'canceled' :
+        status == 'draft' ? 'suggested' : 'pending';
+    }
+
+    function validTaskIndexShape(record) {
+      let index = record.get('crmTaskIndex', {});
+      let status = record.get('status', 'pending');
+      return index is map &&
+        index.keys().hasAll(['version', 'state', 'openRank', 'dueOrder', 'issue']) &&
+        index.keys().hasOnly(['version', 'state', 'openRank', 'dueOrder', 'issue']) &&
+        index.version == 1 && index.issue == null && index.dueOrder is int &&
+        status is string && status in ['pending', 'done', 'completed', 'canceled', 'cancelled', 'no_show', 'draft'] &&
+        index.state == normalizedTaskState(record) &&
+        index.openRank == (index.state == 'pending' ? 0 : 1);
+    }
+
+    function validTaskDueIndex(record) {
+      let due = record.get('dueAt', null);
+      let index = record.get('crmTaskIndex', {});
+      return validTaskIndexShape(record) && (
+        ((due == null || due == '') && index.dueOrder == 9007199254740991) ||
+        (due is timestamp && index.dueOrder == due.toMillis())
+      );
+    }
+
+    function untouchedLegacyTaskIndex() {
+      return !resource.data.keys().hasAny(['crmTaskIndex']) &&
+        !request.resource.data.keys().hasAny(['crmTaskIndex']) &&
+        request.resource.data.get('dueAt', null) == resource.data.get('dueAt', null) &&
+        request.resource.data.get('status', 'pending') == resource.data.get('status', 'pending');
+    }
+
+    function preservedLegacyTaskDueIndex() {
+      let oldDue = resource.data.get('dueAt', null);
+      let prior = resource.data.get('crmTaskIndex', {});
+      let next = request.resource.data.get('crmTaskIndex', {});
+      return !(oldDue is timestamp) && oldDue != null && oldDue != '' &&
+        prior is map && next is map && prior.get('version', 0) == 1 && prior.get('issue', 'missing') == null &&
+        request.resource.data.get('dueAt', null) == oldDue &&
+        next.get('dueOrder', null) == prior.get('dueOrder', null) &&
+        validTaskIndexShape(request.resource.data);
+    }
+
     function canReadChat(chatId) {
       return canReadCommercialRecord(
         get(/databases/$(database)/documents/chats/$(chatId)).data.tenantId,
@@ -244,8 +297,13 @@ service cloud.firestore {
 
     match /lead_tasks/{taskId} {
       allow read: if canReadCommercialRecord(resource.data.tenantId, resource.data);
-      allow create: if canWriteCommercialRecord(request.resource.data.tenantId);
-      allow update: if tenantIdIsUnchanged() && canWriteCommercialRecord(resource.data.tenantId);
+      allow create: if canWriteCommercialRecord(request.resource.data.tenantId) && (
+        !requiresTaskIndexWrites(request.resource.data.tenantId) || validTaskDueIndex(request.resource.data)
+      );
+      allow update: if tenantIdIsUnchanged() && canWriteCommercialRecord(resource.data.tenantId) && (
+        !requiresTaskIndexWrites(resource.data.tenantId) || validTaskDueIndex(request.resource.data) ||
+        untouchedLegacyTaskIndex() || preservedLegacyTaskDueIndex()
+      );
       allow delete: if canWriteCommercialRecord(resource.data.tenantId);
     }
 
@@ -381,9 +439,16 @@ service cloud.firestore {
     match /agent_approval_policies/{docId} { allow read, write: if false; }
     match /agent_command_messages/{docId} { allow read, write: if false; }
     match /agent_conversations/{docId} { allow read, write: if false; }
+    match /agent_domain_events/{docId} { allow read, write: if false; }
+    match /agent_mission_evidence/{docId} { allow read, write: if false; }
+    match /agent_objectives/{docId} { allow read, write: if false; }
+    match /agent_programs/{docId} { allow read, write: if false; }
     match /agent_ideas/{docId} { allow read, write: if false; }
     match /agent_memories/{docId} { allow read, write: if false; }
     match /agent_experiments/{docId} { allow read, write: if false; }
+    match /agent_runtime_dispatches/{docId} { allow read, write: if false; }
+    match /agent_runtime_events/{docId} { allow read, write: if false; }
+    match /agent_task_executions/{docId} { allow read, write: if false; }
     match /tool_providers/{docId} { allow read, write: if false; }
     match /tool_connections/{docId} { allow read, write: if false; }
     match /brand_profiles/{docId} { allow read, write: if false; }

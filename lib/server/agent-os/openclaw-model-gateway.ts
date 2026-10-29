@@ -5,6 +5,7 @@ import { requestFreeLlmChat, type FreeLlmApiMessage } from "@/lib/server/agent-o
 import { listOpenAiCompatibleModels, requestOpenAiCompatibleChat } from "@/lib/server/agent-os/openai-compatible";
 import { selectCompatibleModels } from "@/lib/server/agent-os/compatible-model-routing";
 import { canonicalOpenAiCompatibleBaseUrl, OPENAI_COMPATIBLE_PROVIDER_IDS } from "@/lib/server/agent-os/provider-endpoints";
+import { FieldValue } from "firebase-admin/firestore";
 
 export type RuntimeModelMessage = {
   role: "system" | "user" | "assistant" | "developer";
@@ -15,6 +16,11 @@ export type RuntimeModelRequest = {
   model: string;
   messages: RuntimeModelMessage[];
   maxTokens: number;
+  /** Optional explicit route used by the Comando or MCP. Automatic routing is
+   * the default; a request is never silently pinned to a provider. */
+  providerId?: string;
+  connectionId?: string;
+  tenantId?: string;
 };
 
 const RUNTIME_PROVIDER_ORDER = ["groq", "nvidia-nim", "cerebras", "openrouter", "huggingface", "mistral", "alibaba-model-studio", "custom-openai-compatible"];
@@ -56,13 +62,40 @@ type SavedConnection = {
   modelCatalog: unknown;
   capabilities: unknown;
   scope: unknown;
+  tenantId?: unknown;
   status: unknown;
+  health?: unknown;
 };
 
-async function configuredPlatformConnections() {
-  const snapshot = await adminDb.collection("tool_connections").where("scope", "==", "platform").limit(200).get();
+function connectionAvailable(connection: SavedConnection) {
+  if (!["configured_unapproved", "healthy", "approved"].includes(String(connection.status || ""))) return false;
+  const health = connection.health && typeof connection.health === "object" ? connection.health as Record<string, unknown> : {};
+  if (["degraded", "down", "unavailable", "disabled"].includes(String(health.status || "").toLowerCase())) return false;
+  const cooldown = health.cooldownUntil;
+  const cooldownMillis = cooldown && typeof cooldown === "object" && "toMillis" in cooldown && typeof (cooldown as { toMillis?: unknown }).toMillis === "function"
+    ? (cooldown as { toMillis: () => number }).toMillis()
+    : new Date(String(cooldown || "")).getTime();
+  return !Number.isFinite(cooldownMillis) || cooldownMillis <= Date.now();
+}
+
+async function configuredConnections(tenantId?: string) {
+  const snapshot = await adminDb.collection("tool_connections").limit(200).get();
   return snapshot.docs.map((document) => ({ id: document.id, ...document.data() } as SavedConnection))
-    .filter((connection) => connection.status !== "pending_config" && isTextCapability(connection.capabilities));
+    .filter((connection) => connectionAvailable(connection) && isTextCapability(connection.capabilities)
+      && (connection.scope === "platform" || (connection.scope === "tenant" && Boolean(tenantId) && connection.tenantId === tenantId)));
+}
+
+async function recordRuntimeConnectionResult(input: { connectionId: string; succeeded: boolean; providerId: string; model?: string; reason?: string }) {
+  const ref = adminDb.collection("tool_connections").doc(input.connectionId);
+  const base = {
+    lastRuntimeAt: FieldValue.serverTimestamp(),
+    updatedAt: FieldValue.serverTimestamp(),
+  };
+  if (input.succeeded) {
+    await ref.set({ ...base, status: "healthy", health: { status: "healthy", lastSucceededAt: FieldValue.serverTimestamp(), lastRuntimeProvider: input.providerId, lastRuntimeModel: input.model || null, consecutiveFailures: 0 } }, { merge: true }).catch(() => undefined);
+    return;
+  }
+  await ref.set({ ...base, status: "degraded", health: { status: "degraded", lastFailedAt: FieldValue.serverTimestamp(), lastFailureReason: String(input.reason || "runtime_request_failed").slice(0, 500), cooldownUntil: new Date(Date.now() + 2 * 60_000), consecutiveFailures: FieldValue.increment(1) } }, { merge: true }).catch(() => undefined);
 }
 
 export type RuntimeModelResult = {
@@ -80,7 +113,11 @@ export type RuntimeModelResult = {
 export async function requestRuntimeModel(input: RuntimeModelRequest): Promise<RuntimeModelResult> {
   const messages = messagesForProvider(input.messages);
   if (!messages.length) throw new Error("runtime_model_messages_missing");
-  const connections = await configuredPlatformConnections();
+  const requestedProvider = clean(input.providerId, 120).toLowerCase();
+  const requestedConnection = clean(input.connectionId, 180);
+  const allConnections = await configuredConnections(input.tenantId);
+  const connections = allConnections.filter((connection) => (!requestedProvider || connection.providerId === requestedProvider) && (!requestedConnection || connection.id === requestedConnection));
+  if ((requestedProvider || requestedConnection) && !connections.length) throw new Error("runtime_requested_route_unavailable");
   const freeGateway = connections.find((connection) => connection.providerId === "freellmapi");
   const freeKey = freeGateway ? decryptSecret(typeof freeGateway.credential === "string" ? freeGateway.credential : "") : "";
 
@@ -92,6 +129,7 @@ export async function requestRuntimeModel(input: RuntimeModelRequest): Promise<R
         model: input.model === "altum-agent" ? "auto" : input.model,
         messages,
       });
+      await recordRuntimeConnectionResult({ connectionId: freeGateway.id, succeeded: true, providerId: "freellmapi", model: result.routedVia || result.model });
       return {
         answer: result.answer,
         model: result.routedVia || result.model,
@@ -100,6 +138,7 @@ export async function requestRuntimeModel(input: RuntimeModelRequest): Promise<R
         outputTokens: result.outputTokens,
       };
     } catch (error) {
+      await recordRuntimeConnectionResult({ connectionId: freeGateway.id, succeeded: false, providerId: "freellmapi", reason: error instanceof Error ? error.message : "freellmapi_unavailable" });
       console.warn("[openclaw-model-gateway] FreeLLMAPI unavailable; trying a compatible connection.", error instanceof Error ? error.message.slice(0, 180) : "unknown");
     }
   }
@@ -130,11 +169,13 @@ export async function requestRuntimeModel(input: RuntimeModelRequest): Promise<R
     for (const model of candidates) {
       try {
         const result = await requestOpenAiCompatibleChat({ baseUrl, apiKey: key, model, messages });
+        await recordRuntimeConnectionResult({ connectionId: connection.id, succeeded: true, providerId: connection.providerId, model: result.model });
         return { answer: result.answer, model: result.model, provider: connection.providerId, inputTokens: result.inputTokens, outputTokens: result.outputTokens };
       } catch (error) {
         console.warn("[openclaw-model-gateway] compatible model unavailable.", { provider: connection.providerId, model, reason: error instanceof Error ? error.message.slice(0, 180) : "unknown" });
       }
     }
+    await recordRuntimeConnectionResult({ connectionId: connection.id, succeeded: false, providerId: connection.providerId, reason: "all_candidate_models_failed" });
   }
   throw new Error("runtime_model_unavailable");
 }

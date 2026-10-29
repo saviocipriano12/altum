@@ -995,7 +995,6 @@ export default function ClienteCanaisPage() {
 
       let selection: { phoneNumberId: string; wabaId: string } | null = null;
       let loginFinished = false;
-      let loginTimeout: number | undefined;
       const finishLogin = () => {
         if (loginFinished) return;
         loginFinished = true;
@@ -1026,7 +1025,7 @@ export default function ClienteCanaisPage() {
       };
       window.addEventListener("message", receiveSelection);
 
-      loginTimeout = window.setTimeout(() => {
+      const loginTimeout = window.setTimeout(() => {
         setError("A janela da Meta não respondeu. Libere pop-ups para altumia.com.br e tente novamente.");
         finishLogin();
       }, 60000);

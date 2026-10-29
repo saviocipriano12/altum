@@ -1,6 +1,16 @@
-﻿import { FieldValue } from "firebase-admin/firestore";
+import { FieldValue, Timestamp } from "firebase-admin/firestore";
+import { createHash } from "node:crypto";
+import { isExactCrmRecordId } from "@/lib/crm-observation-identity";
+import { currentCommercialField, commercialFieldDefinitions, type CommercialField } from "@/lib/crm-current-facts";
+import { prepareAiExecutionAuthority } from "./execution-authority";
 import { adminDb } from "@/app/lib/server/firebase-admin";
 import { extractLeadAttributionSummary } from "@/lib/server/attribution";
+import { matchesConversationCommercialFence, type ConversationCommercialFence } from "@/lib/server/crm/conversation-commercial-context";
+import {
+  mergeRelationshipState,
+  normalizeRelationshipState,
+  type RelationshipState,
+} from "@/lib/server/ai/relationship-state";
 
 export type AltumConversationStage =
   | "greeting"
@@ -37,6 +47,10 @@ export type AltumConversationRuntimeState = {
   leadTone?: string | null;
   activeTopic?: string | null;
   conversationMaturity?: string | null;
+  activeSpecialist?: string | null;
+  specialistSupervisorVersion?: string | null;
+  specialistTransferReason?: string | null;
+  specialistDecisionKey?: string | null;
 };
 
 export type AltumLeadMemory = {
@@ -87,6 +101,7 @@ export type AltumLeadMemory = {
   openQuestion?: string | null;
   conversationMaturity?: string | null;
   fields?: Record<string, string>;
+  relationshipState?: RelationshipState | null;
 };
 
 function cleanText(value: unknown, max = 220) {
@@ -290,6 +305,30 @@ export function getConversationRuntimeDocId(tenantId: string, chatId: string) {
   return `${tenantId.trim()}_${chatId.trim()}`;
 }
 
+export function getSelectedConversationRuntimeDocId(tenantId: string, chatId: string, selectionId: string) {
+  if (![tenantId, chatId, selectionId].every(id => isExactCrmRecordId(id))) throw new Error("AI_RUNTIME_INVALID_CONTEXT");
+  return `selected_${createHash("sha256").update(JSON.stringify([tenantId, chatId, selectionId])).digest("hex")}`;
+}
+
+async function runtimeScope(tx: FirebaseFirestore.Transaction, tenantId: string, chatId: string, fence?: ConversationCommercialFence) {
+  if (![tenantId, chatId].every(id => isExactCrmRecordId(id))) return null;
+  await prepareAiExecutionAuthority(tenantId, chatId, tx);
+  const chat = await tx.get(adminDb.collection("chats").doc(chatId));
+  if (!chat.exists || chat.data()?.tenantId !== tenantId) return null;
+  if (fence && (fence.tenantId !== tenantId || fence.chatId !== chatId || !await matchesConversationCommercialFence(tx, fence))) return null;
+  const selectionId = fence?.selectionId;
+  if (chat.data()?.commercialContext !== undefined && !selectionId) return null;
+  return { chat, selectionId, id: selectionId ? getSelectedConversationRuntimeDocId(tenantId, chatId, selectionId) : getConversationRuntimeDocId(tenantId, chatId) };
+}
+
+function matchesRuntimeParent(row: Record<string, unknown>, scope: NonNullable<Awaited<ReturnType<typeof runtimeScope>>>, tenantId: string, chatId: string) {
+  return row.tenantId === tenantId && row.chatId === chatId &&
+    (!scope.selectionId || row.chatGeneration instanceof Timestamp) &&
+    (!scope.chat.data()?.leadId || !row.leadId || scope.chat.data()?.leadId === row.leadId) &&
+    (row.selectionId || "") === (scope.selectionId || "") &&
+    (!row.chatGeneration || row.chatGeneration instanceof Timestamp && scope.chat.createTime?.isEqual(row.chatGeneration));
+}
+
 export function getLeadMemoryDocId(tenantId: string, leadId: string) {
   return `${tenantId.trim()}_${leadId.trim()}`;
 }
@@ -351,65 +390,79 @@ export async function upsertConversationRuntimeState(input: {
   memorySummary?: string | null;
   summary?: string | null;
   extractedFields?: Record<string, string> | null;
+  sourceOccurredAtMs?: number | null;
+  sourceMessageId?: string | null;
+  activeSpecialist?: string | null;
+  specialistSupervisorVersion?: string | null;
+  specialistTransferReason?: string | null;
+  specialistDecisionKey?: string | null;
+  conversationFence?: ConversationCommercialFence;
 }) {
-  const docId = getConversationRuntimeDocId(input.tenantId, input.chatId);
-  const ref = adminDb.collection("ai_conversation_state").doc(docId);
-  const snap = await ref.get();
-  const previous = snap.exists ? (snap.data() as { stage?: AltumConversationStage }) : null;
-
-  const stage =
-    input.stage ||
-    inferConversationStage({
+  const occurredAtMs = Number(input.sourceOccurredAtMs) > 0 ? Math.round(Number(input.sourceOccurredAtMs)) : Date.now();
+  return adminDb.runTransaction(async (tx) => {
+    const scope = await runtimeScope(tx, input.tenantId, input.chatId, input.conversationFence);
+    if (!scope || scope.chat.data()?.leadId && scope.chat.data()?.leadId !== input.leadId ||
+        input.conversationFence && (input.conversationFence.leadId !== input.leadId || input.conversationFence.messageId !== input.sourceMessageId))
+      return { applied: false, reason: "context_changed" as const };
+    const ref = adminDb.collection("ai_conversation_state").doc(scope.id);
+    const snap = await tx.get(ref);
+    if (snap.exists && (!matchesRuntimeParent(snap.data()!, scope, input.tenantId, input.chatId) || !snap.data()?.chatGeneration &&
+        (snap.createTime!.seconds < scope.chat.createTime!.seconds || snap.createTime!.seconds === scope.chat.createTime!.seconds && snap.createTime!.nanoseconds < scope.chat.createTime!.nanoseconds)))
+      return { applied: false, reason: "context_changed" as const };
+    const previous = snap.exists ? (snap.data() as { stage?: AltumConversationStage; lastSourceOccurredAtMs?: number }) : null;
+    if (Number(previous?.lastSourceOccurredAtMs || 0) > occurredAtMs) {
+      return { applied: false, reason: "out_of_order" as const };
+    }
+    const stage = input.stage || inferConversationStage({
       inboundText: input.inboundText,
       decision: input.decision,
       nextAction: input.nextAction,
       extractedFields: input.extractedFields || null,
       previousStage: previous?.stage || null,
     });
-
-  const intent =
-    cleanText(input.intent, 80) ||
-    cleanText(input.extractedFields?.intent, 80) ||
-    (stage === "greeting" ? "greeting" : stage === "objection_handling" ? "price_or_objection" : "");
-  const recommendedOffer =
-    cleanText(input.recommendedOffer, 140) || cleanText(input.extractedFields?.serviceInterest, 140) || "";
-
-  const payload: Record<string, unknown> = {
-    tenantId: input.tenantId,
-    chatId: input.chatId,
-    leadId: input.leadId || null,
-    stage,
-    intent: intent || null,
-    confidence: typeof input.confidence === "number" ? input.confidence : null,
-    nextAction: cleanText(input.nextAction, 160) || null,
-    recommendedOffer: recommendedOffer || null,
-    responseGoal: cleanText(input.responseGoal, 80) || null,
-    objectionType: cleanText(input.objectionType, 80) || null,
-    turnGoal: cleanText(input.turnGoal, 140) || null,
-    memorySummary: cleanText(input.memorySummary, 260) || null,
-    summary: cleanText(input.summary, 260) || null,
-    lastDecision: input.decision,
-    lastReason: cleanText(input.reason, 180) || null,
-    lastInboundText: cleanText(input.inboundText, 800) || null,
-    lastOutboundText: cleanText(input.outboundText, 800) || null,
-    pendingQuestion: extractQuestion(input.outboundText || "") || null,
-    lastLeadQuestion: extractQuestion(input.inboundText) || null,
-    preferredName: extractPreferredName(input.inboundText, input.extractedFields) || null,
-    leadTone: inferLeadTone(input.inboundText, input.extractedFields) || null,
-    activeTopic: inferActiveTopic(input.inboundText, input.extractedFields) || null,
-    conversationMaturity: inferConversationMaturity(stage, input.nextAction || null) || null,
-    lastLeadMessageAt: FieldValue.serverTimestamp(),
-    updatedAt: FieldValue.serverTimestamp(),
-  };
-
-  if (input.outboundText) {
-    payload.lastAiReplyAt = FieldValue.serverTimestamp();
-  }
-  if (!snap.exists) {
-    payload.createdAt = FieldValue.serverTimestamp();
-  }
-
-  await ref.set(payload, { merge: true });
+    const intent = cleanText(input.intent, 80) || cleanText(input.extractedFields?.intent, 80) ||
+      (stage === "greeting" ? "greeting" : stage === "objection_handling" ? "price_or_objection" : "");
+    const recommendedOffer = cleanText(input.recommendedOffer, 140) || cleanText(input.extractedFields?.serviceInterest, 140) || "";
+    const payload: Record<string, unknown> = {
+      tenantId: input.tenantId,
+      chatId: input.chatId,
+      chatGeneration: scope.chat.createTime!,
+      ...(scope.selectionId ? { selectionId: scope.selectionId } : {}),
+      leadId: input.leadId || null,
+      stage,
+      intent: intent || null,
+      confidence: typeof input.confidence === "number" ? input.confidence : null,
+      nextAction: cleanText(input.nextAction, 160) || null,
+      recommendedOffer: recommendedOffer || null,
+      responseGoal: cleanText(input.responseGoal, 80) || null,
+      objectionType: cleanText(input.objectionType, 80) || null,
+      turnGoal: cleanText(input.turnGoal, 140) || null,
+      memorySummary: cleanText(input.memorySummary, 260) || null,
+      summary: cleanText(input.summary, 260) || null,
+      lastDecision: input.decision,
+      lastReason: cleanText(input.reason, 180) || null,
+      lastInboundText: cleanText(input.inboundText, 800) || null,
+      lastOutboundText: cleanText(input.outboundText, 800) || null,
+      pendingQuestion: extractQuestion(input.outboundText || "") || null,
+      lastLeadQuestion: extractQuestion(input.inboundText) || null,
+      preferredName: extractPreferredName(input.inboundText, input.extractedFields) || null,
+      leadTone: inferLeadTone(input.inboundText, input.extractedFields) || null,
+      activeTopic: inferActiveTopic(input.inboundText, input.extractedFields) || null,
+      conversationMaturity: inferConversationMaturity(stage, input.nextAction || null) || null,
+      activeSpecialist: cleanText(input.activeSpecialist, 40) || null,
+      specialistSupervisorVersion: cleanText(input.specialistSupervisorVersion, 80) || null,
+      specialistTransferReason: cleanText(input.specialistTransferReason, 120) || null,
+      specialistDecisionKey: cleanText(input.specialistDecisionKey, 96) || null,
+      lastSourceOccurredAtMs: occurredAtMs,
+      lastSourceMessageId: cleanText(input.sourceMessageId, 180) || null,
+      lastLeadMessageAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
+    };
+    if (input.outboundText) payload.lastAiReplyAt = FieldValue.serverTimestamp();
+    if (!snap.exists) payload.createdAt = FieldValue.serverTimestamp();
+    tx.set(ref, payload, { merge: true });
+    return { applied: true, reason: "applied" as const };
+  });
 }
 
 export async function upsertLeadMemory(input: {
@@ -427,6 +480,11 @@ export async function upsertLeadMemory(input: {
   openQuestion?: string | null;
   conversationMaturity?: string | null;
   memorySummary?: string | null;
+  inboundText?: string | null;
+  sourceOccurredAtMs?: number | null;
+  sourceMessageId?: string | null;
+  identityKey?: string | null;
+  conversationFence?: ConversationCommercialFence;
 }) {
   const fields = input.extractedFields || null;
   const safeFields = fields || {};
@@ -470,7 +528,6 @@ export async function upsertLeadMemory(input: {
     tenantId: input.tenantId,
     leadId: input.leadId,
     updatedAt: FieldValue.serverTimestamp(),
-    createdAt: FieldValue.serverTimestamp(),
   };
 
   if (Object.keys(normalizedFields).length) {
@@ -505,16 +562,80 @@ export async function upsertLeadMemory(input: {
   const nextAction = cleanText(input.nextAction, 160);
   if (nextAction) payload.nextBestAction = nextAction;
 
-  await adminDb
-    .collection("ai_lead_memory")
-    .doc(getLeadMemoryDocId(input.tenantId, input.leadId))
-    .set(payload, { merge: true });
+  const ref = adminDb.collection("ai_lead_memory").doc(getLeadMemoryDocId(input.tenantId, input.leadId));
+  const occurredAtMs = Number(input.sourceOccurredAtMs) > 0 ? Math.round(Number(input.sourceOccurredAtMs)) : Date.now();
+  return adminDb.runTransaction(async (tx) => {
+    if (input.conversationFence && (input.conversationFence.tenantId !== input.tenantId || input.conversationFence.leadId !== input.leadId ||
+        input.conversationFence.messageId !== input.sourceMessageId || !await matchesConversationCommercialFence(tx, input.conversationFence))) {
+      return { applied: false, reason: "commercial_context_changed" as const, appliedKeys: [], ignoredKeys: [] };
+    }
+    const snap = await tx.get(ref);
+    const current = snap.exists ? snap.data() as Record<string, unknown> : {};
+    if (snap.exists && (current.tenantId !== input.tenantId || current.leadId !== input.leadId)) {
+      return { applied: false, reason: "memory_identity_conflict" as const, appliedKeys: [], ignoredKeys: [] };
+    }
+    if (input.conversationFence && snap.exists) {
+      const parent = input.conversationFence.leadGeneration;
+      if (current.leadGeneration ? !(current.leadGeneration instanceof Timestamp) || !current.leadGeneration.isEqual(parent)
+        : snap.createTime!.seconds < parent.seconds || snap.createTime!.seconds === parent.seconds && snap.createTime!.nanoseconds < parent.nanoseconds) {
+        return { applied: false, reason: "memory_generation_conflict" as const, appliedKeys: [], ignoredKeys: [] };
+      }
+    }
+    if (input.conversationFence) payload.leadGeneration = input.conversationFence.leadGeneration;
+    const relationship = mergeRelationshipState({
+      current: current.relationshipState,
+      tenantId: input.tenantId,
+      leadId: input.leadId,
+      identityKey: input.identityKey,
+      occurredAtMs,
+      sourceMessageId: cleanText(input.sourceMessageId, 240),
+      inboundText: cleanText(input.inboundText, 1400),
+      extractedFields: normalizedFields,
+      derivedFacts: {
+        preferredName,
+        leadTone,
+        activeTopic,
+        conversationMaturity,
+        dominantIntent,
+        dominantObjection,
+        recommendedOffer,
+      },
+      openQuestion,
+    });
+    payload.relationshipState = relationship.state;
+    payload.relationshipUpdate = {
+      applied: relationship.applied,
+      reason: relationship.reason,
+      appliedKeys: relationship.appliedKeys,
+      ignoredKeys: relationship.ignoredKeys,
+      sourceMessageId: cleanText(input.sourceMessageId, 240) || null,
+      occurredAtMs,
+    };
+    if (!snap.exists) payload.createdAt = FieldValue.serverTimestamp();
+    const writePayload = relationship.applied
+      ? payload
+      : {
+          tenantId: input.tenantId,
+          leadId: input.leadId,
+          ...(input.conversationFence ? { leadGeneration: input.conversationFence.leadGeneration } : {}),
+          relationshipState: relationship.state,
+          relationshipUpdate: payload.relationshipUpdate,
+          updatedAt: FieldValue.serverTimestamp(),
+        };
+    tx.set(ref, writePayload, { merge: true });
+    return relationship;
+  });
 }
 
-export async function getConversationRuntimeState(tenantId: string, chatId: string): Promise<AltumConversationRuntimeState | null> {
-  const snap = await adminDb.collection("ai_conversation_state").doc(getConversationRuntimeDocId(tenantId, chatId)).get();
+export async function getConversationRuntimeState(tenantId: string, chatId: string, conversationFence?: ConversationCommercialFence): Promise<AltumConversationRuntimeState | null> {
+  return adminDb.runTransaction(async tx => {
+  const scope = await runtimeScope(tx, tenantId, chatId, conversationFence);
+  if (!scope) return null;
+  const snap = await tx.get(adminDb.collection("ai_conversation_state").doc(scope.id));
   if (!snap.exists) return null;
   const data = snap.data() as Record<string, unknown>;
+  if (!matchesRuntimeParent(data, scope, tenantId, chatId) || !data.chatGeneration &&
+      (snap.createTime!.seconds < scope.chat.createTime!.seconds || snap.createTime!.seconds === scope.chat.createTime!.seconds && snap.createTime!.nanoseconds < scope.chat.createTime!.nanoseconds)) return null;
   return {
     tenantId,
     chatId,
@@ -539,16 +660,36 @@ export async function getConversationRuntimeState(tenantId: string, chatId: stri
     leadTone: cleanText(data.leadTone, 80) || null,
     activeTopic: cleanText(data.activeTopic, 120) || null,
     conversationMaturity: cleanText(data.conversationMaturity, 80) || null,
+    activeSpecialist: cleanText(data.activeSpecialist, 40) || null,
+    specialistSupervisorVersion: cleanText(data.specialistSupervisorVersion, 80) || null,
+    specialistTransferReason: cleanText(data.specialistTransferReason, 120) || null,
+    specialistDecisionKey: cleanText(data.specialistDecisionKey, 96) || null,
   };
+  }, { readOnly: true });
 }
 
-export async function getLeadMemory(tenantId: string, leadId: string): Promise<AltumLeadMemory | null> {
+export async function getLeadMemory(tenantId: string, leadId: string, identityKey?: string | null): Promise<AltumLeadMemory | null> {
   const [snap, leadSnap] = await Promise.all([
     adminDb.collection("ai_lead_memory").doc(getLeadMemoryDocId(tenantId, leadId)).get(),
     adminDb.collection("leads").doc(leadId).get(),
   ]);
   if (!snap.exists && !leadSnap.exists) return null;
   const data = snap.exists ? (snap.data() as Record<string, unknown>) : {};
+  if (leadSnap.exists && leadSnap.data()?.tenantId !== tenantId) return null;
+  if (snap.exists && (data.tenantId !== tenantId || data.leadId !== leadId)) return null;
+  if (data.leadGeneration && (!(data.leadGeneration instanceof Timestamp) || !leadSnap.createTime?.isEqual(data.leadGeneration))) return null;
+  if (snap.exists && !data.leadGeneration && leadSnap.createTime &&
+      (snap.createTime!.seconds < leadSnap.createTime.seconds || snap.createTime!.seconds === leadSnap.createTime.seconds && snap.createTime!.nanoseconds < leadSnap.createTime.nanoseconds)) return null;
+  const relationshipState = snap.exists
+    ? normalizeRelationshipState(data.relationshipState, { tenantId, leadId })
+    : null;
+  if (
+    identityKey &&
+    relationshipState?.identityKeys.length &&
+    !relationshipState.identityKeys.includes(identityKey)
+  ) {
+    return null;
+  }
   const leadData = leadSnap.exists ? (leadSnap.data() as Record<string, unknown>) : {};
   const attribution = extractLeadAttributionSummary(leadData);
   const outboundContext =
@@ -588,6 +729,28 @@ export async function getLeadMemory(tenantId: string, leadId: string): Promise<A
         )
       : undefined;
 
+  const factValue = (key: string, legacy: unknown) => {
+    if (Object.hasOwn(commercialFieldDefinitions, key)) {
+      const current = currentCommercialField(leadData, key as CommercialField);
+      if (current.authoritative) return current.value;
+    }
+    const fact = relationshipState?.facts[key];
+    if (fact) return fact.status === "confirmed" ? cleanText(fact.value, 320) : "";
+    return Object.hasOwn(commercialFieldDefinitions, key)
+      ? currentCommercialField(leadData, key as CommercialField, [legacy]).value : cleanText(legacy, 320);
+  };
+  // The relationship history remains stored, but a contradictory old fact must
+  // not be reintroduced into the agent prompt alongside the corrected CRM field.
+  const currentRelationship = relationshipState ? { ...relationshipState, facts: { ...relationshipState.facts } } : null;
+  for (const key of Object.keys(commercialFieldDefinitions) as CommercialField[]) {
+    const current = currentCommercialField(leadData, key);
+    if (!current.authoritative) continue;
+    if (currentRelationship?.facts[key] && currentRelationship.facts[key].value !== current.value) delete currentRelationship.facts[key];
+    if (fields) for (const alias of [key, commercialFieldDefinitions[key].custom, ...(key === "budgetBand" ? ["budget"] : [])]) {
+      if (Object.hasOwn(fields, alias)) { if (current.value) fields[alias] = current.value; else delete fields[alias]; }
+    }
+  }
+  const analysisNeedsRefresh = leadData.aiCommercialAnalysisNeedsRefresh === true;
   return {
     tenantId,
     leadId,
@@ -612,32 +775,33 @@ export async function getLeadMemory(tenantId: string, leadId: string): Promise<A
     campaignNextStep: cleanPublicCampaignText(followupContext.nextStep, 260) || null,
     campaignHandoffRule: cleanText(followupContext.handoffRule, 360) || null,
     campaignFollowupNotes: cleanText(followupContext.notes, 700) || null,
-    businessType: cleanText(data.businessType, 120) || null,
-    primaryGoal: cleanText(data.primaryGoal, 180) || null,
-    budgetBand: cleanText(data.budgetBand, 120) || null,
-    urgency: cleanText(data.urgency, 120) || null,
-    dominantIntent: cleanText(data.dominantIntent, 120) || null,
-    dominantObjection: cleanText(data.dominantObjection, 120) || null,
-    decisionMaker: cleanText(data.decisionMaker, 160) || null,
-    digitalMaturity: cleanText(data.digitalMaturity, 160) || null,
-    city: cleanText(data.city, 120) || null,
-    currentChannels: cleanText(data.currentChannels, 220) || null,
-    teamSize: cleanText(data.teamSize, 80) || null,
-    recommendedOffer: cleanText(data.recommendedOffer, 180) || cleanText(followupContext.offerName, 180) || null,
-    nextBestAction: cleanText(data.nextBestAction, 180) || null,
-    diagnosis: cleanText(data.diagnosis, 360) || cleanText(leadData.aiDiagnosis, 360) || null,
-    personalizedPlan: cleanText(data.personalizedPlan, 520) || cleanText(leadData.aiPersonalizedPlan, 520) || null,
-    sellerNextMove: cleanText(data.sellerNextMove, 260) || cleanText(leadData.aiSellerNextMove, 260) || null,
-    materialToSend: cleanText(data.materialToSend, 260) || cleanText(leadData.aiMaterialToSend, 260) || null,
-    proposalOutline: cleanText(data.proposalOutline, 520) || cleanText(leadData.aiProposalOutline, 520) || null,
-    memorySummary: cleanText(data.memorySummary, 260) || null,
-    summary: cleanText(data.summary, 260) || null,
-    preferredName: cleanText(data.preferredName, 80) || null,
-    leadTone: cleanText(data.leadTone, 80) || null,
-    activeTopic: cleanText(data.activeTopic, 120) || null,
+    businessType: factValue("businessType", data.businessType) || null,
+    primaryGoal: factValue("primaryGoal", data.primaryGoal) || null,
+    budgetBand: factValue("budgetBand", data.budgetBand) || null,
+    urgency: factValue("urgency", data.urgency) || null,
+    dominantIntent: factValue("dominantIntent", data.dominantIntent) || null,
+    dominantObjection: factValue("dominantObjection", data.dominantObjection) || null,
+    decisionMaker: factValue("decisionMaker", data.decisionMaker) || null,
+    digitalMaturity: factValue("digitalMaturity", data.digitalMaturity) || null,
+    city: factValue("city", data.city) || null,
+    currentChannels: factValue("currentChannels", data.currentChannels) || null,
+    teamSize: factValue("teamSize", data.teamSize) || null,
+    recommendedOffer: factValue("recommendedOffer", data.recommendedOffer) || cleanText(followupContext.offerName, 180) || null,
+    nextBestAction: analysisNeedsRefresh ? null : cleanText(data.nextBestAction, 180) || null,
+    diagnosis: analysisNeedsRefresh ? null : cleanText(data.diagnosis, 360) || cleanText(leadData.aiDiagnosis, 360) || null,
+    personalizedPlan: analysisNeedsRefresh ? null : cleanText(data.personalizedPlan, 520) || cleanText(leadData.aiPersonalizedPlan, 520) || null,
+    sellerNextMove: analysisNeedsRefresh ? null : cleanText(data.sellerNextMove, 260) || cleanText(leadData.aiSellerNextMove, 260) || null,
+    materialToSend: analysisNeedsRefresh ? null : cleanText(data.materialToSend, 260) || cleanText(leadData.aiMaterialToSend, 260) || null,
+    proposalOutline: analysisNeedsRefresh ? null : cleanText(data.proposalOutline, 520) || cleanText(leadData.aiProposalOutline, 520) || null,
+    memorySummary: analysisNeedsRefresh ? null : cleanText(data.memorySummary, 260) || null,
+    summary: analysisNeedsRefresh ? null : cleanText(data.summary, 260) || null,
+    preferredName: factValue("preferredName", data.preferredName) || null,
+    leadTone: factValue("leadTone", data.leadTone) || null,
+    activeTopic: factValue("activeTopic", data.activeTopic) || null,
     openQuestion: cleanText(data.openQuestion, 220) || null,
-    conversationMaturity: cleanText(data.conversationMaturity, 80) || null,
+    conversationMaturity: factValue("conversationMaturity", data.conversationMaturity) || null,
     fields,
+    relationshipState: currentRelationship,
   };
 }
 

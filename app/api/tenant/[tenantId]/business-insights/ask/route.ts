@@ -1,3 +1,4 @@
+import { readQueryPages } from "@/lib/server/query-pages";
 import { canAccessAssignedCommercialRecord, hasTeamWideCommercialAccess } from "@/lib/server/commercial-access";
 import { NextResponse } from "next/server";
 import { adminDb } from "@/app/lib/server/firebase-admin";
@@ -66,8 +67,8 @@ function rowFromDoc(doc: FirebaseFirestore.QueryDocumentSnapshot): Row {
   return { id: doc.id, ...(doc.data() as Record<string, unknown>) };
 }
 
-async function listTenantRows(collectionName: string, tenantId: string, limit: number): Promise<Row[]> {
-  const snap = await adminDb.collection(collectionName).where("tenantId", "==", tenantId).limit(limit).get();
+async function listTenantRows(collectionName: string, tenantId: string): Promise<Row[]> {
+  const snap = await readQueryPages(adminDb.collection(collectionName).where("tenantId", "==", tenantId));
   return snap.docs.map(rowFromDoc);
 }
 
@@ -182,21 +183,21 @@ export async function POST(
       rawAssistedMeetings,
       settings,
     ] = await Promise.all([
-      listTenantRows("leads", tenantId, 500),
-      listTenantRows("chats", tenantId, 350),
-      listTenantRows("lead_tasks", tenantId, 500),
-      listTenantRows("appointments", tenantId, 250),
-      listTenantRows("kb_docs", tenantId, 250),
-      listTenantRows("ai_logs", tenantId, 350),
-      listTenantRows("campaign_snapshots", tenantId, 350),
-      listTenantRows("outbound_campaigns", tenantId, 200),
-      listTenantRows("financeiro", tenantId, 300),
-      listTenantRows("ecommerce_connections", tenantId, 80),
-      listTenantRows("ecommerce_products", tenantId, 500),
-      listTenantRows("ecommerce_orders", tenantId, 500),
-      listTenantRows("ecommerce_abandoned_carts", tenantId, 300),
-      listTenantRows("ecommerce_commercial_actions", tenantId, 400),
-      listTenantRows("assisted_meetings", tenantId, 120),
+      listTenantRows("leads", tenantId),
+      listTenantRows("chats", tenantId),
+      listTenantRows("lead_tasks", tenantId),
+      listTenantRows("appointments", tenantId),
+      listTenantRows("kb_docs", tenantId),
+      listTenantRows("ai_logs", tenantId),
+      listTenantRows("campaign_snapshots", tenantId),
+      listTenantRows("outbound_campaigns", tenantId),
+      listTenantRows("financeiro", tenantId),
+      listTenantRows("ecommerce_connections", tenantId),
+      listTenantRows("ecommerce_products", tenantId),
+      listTenantRows("ecommerce_orders", tenantId),
+      listTenantRows("ecommerce_abandoned_carts", tenantId),
+      listTenantRows("ecommerce_commercial_actions", tenantId),
+      listTenantRows("assisted_meetings", tenantId),
       getTenantSettings(tenantId),
     ]);
 

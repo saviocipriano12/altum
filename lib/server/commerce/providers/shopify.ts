@@ -1,5 +1,7 @@
 import { assertSafeCommerceUrl, cleanCommerceText, commerceFetchJson } from "@/lib/server/commerce/http";
 import type { CommerceProvider, CommerceSyncEvent } from "@/lib/server/commerce/types";
+import { commerceJsonPayload } from "@/lib/commerce-payload";
+import { queryShopifyLiveCatalog } from "@/lib/shopify-live-catalog";
 
 type GraphqlResponse = { data?: Record<string, unknown>; errors?: Array<{ message?: string }> };
 
@@ -10,7 +12,7 @@ function shopDomain(storeUrl: string, storeId: string) {
   return raw;
 }
 
-async function shopifyRequest(connection: Parameters<CommerceProvider["sync"]>[0]["connection"], accessToken: string, query: string) {
+async function shopifyRequest(connection: Parameters<CommerceProvider["sync"]>[0]["connection"], accessToken: string, query: string, variables?: Record<string, unknown>) {
   if (!accessToken) throw new Error("commerce_credentials_missing");
   const base = await assertSafeCommerceUrl(shopDomain(connection.storeUrl, connection.storeId), "myshopify.com");
   const version = cleanCommerceText(process.env.SHOPIFY_ADMIN_API_VERSION, 20) || "2026-07";
@@ -18,7 +20,7 @@ async function shopifyRequest(connection: Parameters<CommerceProvider["sync"]>[0
   const { data } = await commerceFetchJson<GraphqlResponse>(url, {
     method: "POST",
     headers: { "Content-Type": "application/json", "X-Shopify-Access-Token": accessToken },
-    body: JSON.stringify({ query }),
+    body: JSON.stringify({ query, ...(variables ? { variables } : {}) }),
   });
   if (data.errors?.length) throw new Error(`commerce_provider_request_failed:${data.errors[0]?.message || "GraphQL error"}`);
   return data.data || {};
@@ -138,6 +140,10 @@ export const shopifyProvider: CommerceProvider = {
     api_sync: "available",
   },
   credentialFields: ["accessToken"],
+  async lookupCatalog({ connection, credentials, query, productId }) {
+    return queryShopifyLiveCatalog({ connectionId: connection.id, query, productId },
+      (document, variables) => shopifyRequest(connection, credentials.accessToken || "", document, variables));
+  },
   async testConnection({ connection, credentials }) {
     const data = await shopifyRequest(connection, credentials.accessToken || "", "query AltumShop { shop { name } }");
     return { ok: true, accountLabel: cleanCommerceText(record(data.shop).name, 180), detail: "Admin GraphQL API conectada." };
@@ -176,6 +182,9 @@ export const shopifyProvider: CommerceProvider = {
       ...orders.map((order) => ({ topic: "orders/update", externalEventId: `sync:order:${cleanCommerceText(order.id, 180)}`, payload: orderPayload(order) })),
       ...carts.map((cart) => ({ topic: "checkouts/abandoned", externalEventId: `sync:checkout:${cleanCommerceText(cart.id, 180)}`, payload: abandonedCheckoutPayload(cart) })),
     ];
-    return { events, products: products.length, orders: orders.length, carts: carts.length, warnings };
+    return {
+      events: events.map((event) => ({ ...event, payload: commerceJsonPayload(record(event.payload)) })),
+      products: products.length, orders: orders.length, carts: carts.length, warnings,
+    };
   },
 };

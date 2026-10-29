@@ -1,3 +1,4 @@
+import {commitAppointmentChange, AppointmentChangeError, appointmentDateIso as parseIso} from "@/lib/server/crm/appointment-mutation";
 import { NextResponse } from "next/server";
 import { FieldValue } from "firebase-admin/firestore";
 import { adminDb } from "@/app/lib/server/firebase-admin";
@@ -14,6 +15,8 @@ import { assertTenantModule } from "@/lib/server/tenant-entitlements";
 import { assertAssignedCommercialRecordAccess, hasTeamWideCommercialAccess } from "@/lib/server/commercial-access";
 
 type Body = {
+  expectedVersion?: number;
+  expectedRevision?: string;
   title?: string;
   type?: string;
   status?: string;
@@ -32,57 +35,8 @@ function clean(value: unknown, max = 240) {
   return value.trim().slice(0, max);
 }
 
-function parseIso(value: unknown) {
-  const text = clean(value, 80);
-  if (!text) return null;
-  const date = new Date(text);
-  return Number.isNaN(date.getTime()) ? null : date.toISOString();
-}
-
 function addMinutes(iso: string, minutes: number) {
   return new Date(new Date(iso).getTime() + minutes * 60 * 1000).toISOString();
-}
-
-function rangesOverlap(startA: number, endA: number, startB: number, endB: number) {
-  return startA < endB && startB < endA;
-}
-
-async function findAppointmentConflict(input: {
-  tenantId: string;
-  appointmentId: string;
-  startAt: string;
-  endAt: string;
-  ownerUserId?: string | null;
-  leadId?: string | null;
-}) {
-  const startMs = new Date(input.startAt).getTime();
-  const endMs = new Date(input.endAt).getTime();
-  if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs <= startMs) return null;
-
-  const snap = await adminDb.collection("appointments").where("tenantId", "==", input.tenantId).limit(500).get();
-  const ownerUserId = clean(input.ownerUserId, 140);
-  const leadId = clean(input.leadId, 140);
-
-  return (
-    snap.docs.find((doc) => {
-      if (doc.id === input.appointmentId) return false;
-      const data = doc.data() as Record<string, unknown>;
-      const status = clean(data.status, 40) || "scheduled";
-      if (!["scheduled", "confirmed"].includes(status)) return false;
-
-      const currentStart = new Date(String(data.startAt || "")).getTime();
-      const currentEnd = data.endAt
-        ? new Date(String(data.endAt)).getTime()
-        : currentStart + 60 * 60 * 1000;
-      if (!Number.isFinite(currentStart) || !Number.isFinite(currentEnd)) return false;
-      if (!rangesOverlap(startMs, endMs, currentStart, currentEnd)) return false;
-
-      const sameLead = leadId && clean(data.leadId, 140) === leadId;
-      const currentOwner = clean(data.ownerUserId, 140);
-      const sameOwner = ownerUserId ? currentOwner === ownerUserId : !currentOwner;
-      return Boolean(sameLead || sameOwner);
-    }) || null
-  );
 }
 
 export async function PATCH(
@@ -135,12 +89,18 @@ export async function PATCH(
     }
 
     const startAt = parseIso(body.startAt);
+    if (body.startAt !== undefined && !startAt) {
+      return NextResponse.json({ error: "Informe uma data de início válida.", code: "invalid_appointment_range" }, { status: 400 });
+    }
     if (body.startAt !== undefined && startAt !== String(current.startAt || "")) {
       patch.startAt = startAt;
       changes.push("inicio atualizado");
     }
 
     const endAt = parseIso(body.endAt);
+    if (body.endAt && !endAt) {
+      return NextResponse.json({ error: "Informe uma data de fim válida.", code: "invalid_appointment_range" }, { status: 400 });
+    }
     if (body.endAt !== undefined && endAt !== String(current.endAt || "")) {
       patch.endAt = endAt;
       changes.push("fim atualizado");
@@ -192,63 +152,17 @@ export async function PATCH(
       body.status !== undefined && VALID_STATUSES.has(status) ? status : clean(current.status, 40) || "scheduled";
     const nextStartAt = String(patch.startAt || current.startAt || "");
     const nextEndAt = String(patch.endAt || current.endAt || "") || (nextStartAt ? addMinutes(nextStartAt, 60) : "");
-    const nextOwnerUserId =
-      body.ownerUserId !== undefined ? clean(body.ownerUserId, 140) : clean(current.ownerUserId, 140);
     const leadId = clean(current.leadId, 140);
 
-    if (["scheduled", "confirmed"].includes(nextStatus) && nextStartAt && nextEndAt) {
-      const conflict = await findAppointmentConflict({
-        tenantId,
-        appointmentId,
-        startAt: nextStartAt,
-        endAt: nextEndAt,
-        ownerUserId: nextOwnerUserId,
-        leadId,
-      });
-      if (conflict) {
-        return NextResponse.json(
-          {
-            error: "Horario indisponivel para este responsavel ou lead.",
-            code: "appointment_conflict",
-            conflictId: conflict.id,
-          },
-          { status: 409 }
-        );
-      }
+    if ((body.startAt !== undefined || body.endAt !== undefined) &&
+      (!nextStartAt || !nextEndAt || new Date(nextEndAt).getTime() <= new Date(nextStartAt).getTime())) {
+      return NextResponse.json({ error: "O fim do compromisso deve ser posterior ao início.", code: "invalid_appointment_range" }, { status: 400 });
     }
 
-    await ref.set(patch, { merge: true });
-
-    if (clean(current.status, 40) === "draft" && ["scheduled", "canceled"].includes(nextStatus)) {
-      const actionSnap = await adminDb.collection("commercial_agent_actions").where("tenantId", "==", tenantId).limit(200).get();
-      const linkedAction = actionSnap.docs.find((doc) => {
-        const data = doc.data();
-        return clean(data.referenceId, 180) === appointmentId &&
-          clean(data.type, 60) === "review_appointment" &&
-          clean(data.status, 40) === "pending_approval";
-      });
-      if (linkedAction) {
-        await linkedAction.ref.set({
-          status: nextStatus === "scheduled" ? "approved" : "rejected",
-          reviewedBy: user.uid,
-          reviewedByName: user.name,
-          reviewedAt: FieldValue.serverTimestamp(),
-          updatedAt: FieldValue.serverTimestamp(),
-        }, { merge: true });
-      }
-    }
+    const mutation = await commitAppointmentChange({tenantId, appointmentId, userId: user.uid, userName: user.name,
+      expected: snap, patch, expectedVersion: body.expectedVersion, expectedRevision: body.expectedRevision, detail: changes.join(" | ")});
 
     if (leadId) {
-      await adminDb.collection("leads").doc(leadId).collection("events").add({
-        type: "appointment_updated",
-        title: "Agendamento atualizado",
-        detail: changes.join(" | "),
-        appointmentId,
-        actorId: user.uid,
-        actorName: user.name,
-        createdAt: FieldValue.serverTimestamp(),
-      });
-
       await trackAppointmentOutcome({
         tenantId,
         leadId,
@@ -299,8 +213,9 @@ export async function PATCH(
       }
     }
 
-    return NextResponse.json({ ok: true, tenantId, appointmentId });
+    return NextResponse.json({ ok: true, tenantId, appointmentId, version: mutation.version });
   } catch (error) {
+    if (error instanceof AppointmentChangeError) return NextResponse.json({error: error.message, code: error.code}, {status: error.status});
     if (error instanceof RouteAuthError) {
       return NextResponse.json({ error: error.message, code: error.code }, { status: error.status });
     }

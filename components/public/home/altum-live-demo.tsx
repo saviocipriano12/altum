@@ -1,214 +1,261 @@
 "use client";
-
-import Image from "next/image";
 import Link from "next/link";
-import { AnimatePresence, motion } from "framer-motion";
-import { useState } from "react";
+import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
+import { motion, useInView, useReducedMotion } from "framer-motion";
 import {
   ArrowRight,
   BarChart3,
-  Bot,
-  CalendarClock,
-  CheckCircle2,
-  CircleDollarSign,
+  Check,
   MessageCircleMore,
   Sparkles,
   Target,
-  UsersRound,
+  Pause,
+  Play,
+  CalendarDays,
+  Bot,
 } from "lucide-react";
+import { ProductPreview, type ProductView } from "./product-preview";
+import { PublicSectionHeading } from "../shared/public-sections";
+import styles from "../public-site.module.css";
 
 const views = [
   {
-    id: "operacao",
     label: "Visão da operação",
     icon: BarChart3,
-    eyebrow: "Comece o dia sabendo onde agir",
-    title: "A operação inteira responde em uma única tela.",
-    description:
-      "Conversas, agenda, pipeline, campanhas e alertas de IA deixam de competir por atenção. A Altum organiza o que importa agora.",
-    image: "/images/platform/marketing/platform-dashboard.png",
-    alt: "Painel da operação comercial na Altum",
-    stats: [
-      ["Prioridade", "3 conversas quentes"],
-      ["Pipeline", "46 oportunidades"],
-      ["Agenda", "17 ações hoje"],
+    title: "Comece o dia sabendo onde agir.",
+    text: "Conversas, oportunidades e próximos passos em uma visão que ajuda sua equipe a encontrar o que precisa de atenção.",
+    preview: "dashboard",
+    bullets: [
+      "Prioridades do atendimento",
+      "Oportunidades em andamento",
+      "Agenda e acompanhamento",
     ],
-    insight: "A IA identificou propostas sem retorno e sugere agir primeiro nas oportunidades com maior intenção.",
+    href: "/plataforma",
   },
   {
-    id: "conversas",
     label: "Conversas",
     icon: MessageCircleMore,
-    eyebrow: "Atendimento conectado à venda",
-    title: "Quem responde já sabe quem é o cliente e o que precisa acontecer.",
-    description:
-      "O histórico comercial vive ao lado da conversa. A equipe atende, cria oportunidade, agenda retorno e envia proposta sem reconstruir o contexto.",
-    image: "/images/platform/marketing/platform-conversations.png",
-    alt: "Inbox unificada e contexto comercial da Altum",
-    stats: [
-      ["Canais", "WhatsApp + Instagram"],
-      ["Contexto", "Cliente e oportunidade"],
-      ["Controle", "IA + humano"],
+    title: "Cada conversa já começa com contexto.",
+    text: "WhatsApp, Instagram e entradas do site se aproximam do histórico comercial. Responda, acompanhe e passe o atendimento para uma pessoa quando necessário.",
+    preview: "conversations",
+    bullets: [
+      "Histórico junto da conversa",
+      "Equipe e IA trabalhando juntas",
+      "Continuidade entre os atendimentos",
     ],
-    insight: "A Altum resume a conversa, identifica intenção e chama uma pessoa com todo o contexto quando necessário.",
+    href: "/inbox",
   },
   {
-    id: "crm",
-    label: "CRM e receita",
+    label: "Clientes e oportunidades",
     icon: Target,
-    eyebrow: "Da mensagem ao fechamento",
-    title: "O funil se atualiza enquanto a venda acontece.",
-    description:
-      "Etapa, valor, responsável, proposta, tarefas e próxima ação deixam de ser controles separados e passam a refletir a operação real.",
-    image: "/images/platform/marketing/platform-crm-pipeline.png",
-    alt: "CRM e pipeline de receita da Altum",
-    stats: [
-      ["Funil", "Etapa e responsável"],
-      ["Venda", "Proposta e financeiro"],
-      ["Ritmo", "Follow-up automático"],
+    title: "Uma venda com caminho. E próximo passo.",
+    text: "Cliente, etapa, responsável e próxima ação ficam conectados. O time sabe onde a negociação está e o que fazer para avançar.",
+    preview: "pipeline",
+    bullets: [
+      "Pipeline visual",
+      "Propostas no contexto da venda",
+      "Agenda e follow-up",
     ],
-    insight: "O gestor enxerga onde o dinheiro está parado e qual ação tem mais chance de gerar avanço.",
+    href: "/crm",
   },
   {
-    id: "assistente",
-    label: "Inteligência",
-    icon: Bot,
-    eyebrow: "Pergunte à sua própria operação",
-    title: "A IA não responde só clientes. Ela responde o gestor.",
-    description:
-      "Pergunte sobre campanhas, conversas, oportunidades, receita e risco. O Assistente Altum lê os dados da conta e devolve uma decisão prática.",
-    image: "/images/platform/marketing/platform-ai-assistant.png",
-    alt: "Assistente Altum analisando dados comerciais",
-    stats: [
-      ["Leitura", "Dados da operação"],
-      ["Resposta", "Direta e contextual"],
-      ["Saída", "Próxima melhor ação"],
+    label: "Perguntar à Altum",
+    icon: Sparkles,
+    title: "Converse com a operação e saia com uma ação.",
+    text: "Pergunte sobre clientes, campanhas, conversas e vendas. Consulte prioridades, métricas e fontes em uma conversa com a Altum.",
+    preview: "assistant",
+    bullets: [
+      "Perguntas prontas para começar",
+      "Métricas e dados usados na resposta",
+      "Próximos passos da operação",
     ],
-    insight: "Pergunta: onde estamos perdendo vendas? Resposta: o gargalo está entre proposta enviada e primeiro retorno.",
+    href: "/ia-para-vendas",
+  },
+  {
+    label: "Agenda",
+    icon: CalendarDays,
+    title: "Cada compromisso com o contexto do cliente.",
+    text: "Acompanhe compromissos, confirmações e retornos. A agenda mantém a preparação da conversa e o próximo passo ligados à operação comercial.",
+    preview: "agenda",
+    bullets: [
+      "Compromissos e retornos",
+      "Confirmações e pendências",
+      "Histórico ligado ao cliente",
+    ],
+    href: "/plataforma",
+  },
+  {
+    label: "Assistente Altum",
+    icon: Bot,
+    title: "Conhecimento e regras para a IA atender melhor.",
+    text: "Acompanhe a prontidão do assistente, organize ofertas e conhecimento e defina quando a equipe precisa assumir a conversa.",
+    preview: "ai-control",
+    bullets: [
+      "Papel e comportamento",
+      "Ofertas e base de conhecimento",
+      "Escaladas para a equipe",
+    ],
+    href: "/ia-para-vendas",
   },
 ] as const;
 
-type ViewId = (typeof views)[number]["id"];
-
 export function AltumLiveDemo() {
-  const [activeId, setActiveId] = useState<ViewId>("operacao");
-  const active = views.find((view) => view.id === activeId) ?? views[0];
-
+  const [active, setActive] = useState(0);
+  const id = useId();
+  const reduced = useReducedMotion();
+  const section = useRef<HTMLElement>(null);
+  const visible = useInView(section, { amount: 0.25 });
+  const [playing, setPlaying] = useState(true);
+  useEffect(() => {
+    if (!visible || !playing || reduced) return;
+    const timer = window.setInterval(() => {
+      if (!document.hidden) setActive((value) => (value + 1) % views.length);
+    }, 8000);
+    return () => window.clearInterval(timer);
+  }, [active, visible, playing, reduced]);
+  const view = views[active];
+  const onKeyDown = (
+    event: KeyboardEvent<HTMLButtonElement>,
+    index: number,
+  ) => {
+    const next =
+      event.key === "ArrowRight" || event.key === "ArrowDown"
+        ? (index + 1) % views.length
+        : event.key === "ArrowLeft" || event.key === "ArrowUp"
+          ? (index + views.length - 1) % views.length
+          : event.key === "Home"
+            ? 0
+            : event.key === "End"
+              ? views.length - 1
+              : null;
+    if (next === null) return;
+    event.preventDefault();
+    setPlaying(false);
+    setActive(next);
+    event.currentTarget.parentElement
+      ?.querySelectorAll<HTMLButtonElement>("button")
+      [next]?.focus();
+  };
   return (
-    <section className="border-b border-white/8 bg-[#050505] px-5 py-24 lg:px-8 lg:py-32">
-      <div className="mx-auto max-w-[1280px]">
-        <div className="grid gap-8 lg:grid-cols-[0.72fr_1.28fr] lg:items-end">
-          <div>
-            <p className="text-xs font-extrabold uppercase tracking-[0.22em] text-[#60a5fa]">
-              Produto ao vivo
-            </p>
-            <h2 className="mt-5 max-w-[11ch] text-[clamp(2.9rem,5.8vw,5.8rem)] font-extrabold leading-[0.93] tracking-[-0.065em] text-white">
-              Veja a Altum trabalhar como um sistema.
-            </h2>
-          </div>
-          <p className="max-w-2xl text-lg leading-8 text-white/50 lg:justify-self-end">
-            Não é uma coleção de módulos. É um fluxo contínuo em que cada conversa alimenta o CRM, cada ação alimenta a gestão e a IA enxerga o todo.
-          </p>
+    <section ref={section} id="produto" className={styles.section}>
+      <div className={styles.container}>
+        <PublicSectionHeading
+          eyebrow="Conheça por dentro"
+          title={
+            <>
+              Tudo o que sua equipe precisa.
+              <br />
+              No mesmo lugar.
+            </>
+          }
+          description="Menos tempo procurando informações. Mais contexto para atender, vender e acompanhar cada oportunidade."
+        />
+        <div
+          className={styles.tabList}
+          role="tablist"
+          aria-label="Conhecer a plataforma"
+        >
+          {views.map((item, index) => (
+            <button
+              key={item.label}
+              id={`${id}-tab-${index}`}
+              role="tab"
+              type="button"
+              aria-selected={active === index}
+              aria-controls={`${id}-panel`}
+              tabIndex={active === index ? 0 : -1}
+              onClick={() => {
+                setActive(index);
+                setPlaying(false);
+              }}
+              onFocus={() => setPlaying(false)}
+              onKeyDown={(event) => onKeyDown(event, index)}
+            >
+              {active === index && (
+                <motion.span
+                  className={styles.tabIndicator}
+                  layoutId={`${id}-indicator`}
+                  transition={{
+                    duration: reduced ? 0 : 0.35,
+                    ease: "easeInOut",
+                  }}
+                />
+              )}
+              <span className={styles.tabLabel}>{item.label}</span>
+              {active === index && playing && !reduced && (
+                <span
+                  key={`${active}-${visible}`}
+                  aria-hidden
+                  className={styles.tabProgress}
+                  data-paused={!visible}
+                />
+              )}
+            </button>
+          ))}
         </div>
-
-        <div className="mt-14 overflow-hidden rounded-[2rem] border border-white/10 bg-[#0a0a0a] shadow-[0_40px_120px_rgba(0,0,0,0.7)]">
-          <div className="grid xl:grid-cols-[260px_1fr]">
-            <aside className="border-b border-white/8 p-3 xl:border-b-0 xl:border-r">
-              <div className="flex gap-2 overflow-x-auto pb-1 xl:block xl:space-y-2 xl:overflow-visible">
-                {views.map((view) => {
-                  const Icon = view.icon;
-                  const selected = view.id === active.id;
-                  return (
-                    <button
-                      key={view.id}
-                      type="button"
-                      onClick={() => setActiveId(view.id)}
-                      aria-pressed={selected}
-                      className={`flex min-w-48 items-center gap-3 rounded-xl border px-4 py-4 text-left transition xl:w-full ${
-                        selected
-                          ? "border-[#2563eb]/35 bg-[#2563eb]/12 text-white"
-                          : "border-transparent text-white/42 hover:border-white/8 hover:bg-white/[0.025] hover:text-white"
-                      }`}
-                    >
-                      <Icon className={`h-4 w-4 ${selected ? "text-[#60a5fa]" : ""}`} />
-                      <span className="text-sm font-bold">{view.label}</span>
-                    </button>
-                  );
-                })}
+        <div
+          role="tabpanel"
+          id={`${id}-panel`}
+          aria-labelledby={`${id}-tab-${active}`}
+          tabIndex={0}
+          onFocusCapture={() => setPlaying(false)}
+        >
+          <motion.div
+            key={view.label}
+            initial={false}
+            animate={{ opacity: [0.4, 1], y: reduced ? 0 : [8, 0] }}
+            transition={{ duration: reduced ? 0 : 0.3 }}
+            className={styles.demoShowcase}
+          >
+            <div className={styles.demoHeader}>
+              <div>
+                <span className={styles.iconBadge}>
+                  <view.icon size={22} />
+                </span>
+                <h3>{view.title}</h3>
+                <p>{view.text}</p>
               </div>
-
-              <div className="mt-4 hidden rounded-xl border border-white/8 bg-white/[0.025] p-4 xl:block">
-                <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.16em] text-white/30">
-                  <Sparkles className="h-3.5 w-3.5 text-[#60a5fa]" /> Operação conectada
-                </div>
-                <div className="mt-4 space-y-3 text-xs font-semibold text-white/45">
-                  <div className="flex items-center gap-2"><UsersRound className="h-3.5 w-3.5" /> Atendimento</div>
-                  <div className="flex items-center gap-2"><CircleDollarSign className="h-3.5 w-3.5" /> Comercial</div>
-                  <div className="flex items-center gap-2"><CalendarClock className="h-3.5 w-3.5" /> Agenda</div>
-                </div>
+              <div>
+                <ul className={styles.checkList}>
+                  {view.bullets.map((item) => (
+                    <li key={item}>
+                      <Check size={15} />
+                      {item}
+                    </li>
+                  ))}
+                </ul>
+                <Link className={styles.textLink} href={view.href}>
+                  Explorar este recurso <ArrowRight size={17} />
+                </Link>
               </div>
-            </aside>
-
-            <div className="min-w-0 p-4 md:p-6">
-              <AnimatePresence mode="wait">
-                <motion.div
-                  key={active.id}
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -8 }}
-                  transition={{ duration: 0.24 }}
-                  className="grid gap-6 2xl:grid-cols-[0.72fr_1.28fr] 2xl:items-center"
-                >
-                  <div className="2xl:py-4">
-                    <p className="text-[10px] font-extrabold uppercase tracking-[0.2em] text-[#60a5fa]">{active.eyebrow}</p>
-                    <h3 className="mt-4 max-w-[12ch] text-[clamp(2rem,4vw,3.65rem)] font-extrabold leading-[0.98] tracking-[-0.055em] text-white">{active.title}</h3>
-                    <p className="mt-5 max-w-xl text-base leading-7 text-white/48">{active.description}</p>
-
-                    <div className="mt-6 grid gap-2 sm:grid-cols-3 2xl:grid-cols-1">
-                      {active.stats.map(([label, value]) => (
-                        <div key={label} className="rounded-xl border border-white/8 bg-white/[0.025] px-4 py-3">
-                          <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-white/26">{label}</p>
-                          <p className="mt-1 text-sm font-bold text-white/74">{value}</p>
-                        </div>
-                      ))}
-                    </div>
-
-                    <div className="mt-5 rounded-xl border border-[#2563eb]/20 bg-[#2563eb]/8 p-4">
-                      <div className="flex items-start gap-3">
-                        <Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-[#60a5fa]" />
-                        <p className="text-sm leading-6 text-white/62">{active.insight}</p>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="relative overflow-hidden rounded-[1.5rem] border border-white/10 bg-black p-2.5">
-                    <div className="absolute inset-x-10 top-0 h-28 bg-[#2563eb]/14 blur-[70px]" />
-                    <Image
-                      src={active.image}
-                      alt={active.alt}
-                      width={1586}
-                      height={992}
-                      sizes="(min-width: 1536px) 56vw, 94vw"
-                      className="relative h-auto w-full rounded-[1rem]"
-                    />
-                  </div>
-                </motion.div>
-              </AnimatePresence>
             </div>
-          </div>
+            <div className={styles.demoWide}>
+              <ProductPreview view={view.preview as ProductView} />
+            </div>
+          </motion.div>
         </div>
-
-        <div className="mt-8 flex flex-col items-start justify-between gap-5 rounded-2xl border border-white/8 bg-white/[0.02] px-5 py-5 md:flex-row md:items-center">
-          <div className="flex items-start gap-3">
-            <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-[#2563eb]" />
-            <p className="max-w-3xl text-sm leading-6 text-white/52">
-              Esta demonstração usa telas reais da plataforma. Recursos e integrações podem variar por plano e configuração da operação.
-            </p>
-          </div>
-          <Link href="/plataforma" className="inline-flex shrink-0 items-center gap-2 text-sm font-extrabold text-white hover:text-[#60a5fa]">
-            Explorar o produto <ArrowRight className="h-4 w-4" />
-          </Link>
+        <div className={styles.demoToolbar}>
+          <span>Explore a operação, uma visão de cada vez.</span>
+          {!reduced && (
+            <button
+              type="button"
+              className={styles.motionToggle}
+              aria-label={
+                playing
+                  ? "Pausar demonstração automática"
+                  : "Reproduzir demonstração automática"
+              }
+              onClick={() => setPlaying((value) => !value)}
+            >
+              {playing ? <Pause size={12} /> : <Play size={12} />}
+              {playing ? "Pausar" : "Reproduzir"}
+            </button>
+          )}
         </div>
+        <small className={styles.demoCaption}>
+          Visualizações ilustrativas. Recursos e integrações dependem do plano e
+          da configuração.
+        </small>
       </div>
     </section>
   );

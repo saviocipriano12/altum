@@ -6,12 +6,12 @@ import { assertChatCommercialAccess } from "@/lib/server/commercial-access";
 import { assertTenantStorageAvailable, TenantUsageLimitError } from "@/lib/server/tenant-usage";
 import { firebaseStorageBucketCandidates } from "@/lib/server/firebase-storage";
 import { adminStorage } from "@/app/lib/server/firebase-admin";
-import { processChatOutboundJobs, queueTenantChatMedia } from "@/lib/server/chat-outbound";
+import { processChatOutboundJobs, queueTenantChatStoredMedia } from "@/lib/server/chat-outbound";
+import { ChatOutboundIdempotencyError, ChatOutboundRequestIdError, normalizeChatOutboundRequestId } from "@/lib/server/chat-outbound-idempotency";
 import type { ChatMediaType } from "@/lib/server/chat-dispatch";
 
 // A Evolution precisa baixar o video da URL temporaria antes de entregar ao
 // WhatsApp. A rota nao deve encerrar nos 20–30 segundos tipicos de texto.
-export const maxDuration = 120;
 
 const MEDIA_LIMITS: Record<ChatMediaType, number> = {
   image: 8 * 1024 * 1024,
@@ -46,6 +46,9 @@ async function resolveUploadedFile(storagePath: string) {
   return null;
 }
 
+export const runtime = "nodejs";
+export const maxDuration = 180;
+
 export async function POST(
   req: Request,
   context: { params: Promise<{ tenantId: string; chatId: string }> }
@@ -60,11 +63,16 @@ export async function POST(
     await assertChatCommercialAccess({ membership, userId: user.uid, tenantId, chatId });
 
     const body = (await req.json()) as Record<string, unknown>;
+    const clientRequestId = normalizeChatOutboundRequestId(body.clientRequestId);
     const storagePath = clean(body.storagePath, 900);
     const mediaType = normalizeMediaType(body.mediaType);
     const filename = clean(body.filename, 180) || `arquivo-${Date.now()}`;
     const caption = clean(body.caption, 1024);
     const replyToId = clean(body.replyToId, 180) || null;
+    const expectedContentSha256 = body.contentSha256;
+    if (expectedContentSha256 !== undefined && (typeof expectedContentSha256 !== "string" || !/^[a-f0-9]{64}$/.test(expectedContentSha256))) {
+      return NextResponse.json({ error: "Verificacao do arquivo invalida." }, { status: 400 });
+    }
     const expectedPrefix = `chat-media/${tenantId}/${chatId}/${user.uid}/`;
 
     if (!storagePath || !mediaType || storagePath.includes("..") || !storagePath.startsWith(expectedPrefix)) {
@@ -79,7 +87,7 @@ export async function POST(
     const [metadata] = await resolved.file.getMetadata();
     const size = Math.max(0, Number(metadata.size || 0));
     const contentType = clean(metadata.contentType, 180) || "application/octet-stream";
-    if (!size) {
+    if (!Number.isSafeInteger(size) || !size) {
       return NextResponse.json({ error: "O arquivo enviado esta vazio." }, { status: 400 });
     }
     if (size > MEDIA_LIMITS[mediaType]) {
@@ -93,17 +101,20 @@ export async function POST(
     }
 
     await assertTenantStorageAvailable(tenantId, size);
-    const queued = await queueTenantChatMedia({
+    const queued = await queueTenantChatStoredMedia({
       tenantId,
       chatId,
       mediaType,
       storagePath,
+      file: resolved.file,
+      expectedContentSha256,
       mediaSize: size,
       filename,
       contentType,
       caption,
       replyToId,
       actor: { id: user.uid, name: user.name },
+      clientRequestId,
     });
     after(() => processChatOutboundJobs({ jobId: queued.jobId, limit: 1 }).catch((error) => {
       console.error("Falha no envio assincrono de midia:", error);
@@ -111,6 +122,9 @@ export async function POST(
 
     return NextResponse.json({ ok: true, ...queued, mediaType });
   } catch (error) {
+    if (error instanceof ChatOutboundRequestIdError) {
+      return NextResponse.json({ error: error.message, code: error.code }, { status: 400 });
+    }
     if (error instanceof RouteAuthError) {
       return NextResponse.json({ error: error.message, code: error.code }, { status: error.status });
     }
@@ -119,6 +133,9 @@ export async function POST(
     }
     if (error instanceof TenantUsageLimitError) {
       return NextResponse.json({ error: error.message, code: error.code }, { status: error.status });
+    }
+    if (error instanceof ChatOutboundIdempotencyError) {
+      return NextResponse.json({ error: error.message, code: error.code }, { status: 409 });
     }
     console.error("Erro ao enviar midia armazenada:", error);
     return NextResponse.json(

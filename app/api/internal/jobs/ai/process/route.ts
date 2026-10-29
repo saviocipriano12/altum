@@ -7,6 +7,10 @@ import {
   upsertAiOperationalAlert,
 } from "@/lib/server/ai/observability";
 import { adminDb } from "@/app/lib/server/firebase-admin";
+import {
+  getConversationCommercialObservationHealth,
+  processConversationCommercialObservationJobs,
+} from "@/lib/server/crm/conversation-observation-queue";
 
 function readToken(req: Request) {
   const bearer = req.headers.get("authorization") || req.headers.get("Authorization") || "";
@@ -102,6 +106,7 @@ async function buildHealthPayload() {
       worker: observability.worker,
       overview: observability.overview,
       topRiskTenants: observability.tenants.slice(0, 12),
+      crmObservations: await getConversationCommercialObservationHealth(),
     },
   };
 }
@@ -127,7 +132,8 @@ async function handle(req: Request) {
   }
 
   const result = await processAiQueue({ limit: getLimit(req), drain: shouldDrain(req) });
-  return NextResponse.json({ ok: true, result });
+  const crmObservations = await processConversationCommercialObservationJobs({ limit: getLimit(req) });
+  return NextResponse.json({ ok: true, result, crmObservations });
 }
 
 export async function GET(req: Request) {

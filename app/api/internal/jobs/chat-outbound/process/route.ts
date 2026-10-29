@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { processChatOutboundJobs } from "@/lib/server/chat-outbound";
+import { getChatOutboundGlobalHealth, processChatOutboundJobs } from "@/lib/server/chat-outbound";
 
 export const maxDuration = 120;
 
@@ -14,6 +14,9 @@ async function handle(req: Request) {
   if (!configured) return NextResponse.json({ error: "CHAT_OUTBOUND_PROCESS_TOKEN ou CRON_SECRET nao configurado." }, { status: 503 });
   if (readToken(req) !== configured) return NextResponse.json({ error: "Nao autorizado." }, { status: 401 });
 
+  if (new URL(req.url).searchParams.get("health") === "1") {
+    return NextResponse.json({ ok: true, ...(await getChatOutboundGlobalHealth()) });
+  }
   const limit = Number(new URL(req.url).searchParams.get("limit") || 10);
   return NextResponse.json({ ok: true, ...(await processChatOutboundJobs({ limit })) });
 }

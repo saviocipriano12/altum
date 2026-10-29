@@ -87,8 +87,8 @@ export function classifyConversationTurn(value: string, messageType = "text"): C
   const mediaMessage = /^(image|video|document|audio)$/.test(normalizedMessageType);
   const correction = /\b(nao pedi|nao falei|nao perguntei|nao foi isso|entendeu errado|voce entendeu errado|nada a ver|eu quis dizer|na verdade)\b/.test(text);
   const asksToTalk = /\b(conversar primeiro|podemos conversar|pode conversar|quero conversar|so conversar|vamos conversar)\b/.test(text);
-  const greeting = /^(oi|ola|opa|e ai|eai|bom dia|boa tarde|boa noite|fala|oi tudo bem)\b/.test(text);
-  const relational = /\b(tudo bem|como voce esta|como voce ta|como vai|obrigad[oa]s?|valeu|beleza|show|kkk|haha)\b/.test(text);
+  const greeting = /^(oi|ola|opa|e ai|eai|bom dia|boa tarde|boa noite|fala)( tudo bem)?[?\s]*$/.test(text);
+  const relational = /^(tudo bem|como voce esta|como voce ta|como vai|obrigad[oa]s?|valeu|beleza|show|kkk|haha)( por (tudo|isso|ajudar|sua ajuda))?[?\s]*$/.test(text);
   const productRequest = /\b(produto|produtos|servico|servicos|catalogo|modelo|opcao|opcoes|preco|valor|estoque|disponivel|disponibilidade|vende|vendem|oferece|oferecem|foto|imagem|video|mostra|mostrar)\b/.test(text);
   const commercialNeed = /\b(vender|vendas|lead|leads|cliente|clientes|atendimento|whatsapp|instagram|crm|funil|pipeline|proposta|orcamento|trafego|captacao|conversao)\b/.test(text);
   const directQuestion =
@@ -105,14 +105,15 @@ export function classifyConversationTurn(value: string, messageType = "text"): C
   else if (directQuestion) kind = "direct_question";
   else if (commercialNeed) kind = "commercial_need";
 
-  const noRetrieval = kind === "greeting" || kind === "relational" || kind === "correction" || kind === "conversation_request";
+  const rejectsTopic = correction && /\b(nao pedi|nao falei|nao perguntei|nao foi isso|nada a ver)\b/.test(text);
+  const noRetrieval = kind === "greeting" || kind === "relational" || rejectsTopic || kind === "conversation_request";
   return {
     kind,
     normalizedText: text,
     shouldRetrieveKnowledge: !noRetrieval && (mediaMessage || productRequest || directQuestion || text.split(" ").length >= 4),
     allowCatalog: kind === "product_request" || (mediaMessage && normalizedMessageType !== "audio"),
     mustAcknowledgeFirst: kind === "correction" || kind === "conversation_request" || kind === "relational",
-    resetCommercialTopic: kind === "correction" || kind === "conversation_request",
+    resetCommercialTopic: rejectsTopic || kind === "conversation_request",
     maxQuestions: 1,
   };
 }
@@ -126,7 +127,9 @@ export function knowledgeScoreThreshold(mode: "keyword" | "hybrid" | "semantic")
 export function conversationPolicyInstruction(policy: ConversationTurnPolicy) {
   if (policy.kind === "greeting") return "Este turno e apenas uma saudacao: acolha e deixe a pessoa falar, sem oferta ou qualificacao.";
   if (policy.kind === "relational") return "Este turno e relacional: responda como uma pessoa e nao transforme a fala em pitch.";
-  if (policy.kind === "correction") return "O lead corrigiu a conversa: reconheca o erro, descarte a suposicao anterior e reabra o assunto sem se defender.";
+  if (policy.kind === "correction") return policy.resetCommercialTopic
+    ? "O lead rejeitou uma suposicao: descarte apenas o assunto rejeitado, responda ao pedido explicito e nao reinicie a qualificacao."
+    : "O lead corrigiu um detalhe: use o valor mais recente, preserve o restante da conversa e responda ao pedido atual sem reiniciar o atendimento.";
   if (policy.kind === "conversation_request") return "O lead pediu conversa: converse primeiro, sem diagnostico, oferta ou coleta mecanica de dados.";
   if (policy.kind === "product_request") return "O lead pediu produto, servico ou midia: use somente fatos relevantes da base e responda ao pedido antes de conduzir.";
   if (policy.kind === "direct_question") return "O lead fez uma pergunta ou pediu ajuda: responda diretamente ou acolha o pedido especifico antes de qualquer proximo passo comercial.";
@@ -144,7 +147,7 @@ export function enforceConversationTurnPolicy(input: {
   const normalizedOutbound = normalize(outbound);
   const hasCommercialPush = /\b(consultoria|diagnostico|oferta|proposta|plano|pacote|gerar leads|vender mais|nicho|orcamento|agendar|reuniao|gargalo|objetivo comercial|resultado comercial|melhorar conversao|organizar atendimento|direcionar)\b/.test(normalizedOutbound);
 
-  if (policy.kind === "correction") {
+  if (policy.kind === "correction" && policy.resetCommercialTopic && hasCommercialPush && !/\b(nao|sem|deix|desconsider|desculp|entendi errado|tem razao)\b/.test(normalizedOutbound)) {
     return "Você tem razão — eu entendi errado. Vamos deixar isso de lado. Sobre o que você gostaria de conversar?";
   }
   if (policy.kind === "conversation_request" && hasCommercialPush) {

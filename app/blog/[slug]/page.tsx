@@ -21,6 +21,7 @@ import {
   getRelatedPosts,
 } from "@/lib/blog";
 import { buildArticleSchema, toJsonLdScript } from "@/lib/schema";
+import { PublicBreadcrumbs } from "@/components/public/shared/public-breadcrumbs";
 
 type PageProps = {
   params: Promise<{
@@ -28,7 +29,11 @@ type PageProps = {
   }>;
 };
 
-const SITE_URL = (process.env.NEXT_PUBLIC_SITE_URL || "https://www.altumia.com.br").trim().replace(/\/+$/, "");
+const SITE_URL = (
+  process.env.NEXT_PUBLIC_SITE_URL || "https://www.altumia.com.br"
+)
+  .trim()
+  .replace(/\/+$/, "");
 
 export const dynamicParams = false;
 
@@ -37,7 +42,9 @@ export async function generateStaticParams() {
   return posts.map((post) => ({ slug: post.slug }));
 }
 
-export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
+export async function generateMetadata({
+  params,
+}: PageProps): Promise<Metadata> {
   const { slug } = await params;
   const post = await getBlogPostBySlug(slug);
   if (!post) return {};
@@ -57,6 +64,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
       description: post.meta.description,
       url: canonical,
       publishedTime: post.meta.date,
+      modifiedTime: post.meta.updatedAt || post.meta.date,
       authors: [post.meta.author],
       tags: post.meta.tags,
       images: [
@@ -112,34 +120,68 @@ const mdxComponents = {
   FAQAccordion,
   h2: (props: HTMLAttributes<HTMLHeadingElement>) => {
     const text = getTextFromNode(props.children);
-    return <h2 id={slugify(text)} className="mb-4 mt-12 text-3xl font-bold leading-tight text-white" {...props} />;
+    return (
+      <h2
+        id={slugify(text)}
+        className="mb-4 mt-12 text-3xl font-bold leading-tight text-[#292a2d]"
+        {...props}
+      />
+    );
   },
   h3: (props: HTMLAttributes<HTMLHeadingElement>) => {
     const text = getTextFromNode(props.children);
-    return <h3 id={slugify(text)} className="mb-3 mt-8 text-2xl font-semibold leading-tight text-white" {...props} />;
+    return (
+      <h3
+        id={slugify(text)}
+        className="mb-3 mt-8 text-2xl font-semibold leading-tight text-[#292a2d]"
+        {...props}
+      />
+    );
   },
   p: (props: HTMLAttributes<HTMLParagraphElement>) => (
-    <p className="mb-6 text-[1.06rem] leading-8 text-white/85" {...props} />
+    <p className="mb-6 text-[1.06rem] leading-8 text-slate-600" {...props} />
   ),
   ul: (props: HTMLAttributes<HTMLUListElement>) => (
-    <ul className="mb-7 list-disc space-y-3 pl-6 text-[1.04rem] leading-8 text-white/85" {...props} />
+    <ul
+      className="mb-7 list-disc space-y-3 pl-6 text-[1.04rem] leading-8 text-slate-600"
+      {...props}
+    />
   ),
   ol: (props: HTMLAttributes<HTMLOListElement>) => (
-    <ol className="mb-7 list-decimal space-y-3 pl-6 text-[1.04rem] leading-8 text-white/85" {...props} />
+    <ol
+      className="mb-7 list-decimal space-y-3 pl-6 text-[1.04rem] leading-8 text-slate-600"
+      {...props}
+    />
   ),
-  li: (props: HTMLAttributes<HTMLLIElement>) => <li className="leading-8" {...props} />,
-  strong: (props: HTMLAttributes<HTMLElement>) => <strong className="font-semibold text-white" {...props} />,
+  li: (props: HTMLAttributes<HTMLLIElement>) => (
+    <li className="leading-8" {...props} />
+  ),
+  strong: (props: HTMLAttributes<HTMLElement>) => (
+    <strong className="font-semibold text-[#292a2d]" {...props} />
+  ),
   a: (props: AnchorHTMLAttributes<HTMLAnchorElement>) => (
-    <a className="font-medium text-[#F56E0F] underline decoration-[#F56E0F]/40 underline-offset-4 hover:text-[#ff8e44]" {...props} />
+    <a
+      className="font-medium text-[#292a2d] underline decoration-[#ed782f]/40 underline-offset-4 hover:text-[#9d4c1b]"
+      {...props}
+    />
   ),
   blockquote: (props: HTMLAttributes<HTMLElement>) => (
-    <blockquote className="mb-7 border-l-2 border-[#F56E0F] pl-4 text-white/80" {...props} />
+    <blockquote
+      className="mb-7 border-l-2 border-[#ed782f] pl-4 text-slate-600"
+      {...props}
+    />
   ),
   code: (props: HTMLAttributes<HTMLElement>) => (
-    <code className="rounded bg-white/10 px-1.5 py-0.5 text-sm text-[#ffd3b1]" {...props} />
+    <code
+      className="rounded bg-white px-1.5 py-0.5 text-sm text-[#ffd3b1]"
+      {...props}
+    />
   ),
   pre: (props: HTMLAttributes<HTMLPreElement>) => (
-    <pre className="mb-7 overflow-x-auto rounded-xl border border-white/10 bg-[#121212] p-4 text-sm text-white/90" {...props} />
+    <pre
+      className="mb-7 overflow-x-auto rounded-xl border border-slate-200 bg-[#faf9f7] p-4 text-sm text-slate-600"
+      {...props}
+    />
   ),
 };
 
@@ -159,6 +201,8 @@ export default async function BlogPostPage({ params }: PageProps) {
     description: post.meta.description,
     url: canonical,
     datePublished: post.meta.date,
+    dateModified: post.meta.updatedAt || post.meta.date,
+    imageUrl: `${SITE_URL}/blog/${post.meta.slug}/opengraph-image`,
     authorName: post.meta.author,
     publisherName: "ALTUM",
     publisherUrl: SITE_URL,
@@ -167,37 +211,47 @@ export default async function BlogPostPage({ params }: PageProps) {
 
   return (
     <SiteShell>
-    <div className="min-h-screen bg-[#0B0B0B] px-6 py-16 text-white">
-      <PostHero
-        title={post.meta.title}
-        description={post.meta.description}
-        coverImage={post.meta.coverImage}
-        category={post.meta.category}
-        date={post.meta.date}
-        readingTime={post.meta.readingTime}
-        author={post.meta.author}
-      />
+      <div className="min-h-screen bg-[#faf9f7] px-6 py-16 text-[#292a2d]">
+        <PublicBreadcrumbs
+          items={[
+            { name: "Início", href: "/" },
+            { name: "Guias e conteúdos", href: "/blog" },
+            { name: post.meta.title, href: `/blog/${post.meta.slug}` },
+          ]}
+        />
+        <PostHero
+          title={post.meta.title}
+          description={post.meta.description}
+          coverImage={post.meta.coverImage}
+          category={post.meta.category}
+          date={post.meta.date}
+          readingTime={post.meta.readingTime}
+          author={post.meta.author}
+        />
 
-      <section className="mx-auto w-full max-w-6xl">
-        <div className="grid gap-10 lg:grid-cols-[minmax(0,1fr)_280px]">
-          <article className="mx-auto w-full max-w-3xl rounded-3xl border border-white/10 bg-white/[0.03] p-6 md:p-10">
-            <MDXRemote
-              source={contentWithInlineCta}
-              components={mdxComponents}
-              options={{ mdxOptions: { rehypePlugins: [rehypeSanitize] } }}
-            />
-            <CTABox variant="final" />
-          </article>
-          <div className="hidden lg:block">
-            <TableOfContents headings={headings} />
+        <section className="mx-auto w-full max-w-6xl">
+          <div className="grid gap-10 lg:grid-cols-[minmax(0,1fr)_280px]">
+            <article className="mx-auto w-full max-w-3xl rounded-3xl border border-slate-200 bg-white p-6 md:p-10">
+              <MDXRemote
+                source={contentWithInlineCta}
+                components={mdxComponents}
+                options={{ mdxOptions: { rehypePlugins: [rehypeSanitize] } }}
+              />
+              <CTABox variant="final" />
+            </article>
+            <div className="hidden lg:block">
+              <TableOfContents headings={headings} />
+            </div>
           </div>
-        </div>
 
-        <RelatedPosts posts={relatedPosts} />
-      </section>
+          <RelatedPosts posts={relatedPosts} />
+        </section>
 
-      <script type="application/ld+json" dangerouslySetInnerHTML={toJsonLdScript(articleSchema)} />
-    </div>
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={toJsonLdScript(articleSchema)}
+        />
+      </div>
     </SiteShell>
   );
 }

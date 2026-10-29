@@ -1,5 +1,9 @@
 ﻿import { FieldValue } from "firebase-admin/firestore";
 import { adminDb } from "@/app/lib/server/firebase-admin";
+import { aiCommercialSelectionId } from "@/lib/ai-commercial-selection";
+import { randomUUID } from "node:crypto";
+import { AI_EXECUTION_LEASE_MS, AiExecutionAuthorityError, withAiExecutionAuthority, withoutAiExecutionAuthority } from "./execution-authority";
+import { HandlerContinuationReviewError } from "./handler-continuation";
 import { handleIncomingMessage } from "@/lib/server/ai/agent";
 import {
   AI_QUEUE_DEAD_LETTER_ALERT_THRESHOLD,
@@ -16,20 +20,29 @@ import {
   upsertAiOperationalAlert,
 } from "@/lib/server/ai/observability";
 import {
-  getConversationTurnDocId,
   isSupersededConversationTurn,
   resolveConversationDebounceMs,
 } from "@/lib/server/ai/turn-coordinator";
-import { observeConversationCommercialState } from "@/lib/server/crm/conversation-intelligence";
+import { prepareConversationTurn, writeConversationTurn } from "@/lib/server/ai/conversation-turn-store";
+import { assertChatStateScope, ChatStateIdentityError, ChatStateContextError } from "@/lib/chat-state-scope";
+import { getChatStateDocId } from "@/lib/server/chat-state-identity";
+import { prepareChatStateWrite, applyChatStateWrite } from "@/lib/server/chat-state-store";
+import {
+  enqueueConversationCommercialObservation,
+  prepareConversationCommercialObservation,
+  processConversationCommercialObservationJobs,
+} from "@/lib/server/crm/conversation-observation-queue";
+import { crmObservationIdentity } from "@/lib/crm-observation-identity";
+import { observationSnapshotVersion } from "@/lib/server/crm/observation-receipt-identity";
 
 const JOB_TYPE = "ai_incoming_message";
 const DEFAULT_MAX_ATTEMPTS = 6;
 const DEFAULT_BATCH_LIMIT = 10;
-const LOCK_TTL_MS = 90_000;
+const LOCK_TTL_MS = AI_EXECUTION_LEASE_MS;
 const BASE_RETRY_DELAY_MS = 30_000;
 const MAX_RETRY_DELAY_MS = 15 * 60_000;
 
-type JobStatus = "pending" | "processing" | "retrying" | "done" | "dead_letter";
+type JobStatus = "pending" | "processing" | "retrying" | "done" | "dead_letter" | "reconciliation_required";
 
 type AiJobDoc = {
   type?: string;
@@ -52,6 +65,7 @@ type AiConversationTurnDoc = {
   latestMessageId?: string;
   settleAt?: unknown;
   lockJobId?: string;
+  lockClaimToken?: string;
   lockedAt?: unknown;
 };
 
@@ -62,7 +76,41 @@ type ClaimedJob = {
   messageId: string;
   attempts: number;
   maxAttempts: number;
+  originNotAfter: string;
+  claimToken: string;
+  chatGeneration: FirebaseFirestore.Timestamp;
+  commercialSelectionId?: string | null;
 };
+
+type ExecutionResult = { decision: "respond" | "ask_more" | "handoff" | "skip"; reason: string };
+
+function ownsClaim(snapshot: FirebaseFirestore.DocumentSnapshot, job: ClaimedJob) {
+  const row = snapshot.data();
+  return snapshot.exists && observationSnapshotVersion(snapshot.createTime) === job.originNotAfter && row?.type === JOB_TYPE &&
+    row.tenantId === job.tenantId && row.chatId === job.chatId && row.messageId === job.messageId && row.status === "processing" &&
+    row.claimToken === job.claimToken && row.attempts === job.attempts;
+}
+
+function recordedExecutionResult(row: FirebaseFirestore.DocumentData, job: ClaimedJob): ExecutionResult | null {
+  const receipt = row.executionResult;
+  if (row.executionProtocolVersion !== 1 || row.executionPhase !== "result_recorded" || !receipt ||
+      receipt.claimToken !== job.claimToken || receipt.rootGeneration !== job.originNotAfter || receipt.attempts !== job.attempts ||
+      receipt.tenantId !== job.tenantId || receipt.chatId !== job.chatId || receipt.messageId !== job.messageId ||
+      !["respond", "ask_more", "handoff", "skip"].includes(receipt.decision) || typeof receipt.reason !== "string") return null;
+  return { decision: receipt.decision, reason: receipt.reason };
+}
+
+async function advanceExecution(job: ClaimedJob, result?: ExecutionResult) {
+  return adminDb.runTransaction(async tx => {
+    const ref = adminDb.collection("jobs").doc(job.id), snapshot = await tx.get(ref);
+    if (!ownsClaim(snapshot, job) || snapshot.data()?.executionPhase !== (result ? "executing" : "claimed")) return false;
+    tx.update(ref, result ? { executionPhase: "result_recorded", executionResult: { ...result, claimToken: job.claimToken,
+      rootGeneration: job.originNotAfter, tenantId: job.tenantId, chatId: job.chatId, messageId: job.messageId, attempts: job.attempts },
+      resultRecordedAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp() }
+      : { executionPhase: "executing", executionStartedAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp() });
+    return true;
+  });
+}
 
 function isRetryableQueueErrorCode(errorCode: string) {
   const normalized = String(errorCode || "").trim().toLowerCase();
@@ -74,7 +122,7 @@ function isRetryableQueueErrorCode(errorCode: string) {
   return true;
 }
 
-async function updateChatStateProcessing(input: {
+function chatStateProcessingPatch(input: {
   tenantId: string;
   chatId: string;
   jobId: string;
@@ -86,9 +134,7 @@ async function updateChatStateProcessing(input: {
   lastError?: string | null;
   lastErrorCode?: string | null;
 }) {
-  const chatStateId = `${input.tenantId.trim()}_${input.chatId.trim()}`;
-  await adminDb.collection("chat_state").doc(chatStateId).set(
-    {
+  return {
       tenantId: input.tenantId,
       chatId: input.chatId,
       lastJobStatus: input.jobStatus,
@@ -101,9 +147,7 @@ async function updateChatStateProcessing(input: {
       lastJobId: input.jobId,
       lastMessageId: input.messageId,
       updatedAt: FieldValue.serverTimestamp(),
-    },
-    { merge: true }
-  );
+    };
 }
 
 export type EnqueueIncomingMessageJobInput = {
@@ -171,11 +215,12 @@ function sanitizeId(value: string, max = 220) {
 
 function normalizeStatus(value: unknown): JobStatus {
   const raw = String(value || "").toLowerCase();
+  if (raw === "pending") return "pending";
   if (raw === "processing") return "processing";
   if (raw === "retrying") return "retrying";
   if (raw === "done") return "done";
   if (raw === "dead_letter") return "dead_letter";
-  return "pending";
+  return "reconciliation_required";
 }
 
 function canClaimStatus(status: JobStatus) {
@@ -322,13 +367,11 @@ async function syncRecurringProviderAlerts(tenantId: string, errorCode: string) 
 export async function enqueueIncomingMessageJob(
   input: EnqueueIncomingMessageJobInput
 ): Promise<EnqueueIncomingMessageJobResult> {
-  const tenantId = input.tenantId.trim();
-  const chatId = input.chatId.trim();
-  const messageId = input.messageId.trim();
-
-  if (!tenantId || !chatId || !messageId) {
+  const observationIdentity = crmObservationIdentity(input);
+  if (!observationIdentity) {
     throw new Error("Payload invalido para enfileirar job de IA.");
   }
+  const { tenantId, chatId, messageId } = observationIdentity;
 
   const dedupeKey = input.dedupeKey?.trim() || `${tenantId}_${messageId}`;
   const jobId = sanitizeId(`${JOB_TYPE}_${dedupeKey}`);
@@ -342,9 +385,12 @@ export async function enqueueIncomingMessageJob(
   const settleAt = new Date(Date.now() + debounceMs);
 
   const jobRef = adminDb.collection("jobs").doc(jobId);
-  const turnRef = adminDb.collection("ai_conversation_turns").doc(getConversationTurnDocId(tenantId, chatId));
   const result = await adminDb.runTransaction(async (tx) => {
-    const snap = await tx.get(jobRef);
+    const [snap, observation, turn] = await Promise.all([tx.get(jobRef), prepareConversationCommercialObservation(tx, { tenantId, chatId, messageId, source: "inbound_message" }), prepareConversationTurn(tx, tenantId, chatId, true)]);
+    if (snap.exists && (snap.data()?.tenantId !== tenantId || snap.data()?.chatId !== chatId || snap.data()?.messageId !== messageId)) throw new Error("AI_QUEUE_JOB_IDENTITY_CONFLICT");
+    if (turn.migrateLegacy) writeConversationTurn(tx, turn, {}, false);
+    // Record every message atomically, before debounce/supersession or reply pause can skip it.
+    if (observation.write) tx.set(observation.ref, observation.write, { merge: true });
     if (snap.exists) {
       const status = normalizeStatus((snap.data() as AiJobDoc).status);
       if (status !== "dead_letter") {
@@ -372,8 +418,7 @@ export async function enqueueIncomingMessageJob(
       },
       { merge: true }
     );
-    tx.set(
-      turnRef,
+    writeConversationTurn(tx, turn,
       {
         tenantId,
         chatId,
@@ -381,7 +426,6 @@ export async function enqueueIncomingMessageJob(
         settleAt,
         updatedAt: FieldValue.serverTimestamp(),
       },
-      { merge: true }
     );
 
     return { created: true, status: "pending" as JobStatus } as const;
@@ -407,6 +451,7 @@ async function listClaimableJobs(limit: number) {
       return await adminDb
         .collection("jobs")
         .where("type", "==", JOB_TYPE)
+        .where("status", "in", ["pending", "retrying"])
         .orderBy("availableAt", "asc")
         .orderBy("priority", "asc")
         .limit(rawLimit)
@@ -419,6 +464,7 @@ async function listClaimableJobs(limit: number) {
       return await adminDb
         .collection("jobs")
         .where("type", "==", JOB_TYPE)
+        .where("status", "in", ["pending", "retrying"])
         .limit(rawLimit)
         .get();
     }
@@ -457,18 +503,21 @@ async function listClaimableJobs(limit: number) {
 
 async function claimJob(jobId: string): Promise<ClaimedJob | null> {
   const jobRef = adminDb.collection("jobs").doc(jobId);
+  const claimToken = randomUUID();
 
   return adminDb.runTransaction(async (tx) => {
     const snap = await tx.get(jobRef);
     if (!snap.exists) return null;
 
     const data = snap.data() as AiJobDoc;
+    if (data.type !== JOB_TYPE) return null;
     const status = normalizeStatus(data.status);
     if (!canClaimStatus(status)) return null;
 
-    const tenantId = String(data.tenantId || "").trim();
-    const chatId = String(data.chatId || "").trim();
-    const messageId = String(data.messageId || "").trim();
+    const identity = crmObservationIdentity(data);
+    const tenantId = identity?.tenantId || "";
+    const chatId = identity?.chatId || "";
+    const messageId = identity?.messageId || "";
     const maxAttempts = typeof data.maxAttempts === "number" ? data.maxAttempts : DEFAULT_MAX_ATTEMPTS;
     const attempts = (typeof data.attempts === "number" ? data.attempts : 0) + 1;
 
@@ -495,9 +544,22 @@ async function claimJob(jobId: string): Promise<ClaimedJob | null> {
     if (availableAt > now) return null;
     if (lockedAt && now - lockedAt <= LOCK_TTL_MS) return null;
 
-    const turnRef = adminDb.collection("ai_conversation_turns").doc(getConversationTurnDocId(tenantId, chatId));
-    const turnSnap = await tx.get(turnRef);
-    const turn = (turnSnap.data() || {}) as AiConversationTurnDoc;
+    let preparedTurn: Awaited<ReturnType<typeof prepareConversationTurn>>;
+    const chat = await tx.get(adminDb.collection("chats").doc(chatId));
+    try {
+      const state = await tx.get(adminDb.collection("chat_state").doc(getChatStateDocId(tenantId, chatId)));
+      assertChatStateScope(state.data(), tenantId, chatId);
+      preparedTurn = await prepareConversationTurn(tx, tenantId, chatId);
+    } catch (error) {
+      if (!(error instanceof ChatStateIdentityError) && !(error instanceof Error && ["AI_TURN_IDENTITY_CONFLICT", "AI_TURN_LEGACY_IDENTITY_CONFLICT"].includes(error.message))) throw error;
+      tx.update(jobRef, { status: "reconciliation_required", lockedAt: null, lastErrorCode: "payload_invalid",
+        lastReasonCode: error instanceof ChatStateIdentityError ? "chat_state_identity_conflict" : "coordination_identity_conflict",
+        lastError: "Contexto da conversa precisa de revisao antes de retomar.", updatedAt: FieldValue.serverTimestamp() });
+      return null;
+    }
+    const turn = (preparedTurn.snapshot.data() || {}) as AiConversationTurnDoc;
+    const legacyTurn = preparedTurn.legacyOwned ? preparedTurn.legacy.data() : undefined;
+    if (preparedTurn.migrateLegacy) writeConversationTurn(tx, preparedTurn, {}, false);
     const turnSettleAt = toDate(turn.settleAt)?.getTime() || 0;
     const turnLockedAt = toDate(turn.lockedAt)?.getTime() || 0;
 
@@ -526,11 +588,24 @@ async function claimJob(jobId: string): Promise<ClaimedJob | null> {
     if (turn.lockJobId && turn.lockJobId !== jobId && turnLockedAt && now - turnLockedAt <= LOCK_TTL_MS) {
       return null;
     }
+    if (legacyTurn?.lockJobId && legacyTurn.lockJobId !== jobId && now - (toDate(legacyTurn.lockedAt)?.getTime() || 0) <= LOCK_TTL_MS) return null;
+
+    if (!chat.exists || chat.data()?.tenantId !== tenantId || !chat.createTime) {
+      tx.update(jobRef, { status: "reconciliation_required", lockedAt: null, lastReasonCode: "chat_state_context_changed", updatedAt: FieldValue.serverTimestamp() });
+      return null;
+    }
 
     tx.set(
       jobRef,
       {
         status: "processing",
+        claimToken,
+        claimGeneration: observationSnapshotVersion(snap.createTime),
+        claimChatGeneration: chat.createTime,
+        claimCommercialSelectionId: aiCommercialSelectionId(chat.data()),
+        executionProtocolVersion: 1,
+        executionPhase: "claimed",
+        executionResult: FieldValue.delete(),
         attempts,
         lockedAt: new Date(),
         startedAt: FieldValue.serverTimestamp(),
@@ -538,14 +613,13 @@ async function claimJob(jobId: string): Promise<ClaimedJob | null> {
       },
       { merge: true }
     );
-    tx.set(
-      turnRef,
+    writeConversationTurn(tx, preparedTurn,
       {
         lockJobId: jobId,
+        lockClaimToken: claimToken,
         lockedAt: new Date(),
         updatedAt: FieldValue.serverTimestamp(),
       },
-      { merge: true }
     );
 
     return {
@@ -555,29 +629,120 @@ async function claimJob(jobId: string): Promise<ClaimedJob | null> {
       messageId,
       attempts,
       maxAttempts,
+      originNotAfter: observationSnapshotVersion(snap.createTime),
+      claimToken,
+      chatGeneration: chat.createTime,
+      commercialSelectionId: aiCommercialSelectionId(chat.data()),
     } satisfies ClaimedJob;
   });
 }
 
-async function releaseConversationTurnLock(job: ClaimedJob) {
-  const turnRef = adminDb
-    .collection("ai_conversation_turns")
-    .doc(getConversationTurnDocId(job.tenantId, job.chatId));
-
-  await adminDb.runTransaction(async (tx) => {
-    const snap = await tx.get(turnRef);
-    const turn = (snap.data() || {}) as AiConversationTurnDoc;
-    if (turn.lockJobId !== job.id) return;
-    tx.set(
-      turnRef,
-      {
-        lockJobId: FieldValue.delete(),
-        lockedAt: FieldValue.delete(),
-        updatedAt: FieldValue.serverTimestamp(),
-      },
-      { merge: true }
-    );
+async function commitJobFinalization(job: ClaimedJob, jobPatch: FirebaseFirestore.DocumentData, statePatch: FirebaseFirestore.DocumentData) {
+  return adminDb.runTransaction(async tx => {
+    const ref = adminDb.collection("jobs").doc(job.id), snapshot = await tx.get(ref), row = snapshot.data();
+    if (!ownsClaim(snapshot, job)) return false;
+    const recorded = recordedExecutionResult(row!, job);
+    if (jobPatch.status === "done" && (!recorded || recorded.decision !== jobPatch.decision || recorded.reason !== jobPatch.decisionReason)) return false;
+    if (jobPatch.status !== "done" && recorded) return false;
+    let state: Awaited<ReturnType<typeof prepareChatStateWrite>>, prepared: Awaited<ReturnType<typeof prepareConversationTurn>>;
+    try {
+      [state, prepared] = await Promise.all([
+        prepareChatStateWrite(tx, job.tenantId, job.chatId, { expectedChatGeneration: job.chatGeneration }),
+        prepareConversationTurn(tx, job.tenantId, job.chatId),
+      ]);
+    } catch (error) {
+      if (!(error instanceof ChatStateContextError || error instanceof ChatStateIdentityError) &&
+          !(error instanceof Error && ["AI_TURN_IDENTITY_CONFLICT", "AI_TURN_LEGACY_IDENTITY_CONFLICT"].includes(error.message))) throw error;
+      tx.update(ref, { status: "reconciliation_required", lockedAt: null, claimToken: FieldValue.delete(),
+        lastReasonCode: "finalization_context_changed", updatedAt: FieldValue.serverTimestamp() });
+      return false;
+    }
+    if (aiCommercialSelectionId(state.chat.data()) !== (job.commercialSelectionId ?? null)) {
+      tx.update(ref, { status: "reconciliation_required", lockedAt: null, claimToken: FieldValue.delete(),
+        lastReasonCode: "finalization_commercial_context_changed", updatedAt: FieldValue.serverTimestamp() });
+      return false;
+    }
+    const turn = prepared.snapshot.data() as AiConversationTurnDoc | undefined;
+    const ownsTurn = turn?.lockJobId === job.id && turn.lockClaimToken === job.claimToken;
+    if (!ownsTurn) {
+      if (recorded && jobPatch.status === "done") { tx.update(ref, { ...jobPatch, claimToken: FieldValue.delete() }); return true; }
+      return false;
+    }
+    tx.update(ref, { ...jobPatch, claimToken: FieldValue.delete() });
+    if (turn.latestMessageId === job.messageId) applyChatStateWrite(tx, state, statePatch);
+    writeConversationTurn(tx, prepared, { lockJobId: FieldValue.delete(), lockClaimToken: FieldValue.delete(),
+      lockedAt: FieldValue.delete(), updatedAt: FieldValue.serverTimestamp() },
+      !prepared.legacy.exists || prepared.legacyOwned && prepared.legacy.data()?.lockJobId === job.id && prepared.legacy.data()?.lockClaimToken === job.claimToken);
+    return true;
   });
+}
+
+async function recoverExpiredAiJob(jobId: string) {
+  const outcome = await adminDb.runTransaction(async tx => {
+    const ref = adminDb.collection("jobs").doc(jobId), snapshot = await tx.get(ref), row = snapshot.data();
+    if (!snapshot.exists || row?.type !== JOB_TYPE || row.status !== "processing" ||
+        (toDate(row.lockedAt)?.getTime() || 0) > Date.now() - LOCK_TTL_MS) return { kind: "unchanged" } as const;
+    const identity = crmObservationIdentity(row);
+    const modern = row.executionProtocolVersion === 1 && row.claimGeneration === observationSnapshotVersion(snapshot.createTime) &&
+      typeof row.claimToken === "string" && /^[a-f0-9-]{36}$/.test(row.claimToken) && typeof row.claimChatGeneration?.isEqual === "function";
+    const markReview = () => tx.update(ref, { status: "reconciliation_required", lockedAt: null, claimToken: FieldValue.delete(),
+      lastReasonCode: "interrupted_execution_requires_reconciliation", updatedAt: FieldValue.serverTimestamp() });
+    if (!identity) { markReview(); return { kind: "review" } as const; }
+    let state: Awaited<ReturnType<typeof prepareChatStateWrite>>, turn: Awaited<ReturnType<typeof prepareConversationTurn>>;
+    try {
+      [state, turn] = await Promise.all([
+        prepareChatStateWrite(tx, identity.tenantId, identity.chatId, modern ? { expectedChatGeneration: row.claimChatGeneration } : undefined),
+        prepareConversationTurn(tx, identity.tenantId, identity.chatId),
+      ]);
+    } catch (error) {
+      if (!(error instanceof ChatStateContextError || error instanceof ChatStateIdentityError) &&
+          !(error instanceof Error && ["AI_TURN_IDENTITY_CONFLICT", "AI_TURN_LEGACY_IDENTITY_CONFLICT"].includes(error.message))) throw error;
+      markReview(); return { kind: "review" } as const;
+    }
+    if (aiCommercialSelectionId(state.chat.data()) !== (row.claimCommercialSelectionId ?? null)) {
+      markReview(); return { kind: "review" } as const;
+    }
+    const job: ClaimedJob = { id: jobId, ...identity, attempts: row.attempts, maxAttempts: row.maxAttempts || DEFAULT_MAX_ATTEMPTS,
+      originNotAfter: observationSnapshotVersion(snapshot.createTime), claimToken: row.claimToken, chatGeneration: row.claimChatGeneration,
+      commercialSelectionId: row.claimCommercialSelectionId ?? null };
+    const result = modern ? recordedExecutionResult(row, job) : null;
+    if (result) return { kind: "result", job, result } as const;
+    const ownsTurn = modern && turn.snapshot.data()?.lockJobId === jobId && turn.snapshot.data()?.lockClaimToken === row.claimToken;
+    if (modern && row.executionPhase === "claimed" && ownsTurn) {
+      tx.update(ref, { status: "pending", availableAt: new Date(), lockedAt: null, claimToken: FieldValue.delete(),
+        executionPhase: "admitted", recoveryReason: "interrupted_before_execution", recoveredAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp() });
+    } else {
+      markReview();
+      if (turn.snapshot.data()?.latestMessageId === identity.messageId) applyChatStateWrite(tx, state, chatStateProcessingPatch({
+        ...identity, jobId, jobStatus: "reconciliation_required", decisionReason: "interrupted_execution_requires_reconciliation",
+        decisionReasonCode: "interrupted_execution_requires_reconciliation" }));
+    }
+    if (ownsTurn) writeConversationTurn(tx, turn, { lockJobId: FieldValue.delete(), lockClaimToken: FieldValue.delete(), lockedAt: FieldValue.delete(),
+      updatedAt: FieldValue.serverTimestamp() }, !turn.legacy.exists || turn.legacyOwned && turn.legacy.data()?.lockJobId === jobId && turn.legacy.data()?.lockClaimToken === row.claimToken);
+    return { kind: modern && row.executionPhase === "claimed" && ownsTurn ? "requeued" : "review" } as const;
+  });
+  if (outcome.kind === "result") return await finalizeSuccessfulJob(outcome.job, outcome.result.decision, outcome.result.reason) ? "completed" : "unchanged";
+  return outcome.kind;
+}
+
+async function recoverExpiredAiJobs(limit: number) {
+  let cursor: FirebaseFirestore.QueryDocumentSnapshot | undefined, recovered = 0;
+  do {
+    let query = adminDb.collection("jobs").where("type", "==", JOB_TYPE).where("status", "==", "processing").orderBy("__name__").limit(100);
+    if (cursor) query = query.startAfter(cursor);
+    const page = await query.get();
+    for (const doc of page.docs) {
+      if ((toDate(doc.data().lockedAt)?.getTime() || 0) > Date.now() - LOCK_TTL_MS) continue;
+      if (await recoverExpiredAiJob(doc.id) !== "unchanged") recovered++;
+      if (recovered >= limit) return;
+    }
+    if (page.size < 100) return;
+    cursor = page.docs[page.docs.length - 1];
+  } while (cursor);
+}
+
+async function queueTelemetry(effect: () => Promise<unknown>) {
+  try { await effect(); } catch { console.error("Falha de observabilidade da fila de IA; resultado persistido preservado."); }
 }
 
 function computeRetryDelayMs(attempts: number) {
@@ -590,10 +755,8 @@ async function finalizeSuccessfulJob(
   decision: "respond" | "ask_more" | "handoff" | "skip",
   reason: string
 ) {
-  const jobRef = adminDb.collection("jobs").doc(job.id);
   const reasonCode = normalizeReasonCode(reason, "decision_recorded");
-  await Promise.all([
-    jobRef.set(
+  const committed = await commitJobFinalization(job,
       {
         status: "done",
         decision,
@@ -604,17 +767,7 @@ async function finalizeSuccessfulJob(
         completedAt: FieldValue.serverTimestamp(),
         updatedAt: FieldValue.serverTimestamp(),
       },
-      { merge: true }
-    ),
-    recordQueueMetrics({
-      tenantId: job.tenantId,
-      claimed: 1,
-      processed: 1,
-      decision,
-      skipped: decision === "skip" ? 1 : 0,
-      reasonCode,
-    }),
-    updateChatStateProcessing({
+    chatStateProcessingPatch({
       tenantId: job.tenantId,
       chatId: job.chatId,
       jobId: job.id,
@@ -626,8 +779,10 @@ async function finalizeSuccessfulJob(
       lastError: null,
       lastErrorCode: null,
     }),
-    releaseConversationTurnLock(job),
-  ]);
+  );
+  if (committed) await queueTelemetry(() => recordQueueMetrics({ tenantId: job.tenantId, claimed: 1, processed: 1,
+    decision, skipped: decision === "skip" ? 1 : 0, reasonCode }));
+  return committed;
 }
 
 async function finalizeFailedJob(job: ClaimedJob, error: unknown) {
@@ -637,10 +792,7 @@ async function finalizeFailedJob(job: ClaimedJob, error: unknown) {
   const canRetry = job.attempts < job.maxAttempts && isRetryableQueueErrorCode(classification.errorCode);
   const retryDelayMs = computeRetryDelayMs(job.attempts);
 
-  const jobRef = adminDb.collection("jobs").doc(job.id);
-
-  await Promise.all([
-    jobRef.set(
+  const committed = await commitJobFinalization(job,
       {
         status: canRetry ? "retrying" : "dead_letter",
         lockedAt: null,
@@ -651,18 +803,7 @@ async function finalizeFailedJob(job: ClaimedJob, error: unknown) {
         failedAt: FieldValue.serverTimestamp(),
         updatedAt: FieldValue.serverTimestamp(),
       },
-      { merge: true }
-    ),
-    recordQueueMetrics({
-      tenantId: job.tenantId,
-      claimed: 1,
-      failed: 1,
-      retried: canRetry ? 1 : 0,
-      deadLetter: canRetry ? 0 : 1,
-      reasonCode: classification.reasonCode,
-      errorCode: classification.errorCode,
-    }),
-    updateChatStateProcessing({
+    chatStateProcessingPatch({
       tenantId: job.tenantId,
       chatId: job.chatId,
       jobId: job.id,
@@ -673,16 +814,16 @@ async function finalizeFailedJob(job: ClaimedJob, error: unknown) {
       lastError: message,
       lastErrorCode: classification.errorCode,
     }),
-    releaseConversationTurnLock(job),
-  ]);
-
-  await Promise.all([
-    syncRecurringProviderAlerts(job.tenantId, classification.errorCode),
-    syncDeadLetterAlert(job.tenantId),
-  ]);
+  );
+  if (committed) await queueTelemetry(async () => {
+    await recordQueueMetrics({ tenantId: job.tenantId, claimed: 1, failed: 1, retried: canRetry ? 1 : 0,
+      deadLetter: canRetry ? 0 : 1, reasonCode: classification.reasonCode, errorCode: classification.errorCode });
+    await Promise.all([syncRecurringProviderAlerts(job.tenantId, classification.errorCode), syncDeadLetterAlert(job.tenantId)]);
+  });
 
   return {
-    canRetry,
+    canRetry: committed && canRetry,
+    committed,
     classification,
   };
 }
@@ -690,25 +831,31 @@ async function finalizeFailedJob(job: ClaimedJob, error: unknown) {
 async function processOneClaimedJob(job: ClaimedJob) {
   const startedAt = Date.now();
   try {
+    if (!await advanceExecution(job)) return { ok: false, retried: false, deadLetter: false, skipped: true };
     // CRM intelligence is independent from automatic replies. This preserves
     // commercial facts even when the tenant has the response agent paused.
-    await observeConversationCommercialState({
+    const crmObservation = await enqueueConversationCommercialObservation({
       tenantId: job.tenantId,
       chatId: job.chatId,
       messageId: job.messageId,
       actorId: "crm_conversation_observer",
       actorName: "Inteligencia Comercial Altum",
-    }).catch((error) => {
-      console.error("Falha ao observar mensagem para CRM:", error);
+      source: "inbound_message",
+      originNotAfter: job.originNotAfter,
     });
-    const result = await handleIncomingMessage({
+    if (crmObservation.status !== "skipped") await processConversationCommercialObservationJobs({ jobId: crmObservation.jobId, limit: 1 }).catch((error) => {
+      console.error("Falha ao processar observacao inbound para CRM:", error);
+    });
+    const result = crmObservation.status === "skipped" ? { decision: "skip" as const, reason: "source_changed_since_admission" } : await withAiExecutionAuthority(job, () => handleIncomingMessage({
       tenantId: job.tenantId,
       chatId: job.chatId,
       messageId: job.messageId,
-    });
+    }));
 
-    await finalizeSuccessfulJob(job, result.decision, result.reason);
-    await updateAiWorkerHealth({
+    if (!await advanceExecution(job, result)) return { ok: false, retried: false, deadLetter: false, skipped: true };
+    const committed = await finalizeSuccessfulJob(job, result.decision, result.reason);
+    if (!committed) return { ok: false, retried: false, deadLetter: false, skipped: true };
+    await queueTelemetry(() => updateAiWorkerHealth({
       status: "healthy",
       source: "process_one_claimed_job",
       durationMs: Date.now() - startedAt,
@@ -716,7 +863,7 @@ async function processOneClaimedJob(job: ClaimedJob) {
       processed: 1,
       retried: 0,
       deadLetter: 0,
-    });
+    }));
 
     return {
       ok: true,
@@ -725,8 +872,14 @@ async function processOneClaimedJob(job: ClaimedJob) {
       skipped: result.decision === "skip",
     };
   } catch (error) {
+    if (error instanceof AiExecutionAuthorityError || error instanceof HandlerContinuationReviewError) {
+      await commitJobFinalization(job, { status: "reconciliation_required", lockedAt: null,
+        lastReasonCode: error instanceof HandlerContinuationReviewError ? "handler_continuation_review" : "execution_authority_revoked", updatedAt: FieldValue.serverTimestamp() },
+        chatStateProcessingPatch({ ...job, jobId: job.id, jobStatus: "reconciliation_required", decisionReason: error instanceof HandlerContinuationReviewError ? "handler_continuation_review" : "execution_authority_revoked" }));
+      return { ok: false, retried: false, deadLetter: false, skipped: true };
+    }
     const failed = await finalizeFailedJob(job, error);
-    await updateAiWorkerHealth({
+    await queueTelemetry(() => updateAiWorkerHealth({
       status: failed.classification.errorCode === "auth_invalid" || failed.classification.errorCode === "quota_exceeded"
         ? "degraded"
         : "down",
@@ -735,10 +888,10 @@ async function processOneClaimedJob(job: ClaimedJob) {
       claimed: 1,
       failed: 1,
       retried: failed.canRetry ? 1 : 0,
-      deadLetter: failed.canRetry ? 0 : 1,
+      deadLetter: failed.committed && !failed.canRetry ? 1 : 0,
       lastErrorCode: failed.classification.errorCode,
       lastErrorMessage: failed.classification.message,
-    });
+    }));
     console.error("Erro ao processar job de IA:", {
       jobId: job.id,
       tenantId: job.tenantId,
@@ -750,17 +903,22 @@ async function processOneClaimedJob(job: ClaimedJob) {
     return {
       ok: false,
       retried: failed.canRetry,
-      deadLetter: !failed.canRetry,
+      deadLetter: failed.committed && !failed.canRetry,
       skipped: false,
     };
   }
 }
 
 export async function processAiJobNow(jobId: string) {
+  return withoutAiExecutionAuthority(() => processAiJobNowInWorker(jobId));
+}
+
+async function processAiJobNowInWorker(jobId: string) {
   const normalizedJobId = String(jobId || "").trim();
   if (!normalizedJobId) return null;
 
   try {
+    await recoverExpiredAiJob(normalizedJobId);
     const claimed = await claimJob(normalizedJobId);
     if (!claimed) return null;
 
@@ -804,6 +962,10 @@ export async function processAiQueue(options?: {
   drain?: boolean;
   maxBatches?: number;
 }): Promise<ProcessAiQueueResult> {
+  return withoutAiExecutionAuthority(() => processAiQueueInWorker(options));
+}
+
+async function processAiQueueInWorker(options?: { limit?: number; drain?: boolean; maxBatches?: number }): Promise<ProcessAiQueueResult> {
   const startedAt = Date.now();
   const requested = Math.min(100, Math.max(1, options?.limit || DEFAULT_BATCH_LIMIT));
   const drain = options?.drain === true;
@@ -821,6 +983,7 @@ export async function processAiQueue(options?: {
   };
 
   try {
+    await recoverExpiredAiJobs(requested);
     for (let batch = 0; batch < maxBatches; batch += 1) {
       let claimedInBatch = 0;
       result.batches += 1;

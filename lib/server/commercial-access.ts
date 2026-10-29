@@ -36,24 +36,24 @@ export async function assertChatCommercialAccess(input: {
   if (clean(chat.tenantId, 140) !== clean(input.tenantId, 140)) {
     throw new TenantAccessError("chat_tenant_mismatch", "Conversa fora desta empresa.");
   }
-  if (!canAccessAssignedCommercialRecord(input.membership, input.userId, chat)) {
-    const channelId = clean(chat.channelId, 180);
-    if (channelId) {
-      const channelSnap = await adminDb.collection("tenant_channels").doc(channelId).get();
-      const channel = channelSnap.exists ? channelSnap.data() as Record<string, unknown> : {};
-      if (clean(channel.tenantId, 140) !== clean(input.tenantId, 140)) {
-        throw new TenantAccessError("chat_channel_tenant_mismatch", "O canal desta conversa não pertence a esta empresa.");
-      }
-      const enriched = {
-        ...chat,
-        channelScope: channel.channelScope,
-        channelOwnerUserId: channel.ownerUserId,
-      };
-      assertAssignedCommercialRecordAccess(input.membership, input.userId, enriched);
-      return enriched;
+  // A cached chat owner/scope must not bypass a channel transferred since the
+  // chat was last updated. Resolve current channel authority on every admission.
+  const channelId = clean(chat.channelId, 180);
+  if (channelId) {
+    const channelSnap = await adminDb.collection("tenant_channels").doc(channelId).get();
+    const channel = channelSnap.exists ? channelSnap.data() as Record<string, unknown> : {};
+    if (clean(channel.tenantId, 140) !== clean(input.tenantId, 140)) {
+      throw new TenantAccessError("chat_channel_tenant_mismatch", "O canal desta conversa não pertence a esta empresa.");
     }
-    assertAssignedCommercialRecordAccess(input.membership, input.userId, chat);
+    const enriched = {
+      ...chat,
+      channelScope: channel.channelScope,
+      channelOwnerUserId: channel.ownerUserId,
+    };
+    assertAssignedCommercialRecordAccess(input.membership, input.userId, enriched);
+    return enriched;
   }
+  assertAssignedCommercialRecordAccess(input.membership, input.userId, chat);
   return chat;
 }
 

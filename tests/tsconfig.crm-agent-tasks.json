@@ -1,0 +1,6 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": { "incremental": false },
+  "include": ["./crm-agent-tasks.emulator.mts", "../lib/server/crm/agent-commercial-task.ts"],
+  "exclude": ["../node_modules", "../.next", "../.qa-artifacts"]
+}

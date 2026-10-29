@@ -5,6 +5,7 @@
     { "path": "/api/internal/jobs/finance/subscriptions", "schedule": "30 8 * * *" },
     { "path": "/api/internal/jobs/commerce/actions", "schedule": "0 9 * * *" },
     { "path": "/api/internal/jobs/commercial-agent/actions", "schedule": "10 9 * * *" },
+    { "path": "/api/internal/jobs/ai-proactive?tenantLimit=40&leadLimit=60", "schedule": "20 12 * * *" },
     { "path": "/api/internal/jobs/creative-media/process?limit=20", "schedule": "15 10 * * *" }
   ]
 }

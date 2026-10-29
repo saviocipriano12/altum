@@ -29,7 +29,7 @@ function ClientAppShell({ children }: { children: React.ReactNode }) {
   const isCrmSurface = /^\/cliente\/painel\/(crm|pipeline|comercial)(\/|$)/.test(pathname || "");
   const clientArea = isInboxSurface ? "inbox" : isAssistantSurface ? "assistant" : "daily";
   const mainPaddingClass = isInboxSurface
-    ? "px-0 pb-0 pt-0 lg:px-7 lg:pb-10 xl:pt-[104px]"
+    ? "px-0 pb-0 pt-0 lg:px-7 lg:pb-4 xl:pt-[104px]"
     : compact
       ? "px-3 pb-[calc(env(safe-area-inset-bottom)+5.5rem)] pt-[calc(env(safe-area-inset-top)+4.5rem)] sm:pb-20 lg:px-6 lg:pb-8 lg:pt-[104px]"
       : "px-3 pb-[calc(env(safe-area-inset-bottom)+5.5rem)] pt-[calc(env(safe-area-inset-top)+4.5rem)] sm:px-4 sm:pb-24 lg:px-7 lg:pb-10 lg:pt-[104px]";

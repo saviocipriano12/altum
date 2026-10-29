@@ -1,0 +1,22 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": { "incremental": false },
+  "include": [
+    "./crm-foundation.emulator.mts",
+    "./crm-deletion-concurrency.emulator.mts",
+    "./crm-trash-preparation.emulator.mts",
+    "../app/cliente/painel/configuracoes/lixeira/page.tsx",
+    "../app/api/tenant/[tenantId]/chats/bulk-delete/route.ts",
+    "../app/api/tenant/[tenantId]/chats/[chatId]/route.ts",
+    "../app/api/tenant/[tenantId]/trash/route.ts",
+    "./crm-manual-routes.emulator.mts",
+    "../app/cliente/painel/crm/page.tsx",
+    "../app/api/tenant/[tenantId]/pipeline/route.ts",
+    "../app/api/tenant/[tenantId]/leads/route.ts",
+    "../app/api/tenant/[tenantId]/leads/[leadId]/route.ts",
+    "../app/api/tenant/[tenantId]/leads/[leadId]/stage/route.ts",
+    "../app/api/tenant/[tenantId]/leads/bulk-delete/route.ts",
+    "../lib/server/tenant-data-deletion.ts"
+  ],
+  "exclude": ["../node_modules", "../.qa-artifacts", "../.next", "../_benchmark"]
+}

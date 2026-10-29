@@ -1,0 +1,6 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {"incremental": false},
+  "include": ["./crm-assisted-meeting.emulator.mts", "../app/cliente/painel/reunioes-assistidas/page.tsx", "./crm-appointment-confirmation.emulator.mts", "./crm-appointment-draft.emulator.mts", "./crm-assignment.emulator.mts", "./crm-commercial-sla.emulator.mts", "./crm-agent-drafts.emulator.mts", "../lib/server/ai/agent.ts", "../app/cliente/painel/crm/page.tsx", "../app/cliente/painel/agenda/page.tsx", "../app/api/tenant/[tenantId]/appointments/route.ts"],
+  "exclude": ["../node_modules", "../.next", "../.qa-artifacts"]
+}

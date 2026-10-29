@@ -7,6 +7,7 @@ import {
   assistantRoleUsesCommercialFunnel,
   type AltumAssistantRole,
 } from "@/lib/ai-assistant-role";
+import { roleAllowsOperationalAction } from "@/lib/server/ai/role-operating-contract";
 
 type ConversationMessage = {
   sender: "agent" | "client" | "system";
@@ -28,6 +29,10 @@ type TenantAiOperationalContext = {
   learningHints?: AltumTenantLearningHints | null;
   salesMotion?: SalesMotion | null;
   assistantRole?: AltumAssistantRole;
+  roleContract?: {
+    readiness?: "ready" | "restricted";
+    capabilities?: string[];
+  } | null;
 };
 
 type ConversationalChoice = {
@@ -97,7 +102,7 @@ function detectObjectionType(inboundText: string, extractedFields?: Record<strin
   const explicit =
     sanitizeText(extractedFields?.objectionType, 120) ||
     sanitizeText(extractedFields?.objection, 120);
-  if (explicit) return explicit;
+  if (explicit && !/^(none|nenhum|nenhuma|nao|n\/a|sem objecao)$/i.test(normalizeComparable(explicit))) return explicit;
 
   const normalized = normalizeComparable(inboundText);
   if (!normalized) return null;
@@ -122,14 +127,26 @@ function detectIntent(input: {
     return "generic";
   }
 
-  if (/\b(humano|pessoa|atendente|suporte|consultor)\b/.test(normalized)) return "request_human";
+  if (/\b(voce|voces)\b.{0,24}\b(humano|humana|pessoa|inteligencia artificial|ia|robo|bot)\b/.test(normalized) || /\b(e|eh)\s+(uma?\s+)?(pessoa|humano|humana|ia|robo|bot)\b/.test(normalized)) return "agent_identity";
+  if (/\b(outro cliente|outra empresa|outro lead|outro contato)\b/.test(normalized) && /\b(preco|valor|condicao|dados|informacao|ofereceram|pagou)\b/.test(normalized)) return "cross_customer_context_request";
+  if (/\b(quero|gostaria|preciso|prefiro|pode|poderia)\b.{0,42}\b(falar|conversar|atendimento|atender|transferir|chamar)\b.{0,30}\b(humano|pessoa|atendente|suporte|consultor)\b/.test(normalized) || /\b(falar|conversar)\s+com\s+(um|uma)?\s*(humano|pessoa|atendente|consultor)\b/.test(normalized)) return "request_human";
   if (/^(oi|ola|bom dia|boa tarde|boa noite)\b/.test(normalized)) return "greeting";
   if (/\b(como voce esta|como voce ta|como vai|tudo bem|tudo certo)\b/.test(normalized)) return "relational";
   if (/\b(obrigad|valeu)\b/.test(normalized)) return "thanks";
   if (/\b(kkk|haha|hehe|beleza|show|massa)\b/.test(normalized)) return "light_small_talk";
+  if (/\b(quanto custa|qual (e )?o (preco|valor)|preco|valor|custo|custam)\b/.test(normalized)) return "price_inquiry";
+  if (/\b(o que (voces|a empresa) (fazem|oferecem)|quais (servicos|solucoes)|como (voces|a empresa) (ajudam|funcionam))\b/.test(normalized)) return "service_overview";
   if (/\b(proposta|orcamento)\b/.test(normalized)) return "proposal_interest";
   if (/\b(reuniao|agenda|agendar|call)\b/.test(normalized)) return "meeting_interest";
+  if (/\b(quero contratar|quero comprar|vou contratar|vou comprar|como (eu )?contrato|como (eu )?compro|qual (e )?o proximo passo|podemos fechar|quero fechar)\b/.test(normalized)) {
+    return "purchase_interest";
+  }
   if (detectObjectionType(input.inboundText, input.extractedFields)) return "objection";
+  const businessType = sanitizeText(input.extractedFields?.businessType, 120);
+  const primaryGoal = sanitizeText(input.extractedFields?.primaryGoal, 160);
+  if ((businessType && primaryGoal) || (/\b(sou|somos|tenho|minha empresa|minha clinica|meu negocio)\b/.test(normalized) && /\b(quero|preciso|busco|objetivo|organizar|melhorar|vender)\b/.test(normalized))) {
+    return "business_need";
+  }
   if (normalizeWords(sanitizeText(input.llmTurnGoal, 120)).some((word) => ["qualify", "discovery", "aprofundar", "investigar"].includes(word))) {
     return "qualification";
   }
@@ -166,7 +183,7 @@ function mapResponseGoalToStage(
   fallback: AltumPlannerDecision["stateAfter"]
 ): AltumPlannerDecision["stateAfter"] {
   if (responseGoal === "handoff") return "handoff";
-  if (responseGoal === "welcome") return currentStage === "greeting" || !currentStage ? "greeting" : fallback;
+  if (responseGoal === "welcome") return currentStage === "greeting" || !currentStage ? "discovery" : fallback;
   if (responseGoal === "qualify") {
     if (!currentStage || currentStage === "greeting" || currentStage === "discovery") return "qualification";
     return currentStage as AltumConversationStage;
@@ -176,6 +193,7 @@ function mapResponseGoalToStage(
     return currentStage as AltumConversationStage;
   }
   if (responseGoal === "handle_objection") return "objection_handling";
+  if (responseGoal === "recommend") return "recommendation";
   if (responseGoal === "move_to_next_step") return fallback;
   return fallback;
 }
@@ -183,8 +201,11 @@ function mapResponseGoalToStage(
 function inferFallbackResponseGoal(intent: string, choice: ConversationalChoice) {
   if (choice.decision === "handoff" || intent === "request_human") return "handoff" as const;
   if (intent === "greeting") return "welcome" as const;
+  if (intent === "agent_identity" || intent === "service_overview" || intent === "cross_customer_context_request") return "clarify" as const;
+  if (intent === "price_inquiry") return "handle_objection" as const;
+  if (intent === "business_need") return "recommend" as const;
   if (intent === "objection") return "handle_objection" as const;
-  if (intent === "proposal_interest" || intent === "meeting_interest") return "move_to_next_step" as const;
+  if (intent === "proposal_interest" || intent === "meeting_interest" || intent === "purchase_interest") return "move_to_next_step" as const;
   if (choice.decision === "ask_more" || intent === "qualification") return "qualify" as const;
   return "clarify" as const;
 }
@@ -259,7 +280,7 @@ function inferCommercialTemperature(input: {
     sanitizeText(input.leadMemory?.urgency, 80);
 
   if (input.responseGoal === "move_to_next_step") return "hot" as const;
-  if (input.intent === "proposal_interest" || input.intent === "meeting_interest") return "hot" as const;
+  if (input.intent === "proposal_interest" || input.intent === "meeting_interest" || input.intent === "purchase_interest") return "hot" as const;
   if (budget || urgency) return "warm" as const;
   if (input.responseGoal === "handle_objection") return "warm" as const;
   return "cold" as const;
@@ -273,19 +294,58 @@ function inferNextAction(input: {
   leadMemory: AltumLeadMemory | null;
   tenantAi: TenantAiOperationalContext;
 }) {
+  const role = input.tenantAi.assistantRole;
+  const restricted = input.tenantAi.roleContract?.readiness === "restricted";
   if (input.responseGoal === "handoff") return "assumir_handoff_humano";
   if (input.intent === "send_image" || input.intent === "send_document") return "esclarecer_oferta_e_mapear_foco";
   if (input.intent === "send_audio") return "aprofundar_oportunidade";
-  if (input.responseGoal === "handle_objection") return "tratar_objecao_suave";
-  if (input.responseGoal === "qualify") return "qualificar_contexto_minimo";
-  if (input.intent === "proposal_interest") return "preparar_proposta_comercial";
-  if (input.intent === "meeting_interest") return "agendar_proximo_passo";
+  if (input.responseGoal === "handle_objection") {
+    return roleAllowsOperationalAction(role, "handle_objection")
+      ? "tratar_objecao_decisiva"
+      : "esclarecer_e_encaminhar_objecao";
+  }
+  if (input.responseGoal === "qualify") {
+    return roleAllowsOperationalAction(role, "qualify_lead")
+      ? "qualificar_contexto_minimo"
+      : "entender_e_resolver_necessidade_atual";
+  }
+  if (input.intent === "proposal_interest") {
+    if (restricted) return "confirmar_configuracao_e_encaminhar_proposta";
+    if (roleAllowsOperationalAction(role, "prepare_proposal")) return "preparar_proposta_comercial";
+    if (role === "sdr") return "qualificar_e_encaminhar_para_closer";
+    return "encaminhar_pedido_de_proposta_com_contexto";
+  }
+  if (input.intent === "meeting_interest") {
+    return roleAllowsOperationalAction(role, "schedule_next_step")
+      ? "agendar_proximo_passo"
+      : "encaminhar_pedido_de_agendamento";
+  }
+  if (input.intent === "purchase_interest" && !roleAllowsOperationalAction(role, "complete_purchase")) {
+    return role === "sdr" ? "encaminhar_oportunidade_pronta_para_closer" : "encaminhar_intencao_de_compra_com_contexto";
+  }
   if (input.responseGoal === "move_to_next_step") {
-    if (input.tenantAi.salesMotion === "appointment") return "oferecer_horarios_disponiveis";
+    if (restricted) return "confirmar_condicoes_antes_de_avancar";
+    if (input.tenantAi.salesMotion === "appointment") {
+      return roleAllowsOperationalAction(role, "schedule_next_step")
+        ? "oferecer_horarios_disponiveis"
+        : "encaminhar_pedido_de_agendamento";
+    }
     if (input.tenantAi.salesMotion === "store_visit") return "agendar_visita";
-    if (input.tenantAi.salesMotion === "direct_checkout" || input.tenantAi.salesMotion === "digital_delivery") return "enviar_checkout_e_concluir_compra";
-    if (input.tenantAi.salesMotion === "assisted_purchase") return "confirmar_opcao_e_facilitar_pagamento";
-    if (input.tenantAi.learningHints?.preferredClosingMotion === "proposal") return "preparar_proposta_comercial";
+    if (input.tenantAi.salesMotion === "direct_checkout" || input.tenantAi.salesMotion === "digital_delivery") {
+      return roleAllowsOperationalAction(role, "complete_purchase")
+        ? "enviar_checkout_e_concluir_compra"
+        : "encaminhar_compra_com_contexto";
+    }
+    if (input.tenantAi.salesMotion === "assisted_purchase") {
+      return roleAllowsOperationalAction(role, "complete_purchase")
+        ? "confirmar_opcao_e_facilitar_pagamento"
+        : "confirmar_necessidade_e_encaminhar_compra";
+    }
+    if (input.tenantAi.learningHints?.preferredClosingMotion === "proposal") {
+      return roleAllowsOperationalAction(role, "prepare_proposal")
+        ? "preparar_proposta_comercial"
+        : "encaminhar_pedido_de_proposta_com_contexto";
+    }
     if (input.tenantAi.learningHints?.preferredClosingMotion === "meeting") return "agendar_proximo_passo";
     return "conduzir_para_proximo_passo";
   }
@@ -335,22 +395,54 @@ export function deriveOperationalPlan(input: DeriveOperationalPlanInput): AltumP
   });
 
   const forcedHandoff =
+    intent !== "agent_identity" && (
     input.choice.decision === "handoff" ||
     input.llmDecision === "handoff" ||
     intent === "request_human" ||
-    matchesEscalationTopic(inboundText, input.tenantAi.escalationTopics || []);
+    matchesEscalationTopic(inboundText, input.tenantAi.escalationTopics || []));
 
   const fallbackResponseGoal = inferFallbackResponseGoal(intent, input.choice);
   const normalizedTurnGoal = sanitizeText(input.llmTurnGoal, 120).toLowerCase();
-  const proposedResponseGoal = forcedHandoff
+  const modelProposedResponseGoal = forcedHandoff
     ? "handoff"
     : mapTurnGoalToResponseGoal(normalizedTurnGoal, fallbackResponseGoal);
-  const explicitClosingRequest = intent === "proposal_interest" || intent === "meeting_interest";
+  const proposedResponseGoal =
+    !forcedHandoff &&
+    (intent === "objection" || intent === "price_inquiry") &&
+    roleAllowsOperationalAction(input.tenantAi.assistantRole, "handle_objection")
+      ? ("handle_objection" as const)
+      : !forcedHandoff && (intent === "agent_identity" || intent === "service_overview" || intent === "cross_customer_context_request")
+        ? ("clarify" as const)
+      : !forcedHandoff && intent === "business_need"
+        ? roleAllowsOperationalAction(input.tenantAi.assistantRole, "recommend_offer")
+          ? ("recommend" as const)
+          : roleAllowsOperationalAction(input.tenantAi.assistantRole, "qualify_lead")
+            ? ("qualify" as const)
+            : ("clarify" as const)
+      : !forcedHandoff &&
+          intent === "purchase_interest" &&
+          roleAllowsOperationalAction(input.tenantAi.assistantRole, "complete_purchase")
+        ? ("move_to_next_step" as const)
+      : modelProposedResponseGoal;
+  const explicitClosingRequest = intent === "proposal_interest" || intent === "meeting_interest" || intent === "purchase_interest";
+  const proposedActionAllowed =
+    proposedResponseGoal === "qualify"
+      ? roleAllowsOperationalAction(input.tenantAi.assistantRole, "qualify_lead")
+      : proposedResponseGoal === "recommend"
+        ? roleAllowsOperationalAction(input.tenantAi.assistantRole, "recommend_offer")
+        : proposedResponseGoal === "handle_objection"
+          ? roleAllowsOperationalAction(input.tenantAi.assistantRole, "handle_objection")
+          : true;
+  const restrictedHighRiskGoal =
+    input.tenantAi.roleContract?.readiness === "restricted" &&
+    ["recommend", "handle_objection", "move_to_next_step"].includes(proposedResponseGoal);
   const roleSafeResponseGoal =
     !forcedHandoff &&
-    !assistantRoleUsesCommercialFunnel(input.tenantAi.assistantRole) &&
-    !explicitClosingRequest &&
-    ["qualify", "recommend", "handle_objection", "move_to_next_step"].includes(proposedResponseGoal)
+    ((!assistantRoleUsesCommercialFunnel(input.tenantAi.assistantRole) &&
+      !explicitClosingRequest &&
+      ["qualify", "recommend", "handle_objection", "move_to_next_step"].includes(proposedResponseGoal)) ||
+      !proposedActionAllowed ||
+      restrictedHighRiskGoal)
       ? ("clarify" as const)
       : proposedResponseGoal;
   const responseGoal =
@@ -360,8 +452,19 @@ export function deriveOperationalPlan(input: DeriveOperationalPlanInput): AltumP
     !explicitClosingRequest
       ? ("clarify" as const)
       : roleSafeResponseGoal;
+  const hasBusinessContext = Boolean(
+    sanitizeText(input.extractedFields?.businessType, 120) ||
+    sanitizeText(input.extractedFields?.primaryGoal, 160) ||
+    sanitizeText(input.leadMemory?.businessType, 120) ||
+    sanitizeText(input.leadMemory?.primaryGoal, 160) ||
+    (/\b(sou|somos|tenho|minha empresa|minha clinica|meu negocio)\b/.test(normalizeComparable(inboundText)) && /\b(quero|preciso|busco|objetivo|organizar|melhorar|vender)\b/.test(normalizeComparable(inboundText)))
+  );
   const stateAfter = forcedHandoff
     ? ("handoff" as const)
+    : intent === "price_inquiry" && hasBusinessContext
+      ? ("recommendation" as const)
+      : intent === "price_inquiry"
+        ? ("qualification" as const)
     : inferStateAfter({
         responseGoal,
         intent,
@@ -390,7 +493,15 @@ export function deriveOperationalPlan(input: DeriveOperationalPlanInput): AltumP
   });
 
   return {
-    decision: forcedHandoff ? "handoff" : input.choice.decision,
+    decision: forcedHandoff
+      ? "handoff"
+      : intent === "agent_identity" || intent === "service_overview" || intent === "cross_customer_context_request" || intent === "business_need"
+        ? "respond"
+      : intent === "price_inquiry" && !hasBusinessContext
+        ? "ask_more"
+      : responseGoal === "handle_objection"
+        ? "respond"
+        : input.choice.decision,
     reason:
       sanitizeText(input.choice.reason, 180) ||
       sanitizeText(input.llmReason, 180) ||

@@ -1,5 +1,6 @@
 import { FieldValue } from "firebase-admin/firestore";
 import { adminDb } from "@/app/lib/server/firebase-admin";
+import { recordAiLearningSignal } from "@/lib/server/ai/learning-signals";
 
 function cleanText(value: unknown, max = 180) {
   if (typeof value !== "string") return "";
@@ -99,9 +100,13 @@ export async function trackAltumAgentLearning(input: LearningInput) {
     aggregatePatch[`counters.${group}.${key}`] = FieldValue.increment(1);
   }
 
-  await Promise.all([
-    eventRef.set(
-      {
+  await adminDb.runTransaction(async (transaction) => {
+    const existing = await transaction.get(eventRef);
+    if (existing.exists) {
+      if (existing.data()?.tenantId !== tenantId || existing.data()?.chatId !== chatId || existing.data()?.aiLogId !== aiLogId) throw new Error("AI_LEARNING_EVENT_SCOPE_CONFLICT");
+      return false;
+    }
+    transaction.create(eventRef, {
         tenantId,
         chatId,
         leadId: cleanText(input.leadId, 160) || null,
@@ -117,9 +122,29 @@ export async function trackAltumAgentLearning(input: LearningInput) {
         confidence: typeof input.confidence === "number" ? input.confidence : null,
         qualityScore: typeof input.qualityScore === "number" ? input.qualityScore : null,
         createdAt: FieldValue.serverTimestamp(),
-      },
-      { merge: true }
-    ),
-    dailyRef.set(aggregatePatch, { merge: true }),
-  ]);
+        learningEligibility: "observation_only",
+      });
+    transaction.set(dailyRef, aggregatePatch, { merge: true });
+    return true;
+  });
+
+  const recorded = (await eventRef.get()).data()!;
+
+  // A saida da propria IA fica observavel, mas nunca conta como evidencia de sucesso.
+  // Ela somente podera influenciar uma recomendacao quando um resultado externo for
+  // posteriormente atribuido a este evento em learning-outcomes.ts.
+  await recordAiLearningSignal({
+    tenantId,
+    dedupeKey: `agent-observation:${aiLogId}`,
+    relationshipId: recorded.leadId || chatId,
+    type: "agent_observation",
+    source: "agent",
+    direction: "neutral",
+    targetKind: "next_action",
+    targetId: recorded.nextAction || recorded.decision,
+    occurredAtMs: recorded.createdAt?.toMillis?.(),
+    selfGenerated: true,
+    referenceType: "ai_learning_event",
+    referenceId: aiLogId,
+  });
 }

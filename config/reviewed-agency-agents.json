@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "status": "review_queue",
+  "source": {
+    "repo": "Ado77/agency-agents",
+    "commit": "3c9588880b7cafaec325a104899fd8bbe27e7d72",
+    "license": "MIT"
+  },
+  "agents": [
+    { "id": "market-research-synthesist", "sourcePath": "research/research-synthesist.md", "division": "research", "altumRole": "Pesquisador de Mercado" },
+    { "id": "growth-strategist", "sourcePath": "marketing/marketing-growth-hacker.md", "division": "marketing", "altumRole": "Estrategista de Growth" },
+    { "id": "seo-strategist", "sourcePath": "marketing/marketing-seo-specialist.md", "division": "marketing", "altumRole": "Especialista de SEO e GEO" },
+    { "id": "social-strategist", "sourcePath": "marketing/marketing-social-media-strategist.md", "division": "marketing", "altumRole": "Estrategista de Conteúdo Social" },
+    { "id": "paid-social-strategist", "sourcePath": "paid-media/paid-media-paid-social-strategist.md", "division": "paid-media", "altumRole": "Especialista de Mídia Paga Social" },
+    { "id": "paid-search-strategist", "sourcePath": "paid-media/paid-media-ppc-strategist.md", "division": "paid-media", "altumRole": "Especialista de Mídia Paga de Busca" },
+    { "id": "measurement-specialist", "sourcePath": "paid-media/paid-media-tracking-specialist.md", "division": "paid-media", "altumRole": "Analista de Medição e Atribuição" },
+    { "id": "brand-guardian", "sourcePath": "design/design-brand-guardian.md", "division": "design", "altumRole": "Revisor de Marca e Qualidade" },
+    { "id": "visual-storyteller", "sourcePath": "design/design-visual-storyteller.md", "division": "design", "altumRole": "Diretor Criativo" },
+    { "id": "offer-leadgen-strategist", "sourcePath": "sales/sales-offer-lead-gen-strategist.md", "division": "sales", "altumRole": "Estrategista de Oferta e Geração de Demanda" },
+    { "id": "proposal-strategist", "sourcePath": "sales/sales-proposal-strategist.md", "division": "sales", "altumRole": "Estrategista de Propostas" },
+    { "id": "studio-producer", "sourcePath": "project-management/project-management-studio-producer.md", "division": "project-management", "altumRole": "Coordenador de Operações da Agência" }
+  ]
+}

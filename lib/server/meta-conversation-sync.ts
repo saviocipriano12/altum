@@ -3,10 +3,12 @@ import { adminDb } from "@/app/lib/server/firebase-admin";
 import { getMetaChannelForTenant, type MetaChannelConfig } from "@/app/lib/server/meta-channel";
 import { buildIncomingChatOperationalPatch, resolveFirstResponseSlaMinutes } from "@/lib/server/chat-operations";
 import { upsertContactProfile } from "@/lib/server/contact-profile";
-import { recordInboundLead } from "@/lib/server/lead-intake";
 import { getTenantSettings } from "@/lib/server/tenant";
 import { resolveInboundAssignment } from "@/lib/server/tenant-routing";
 import { runLeadAutomations } from "@/lib/server/automations";
+import { processIntakeCreation } from "@/lib/server/crm/intake-occurrence";
+import { resolveCanonicalSocialChat } from "@/lib/server/social-chat-identity";
+import { resolveCanonicalSocialLead } from "@/lib/server/social-lead-identity";
 
 const VERSION = process.env.META_GRAPH_VERSION || "v21.0";
 
@@ -85,49 +87,47 @@ async function fetchRecentMessengerConversations(channel: MetaChannelConfig) {
 
 async function resolveLead(input: {
   tenantId: string;
+  channelId: string;
   externalProfileId: string;
+  contactId: string | null;
   contactName: string;
 }) {
-  const existing = await adminDb
-    .collection("leads")
-    .where("tenantId", "==", input.tenantId)
-    .where("externalProfileId", "==", input.externalProfileId)
-    .limit(1)
-    .get();
-
-  if (!existing.empty) {
-    const doc = existing.docs[0];
-    const data = doc.data() as Record<string, unknown>;
-    const currentName = clean(data.nome, 180);
-    if ((!currentName || /^Messenger\s+\d+$/i.test(currentName)) && input.contactName) {
-      await doc.ref.set({ nome: input.contactName, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
-    }
-    return {
-      leadId: doc.id,
-      ownerId: clean(data.ownerId, 180) || null,
-      ownerName: clean(data.owner, 180) || null,
-    };
-  }
-
   const assignee = await resolveInboundAssignment(input.tenantId, { channel: "messenger", priority: "medium", responsibility: "lead" });
-  const lead = await recordInboundLead({
+  const canonical = await resolveCanonicalSocialLead({
     tenantId: input.tenantId,
-    sourceType: "facebook_messenger",
-    sourceId: `messenger:${input.externalProfileId}`,
-    sourceLabel: "Facebook Messenger",
+    contactId: input.contactId,
     channel: "messenger",
-    nome: input.contactName || `Messenger ${input.externalProfileId.slice(-6)}`,
     externalProfileId: input.externalProfileId,
-    defaultOwnerId: assignee?.userId || null,
-    defaultOwnerName: assignee?.name || null,
-    automationActorId: "meta_messenger_sync",
-    automationActorName: "Meta Messenger Sync",
+    creationWorkflow: { channelId: input.channelId, actorId: "meta_messenger_sync", actorName: "Meta Messenger Sync" },
+    createData: {
+      tenantId: input.tenantId,
+      contactId: input.contactId,
+      sourceType: "facebook_messenger",
+      sourceId: `messenger:${input.externalProfileId}`,
+      sourceLabel: "Facebook Messenger",
+      channel: "messenger",
+      nome: input.contactName || `Messenger ${input.externalProfileId.slice(-6)}`,
+      externalProfileId: input.externalProfileId,
+      ownerId: assignee?.userId || null,
+      owner: assignee?.name || null,
+      pipelineStage: "captado",
+      stage: "captado",
+      status: "novo",
+      createdAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
+    },
   });
-
+  const lead = await canonical.leadRef.get();
+  const data = lead.data() || {};
+  const currentName = clean(data.nome, 180);
+  if ((!currentName || /^Messenger\s+\d+$/i.test(currentName)) && input.contactName) {
+    await canonical.leadRef.set({ nome: input.contactName, contactId: input.contactId, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+  }
   return {
-    leadId: lead.leadId,
-    ownerId: assignee?.userId || null,
-    ownerName: assignee?.name || null,
+    leadId: canonical.leadRef.id,
+    creationJobId: canonical.creationJobId,
+    ownerId: clean(data.ownerId, 180) || assignee?.userId || null,
+    ownerName: clean(data.owner, 180) || assignee?.name || null,
   };
 }
 
@@ -142,14 +142,6 @@ async function upsertMessengerChat(input: {
   lastMessage: string;
   lastMessageAt: Date;
 }) {
-  const existing = await adminDb
-    .collection("chats")
-    .where("tenantId", "==", input.tenantId)
-    .where("channel", "==", "messenger")
-    .where("contactExternalId", "==", input.contactExternalId)
-    .limit(1)
-    .get();
-
   const tenantSettings = await getTenantSettings(input.tenantId);
   const slaMinutes = resolveFirstResponseSlaMinutes(tenantSettings as Record<string, unknown> | null);
   const operationalPatch = buildIncomingChatOperationalPatch({
@@ -158,8 +150,12 @@ async function upsertMessengerChat(input: {
     slaMinutes,
   });
 
-  if (existing.empty) {
-    const ref = await adminDb.collection("chats").add({
+  const canonical = await resolveCanonicalSocialChat({
+    tenantId: input.tenantId,
+    channel: "messenger",
+    channelId: input.channel.id,
+    externalProfileId: input.contactExternalId,
+    createData: {
       tenantId: input.tenantId,
       channel: "messenger",
       channelId: input.channel.id,
@@ -175,13 +171,15 @@ async function upsertMessengerChat(input: {
       ...operationalPatch,
       createdAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
-    });
-    return ref.id;
+    },
+  });
+  if (canonical.created) {
+    return canonical.chatRef.id;
   }
 
-  const doc = existing.docs[0];
+  const doc = await canonical.chatRef.get();
   const data = doc.data() as Record<string, unknown>;
-  await doc.ref.set(
+  await canonical.chatRef.set(
     {
       tenantId: input.tenantId,
       channel: "messenger",
@@ -200,7 +198,7 @@ async function upsertMessengerChat(input: {
     { merge: true }
   );
 
-  return doc.id;
+  return canonical.chatRef.id;
 }
 
 export async function syncRecentMessengerConversationsForTenant(tenantId: string) {
@@ -249,9 +247,18 @@ export async function syncRecentMessengerConversationsForTenant(tenantId: string
       if (messages.length === 0) continue;
 
       const latest = messages[messages.length - 1];
-      const lead = await resolveLead({
+      const initialContactId = await upsertContactProfile({
         tenantId: normalizedTenantId,
         externalProfileId: contactExternalId,
+        channel: "messenger",
+        name: contactName,
+        email: clean(customer?.email, 180),
+      });
+      const lead = await resolveLead({
+        tenantId: normalizedTenantId,
+        channelId: channel.id,
+        externalProfileId: contactExternalId,
+        contactId: initialContactId,
         contactName,
       });
       const chatId = await upsertMessengerChat({
@@ -266,7 +273,9 @@ export async function syncRecentMessengerConversationsForTenant(tenantId: string
         lastMessageAt: toDate(latest.created_time || conversation.updated_time),
       });
 
-      await upsertContactProfile({
+      if (lead.creationJobId) await processIntakeCreation(lead.creationJobId, normalizedTenantId);
+
+      const contactId = await upsertContactProfile({
         tenantId: normalizedTenantId,
         externalProfileId: contactExternalId,
         leadId: lead.leadId,
@@ -276,9 +285,16 @@ export async function syncRecentMessengerConversationsForTenant(tenantId: string
         company: "",
         photoUrl: "",
       });
+      if (contactId) {
+        await Promise.all([
+          adminDb.collection("chats").doc(chatId).set({ contactId, updatedAt: FieldValue.serverTimestamp() }, { merge: true }),
+          adminDb.collection("leads").doc(lead.leadId).set({ contactId, updatedAt: FieldValue.serverTimestamp() }, { merge: true }),
+        ]);
+      }
 
       for (const message of messages) {
         const messageId = clean(message.id, 240);
+        if (!messageId) continue; // No invented identity for a provider event.
         const text = clean(message.message, 4000);
         const senderId = clean(message.from?.id, 180);
         const isClient = senderId !== pageId;
@@ -305,6 +321,7 @@ export async function syncRecentMessengerConversationsForTenant(tenantId: string
           await runLeadAutomations({
             tenantId: normalizedTenantId,
             trigger: "message_received",
+            sourceMessageId: ref.id,
             leadId: lead.leadId,
             chatId,
             channel: "messenger",

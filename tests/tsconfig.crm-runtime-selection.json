@@ -1,0 +1,6 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": { "incremental": false },
+  "include": ["./crm-conversation-selection.emulator.mts", "./ai-execution-authority.emulator.mts", "./ai-handler-continuation.emulator.mts", "./ai-queue-finalization.emulator.mts", "./ai-relationship-state.emulator.mts", "../lib/server/ai/queue.ts", "../lib/server/ai/agent.ts"],
+  "exclude": ["../node_modules", "../.next", "../.qa-artifacts", "../_benchmark"]
+}

@@ -20,6 +20,11 @@ export type EcommerceOrderJourney = {
   shouldCreatePostPurchaseUpsell: boolean;
 };
 
+export function isPaidEcommerceJourneyState(value: unknown) {
+  const state = typeof value === "string" ? value.trim().toLowerCase() : "";
+  return ["payment_confirmed", "fulfillment_pending", "shipped", "delivered", "partially_refunded"].includes(state);
+}
+
 function tokens(...values: unknown[]) {
   return values
     .map((value) => String(value || ""))

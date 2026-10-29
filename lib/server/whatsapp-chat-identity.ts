@@ -30,6 +30,7 @@ export async function resolveCanonicalWhatsAppChat(input: {
   channelId: string;
   phone: string;
   createData: Record<string, unknown>;
+  requireExactChannel?: boolean;
 }) {
   const identityId = whatsappChatIdentityId(input);
   const identityRef = adminDb.collection("chat_identities").doc(identityId);
@@ -39,8 +40,11 @@ export async function resolveCanonicalWhatsAppChat(input: {
     .where("tenantId", "==", input.tenantId)
     .limit(20)
     .get();
-  const matching = candidates.docs
-    .filter((document) => clean(document.data().channelId) === input.channelId)
+  const exact = candidates.docs.filter((document) => clean(document.data().channelId) === input.channelId);
+  const legacy = !input.requireExactChannel && exact.length === 0 && candidates.docs.length === 1 && !clean(candidates.docs[0]?.data().channelId)
+    ? [candidates.docs[0]]
+    : [];
+  const matching = [...exact, ...legacy]
     .sort((left, right) => toMillis(left.data().createdAt) - toMillis(right.data().createdAt));
 
   const result = await adminDb.runTransaction(async (transaction) => {
@@ -50,14 +54,26 @@ export async function resolveCanonicalWhatsAppChat(input: {
       const mappedRef = chatsRef.doc(mappedChatId);
       const mappedSnapshot = await transaction.get(mappedRef);
       if (mappedSnapshot.exists) {
+        const mapped = mappedSnapshot.data() || {};
+        if (clean(mapped.tenantId) !== input.tenantId || clean(mapped.contactPhone, 40) !== input.phone
+          || (clean(mapped.channelId) !== input.channelId && (input.requireExactChannel || clean(mapped.channelId)))) {
+          throw new Error("Identidade WhatsApp aponta para outra empresa, canal ou contato.");
+        }
         return { chatRef: mappedRef, created: false };
       }
     }
 
     const legacyCandidate = matching[0] as QueryDocumentSnapshot | undefined;
     const chatRef: DocumentReference = legacyCandidate?.ref || chatsRef.doc(identityId);
-    const chatSnapshot = legacyCandidate || await transaction.get(chatRef);
+    const chatSnapshot = await transaction.get(chatRef);
     const created = !chatSnapshot.exists;
+    if (!created) {
+      const existing = chatSnapshot.data() || {};
+      if (clean(existing.tenantId) !== input.tenantId || clean(existing.contactPhone, 40) !== input.phone
+        || (clean(existing.channelId) !== input.channelId && (input.requireExactChannel || clean(existing.channelId)))) {
+        throw new Error("Conversa WhatsApp fora do escopo solicitado.");
+      }
+    }
     if (created) transaction.set(chatRef, input.createData);
 
     transaction.set(identityRef, {

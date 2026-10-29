@@ -1,0 +1,6 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": { "incremental": false },
+  "include": ["./crm-agent-memory.emulator.mts", "../lib/server/ai/inbound-enrichment-write.ts", "../lib/server/ai/runtime-state.ts", "../lib/server/ai/multimodal.ts", "../lib/server/ai/agent.ts", "../lib/server/ai/relationship-state.ts"],
+  "exclude": ["../node_modules", "../.next", "../.qa-artifacts"]
+}

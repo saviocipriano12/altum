@@ -1,5 +1,6 @@
 import { suggestPipelineStageForAiAction } from "@/lib/ai-next-actions";
 import { normalizePipelineStageId, type PipelineStageDefinition } from "@/lib/pipeline";
+import { currentCommercialField } from "@/lib/crm-current-facts";
 
 export type LeadQualificationReason = {
   code: string;
@@ -96,30 +97,12 @@ export function evaluateLeadQualification(input: {
   const aiMemory = asRecord(input.lead.aiMemory);
   const notes = cleanText(input.lead.notes || input.lead.aiLeadSummary, 2000);
   const source = cleanText(input.lead.origem || input.lead.channel, 120);
-  const businessType = cleanText(
-    input.lead.aiBusinessType || aiMemory.businessType || customFields.nicho,
-    160
-  );
-  const primaryGoal = cleanText(
-    input.lead.aiPrimaryGoal || aiMemory.primaryGoal || customFields.objetivo_principal,
-    220
-  );
-  const budgetBand = cleanText(
-    input.lead.aiBudgetBand || aiMemory.budgetBand || customFields.orcamento || customFields.budget,
-    160
-  );
-  const urgency = cleanText(
-    input.lead.aiUrgency || aiMemory.urgency || customFields.urgencia,
-    120
-  );
-  const decisionMaker = cleanText(
-    input.lead.aiDecisionMaker || aiMemory.decisionMaker || customFields.decisor,
-    160
-  );
-  const recommendedOffer = cleanText(
-    input.lead.aiRecommendedOffer || aiMemory.recommendedOffer || aiMemory.serviceInterest || customFields.servico_interesse,
-    180
-  );
+  const businessType = currentCommercialField(input.lead, "businessType").value;
+  const primaryGoal = currentCommercialField(input.lead, "primaryGoal").value;
+  const budgetBand = currentCommercialField(input.lead, "budgetBand").value;
+  const urgency = currentCommercialField(input.lead, "urgency").value;
+  const decisionMaker = currentCommercialField(input.lead, "decisionMaker").value;
+  const recommendedOffer = currentCommercialField(input.lead, "serviceInterest", [input.lead.aiRecommendedOffer, aiMemory.recommendedOffer]).value;
   const potentialValue =
     cleanNumber(input.lead.potentialValue) ??
     cleanNumber(input.lead.valorPotencial) ??
@@ -364,18 +347,20 @@ export function evaluateLeadQualification(input: {
   score = Math.max(0, Math.min(100, score));
 
   const band = inferBand(score, aiNextAction);
-  const recommendedStage =
-    suggestPipelineStageForAiAction(
-      aiNextAction,
-      input.stages.map((stage) => stage.id)
-    ) ||
-    (score >= 80
+  const scoreStage = score >= 80
       ? "proposta"
       : score >= 55
         ? "qualificacao"
         : score >= 30
           ? "contato"
-          : "captado");
+          : "captado";
+  const currentStage = normalizePipelineStageId(input.lead.pipelineStage || input.lead.stage || "captado");
+  // Preserve configured labels/descriptions and terminal flags. Never invent a
+  // default column or map an unknown custom stage merely by its position.
+  const recommendedStage = suggestPipelineStageForAiAction(aiNextAction, input.stages) ||
+    input.stages.find(stage => stage.id === scoreStage && !stage.isTerminal)?.id ||
+    input.stages.find(stage => stage.id === currentStage)?.id ||
+    input.stages.find(stage => !stage.isTerminal)?.id || currentStage;
 
   return {
     score,

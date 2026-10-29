@@ -1,4 +1,6 @@
+import { readQueryPages } from "@/lib/server/query-pages";
 import { NextResponse } from "next/server";
+import { commercialRecordIdentity, type CommercialRecordIdentity } from "@/lib/crm-commercial-record";
 import { adminDb } from "@/app/lib/server/firebase-admin";
 import { requireRequestUser, RouteAuthError } from "@/app/lib/server/route-auth";
 import { assertTenantAccess, TenantAccessError } from "@/lib/server/tenant";
@@ -31,7 +33,7 @@ const MODULES: Array<{ id: string; label: string; path: string; description: str
   { id: "configuracoes", label: "Configuracoes", path: "/cliente/painel/configuracoes", description: "Empresa, equipe, canais e integracoes" },
 ];
 
-type SearchLead = {
+type SearchLead = CommercialRecordIdentity & {
   id: string;
   name: string;
   email: string;
@@ -126,12 +128,12 @@ export async function GET(
     }
 
     const [leadsSnap, chatsSnap, budgetsSnap, financeSnap, tasksSnap, ordersSnap] = await Promise.all([
-      entitlements.modules.crm ? adminDb.collection("leads").where("tenantId", "==", tenantId).limit(180).get() : null,
-      entitlements.modules.inbox ? adminDb.collection("chats").where("tenantId", "==", tenantId).limit(180).get() : null,
-      entitlements.modules.crm ? adminDb.collection("orcamentos").where("tenantId", "==", tenantId).limit(180).get() : null,
-      entitlements.modules.crm ? adminDb.collection("financeiro").where("tenantId", "==", tenantId).limit(180).get() : null,
-      entitlements.modules.automation ? adminDb.collection("lead_tasks").where("tenantId", "==", tenantId).limit(180).get() : null,
-      entitlements.modules.commerce ? adminDb.collection("ecommerce_orders").where("tenantId", "==", tenantId).limit(180).get() : null,
+      entitlements.modules.crm ? readQueryPages(adminDb.collection("leads").where("tenantId", "==", tenantId), 400, req.signal) : null,
+      entitlements.modules.inbox ? readQueryPages(adminDb.collection("chats").where("tenantId", "==", tenantId), 400, req.signal) : null,
+      entitlements.modules.crm ? readQueryPages(adminDb.collection("orcamentos").where("tenantId", "==", tenantId), 400, req.signal) : null,
+      entitlements.modules.crm ? readQueryPages(adminDb.collection("financeiro").where("tenantId", "==", tenantId), 400, req.signal) : null,
+      entitlements.modules.automation ? readQueryPages(adminDb.collection("lead_tasks").where("tenantId", "==", tenantId), 400, req.signal) : null,
+      entitlements.modules.commerce ? readQueryPages(adminDb.collection("ecommerce_orders").where("tenantId", "==", tenantId), 400, req.signal) : null,
     ]);
 
     const teamWideAccess = hasTeamWideCommercialAccess(membership);
@@ -155,13 +157,14 @@ export async function GET(
         return {
           id: doc.id,
           name: typeof data.nome === "string" ? data.nome : "Lead",
+          ...commercialRecordIdentity(data),
           email: typeof data.email === "string" ? data.email : "",
           phone: typeof data.telefone === "string" ? data.telefone : "",
           stage: normalizePipelineStageId(data.pipelineStage || data.stage || "captado"),
         };
       })
       .filter((item) => {
-        const haystack = normalizeText(`${item.name} ${item.email} ${item.phone} ${item.stage}`);
+        const haystack = normalizeText(`${item.name} ${item.opportunityTitle} ${item.email} ${item.phone} ${item.stage}`);
         return includesAny(haystack, query);
       })
       .slice(0, 8);

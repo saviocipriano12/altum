@@ -3,9 +3,13 @@ import { requireRequestUser, RouteAuthError } from "@/app/lib/server/route-auth"
 import { assertTenantAccess, assertTenantCapability, TenantAccessError } from "@/lib/server/tenant";
 import { type ChatMediaType } from "@/lib/server/chat-dispatch";
 import { processChatOutboundJobs, queueTenantChatMediaBuffer } from "@/lib/server/chat-outbound";
+import { ChatOutboundIdempotencyError, ChatOutboundRequestIdError, normalizeChatOutboundRequestId } from "@/lib/server/chat-outbound-idempotency";
 import { assertTenantModule } from "@/lib/server/tenant-entitlements";
 import { TenantUsageLimitError } from "@/lib/server/tenant-usage";
 import { assertChatCommercialAccess } from "@/lib/server/commercial-access";
+
+export const runtime = "nodejs";
+export const maxDuration = 180;
 
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
 const MAX_VIDEO_BYTES = 32 * 1024 * 1024;
@@ -46,6 +50,7 @@ export async function POST(
     await assertChatCommercialAccess({ membership, userId: user.uid, tenantId, chatId });
 
     const form = await req.formData();
+    const clientRequestId = normalizeChatOutboundRequestId(form.get("clientRequestId"));
     const uploaded = form.get("file");
     if (!(uploaded instanceof File)) {
       return NextResponse.json({ error: "Arquivo obrigatorio." }, { status: 400 });
@@ -74,6 +79,7 @@ export async function POST(
       caption: clean(form.get("caption"), 1024),
       replyToId: clean(form.get("replyToId"), 180) || null,
       actor: { id: user.uid, name: user.name },
+      clientRequestId,
     });
     after(() => processChatOutboundJobs({ jobId: queued.jobId, limit: 1 }).catch((error) => {
       console.error("Falha no envio assincrono de midia:", error);
@@ -87,6 +93,9 @@ export async function POST(
       ...queued,
     });
   } catch (error) {
+    if (error instanceof ChatOutboundRequestIdError) {
+      return NextResponse.json({ error: error.message, code: error.code }, { status: 400 });
+    }
     if (error instanceof RouteAuthError) {
       return NextResponse.json({ error: error.message, code: error.code }, { status: error.status });
     }
@@ -95,6 +104,9 @@ export async function POST(
     }
     if (error instanceof TenantUsageLimitError) {
       return NextResponse.json({ error: error.message, code: error.code }, { status: error.status });
+    }
+    if (error instanceof ChatOutboundIdempotencyError) {
+      return NextResponse.json({ error: error.message, code: error.code }, { status: 409 });
     }
     console.error("Erro ao enviar midia do tenant:", error);
     return NextResponse.json(

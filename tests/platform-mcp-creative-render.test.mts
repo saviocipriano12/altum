@@ -12,9 +12,14 @@ test("platform render requires explicit approval and atomic job claim", () => {
   assert.match(source, /current\.get\("status"\) !== expected/);
 });
 
-test("model discovery excludes unapproved connections and job listings scope to actor", () => {
+test("a configured connection can be prepared for its first explicitly approved render", () => {
   assert.match(source, /altum_admin_list_creative_models/);
-  assert.match(source, /\["healthy", "approved"\]\.includes\(row\.status\)/);
+  assert.match(source, /renderableConnectionStatuses = \["configured_unapproved", "healthy", "approved"\]/);
+  assert.match(source, /ready_for_first_approved_render/);
+  assert.match(source, /provider_default/);
+});
+
+test("job listings remain scoped to the authenticated actor", () => {
   assert.match(source, /altum_admin_list_creative_jobs/);
   assert.match(source, /\.where\("createdBy", "==", actor!\.userId\)/);
 });
@@ -25,7 +30,9 @@ test("accepted asynchronous render without polling URL is quarantined", () => {
 });
 
 test("platform render persists assets without exposing tenant media", () => {
-  assert.match(source, /executeCreativeJob\(/);
+  assert.match(source, /executeCreativeJobWithFallback/);
+  assert.match(source, /loadCreativeExecutionCandidates/);
+  assert.match(source, /fallbackConnectionIds/);
   assert.match(source, /refreshCreativeJob\(/);
   assert.match(source, /persistCreativeAsset\(/);
   assert.match(source, /platform_creative_assets/);

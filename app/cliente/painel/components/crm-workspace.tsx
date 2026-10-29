@@ -55,6 +55,7 @@ export function CrmHero({
   assistantSubtitle = "Sinais e proximas acoes",
   assistantText = "A IA aparece como apoio pratico: prioriza contatos, sugere retornos e ajuda o time a vender sem abrir configuracao tecnica.",
   assistantBadge = "ao vivo",
+  compact = false,
 }: {
   active: CrmRouteLabel;
   title: string;
@@ -65,26 +66,27 @@ export function CrmHero({
   assistantSubtitle?: string;
   assistantText?: string;
   assistantBadge?: string;
+  compact?: boolean;
 }) {
   return (
     <section className="overflow-hidden rounded-[20px] border border-[var(--cliente-border)] bg-[var(--cliente-card)] shadow-[var(--cliente-shadow-soft)]">
       <div className="flex flex-col gap-3 p-4 sm:p-5 lg:flex-row lg:items-start lg:justify-between">
         <div className="min-w-0 flex-1">
-          <div className="mb-3 flex flex-wrap items-center gap-2">
+          {!compact ? <div className="mb-3 flex flex-wrap items-center gap-2">
             <CrmBadge tone="neutral">{active}</CrmBadge>
             <CrmBadge tone="blue">Operacao comercial</CrmBadge>
-          </div>
+          </div> : null}
           <h1 className="max-w-4xl text-[1.55rem] font-extrabold leading-tight tracking-normal text-[var(--cliente-card-text)] sm:text-[1.85rem]">
             {title}
           </h1>
-          <p className="mt-2 hidden max-w-2xl text-sm leading-5 text-[var(--cliente-card-text-soft)] sm:block">
+          {!compact ? <p className="mt-2 hidden max-w-2xl text-sm leading-5 text-[var(--cliente-card-text-soft)] sm:block">
             {description}
-          </p>
+          </p> : null}
         </div>
         {action ? <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto sm:flex-wrap lg:mx-0">{action}</div> : null}
       </div>
 
-      <div className="hidden border-t border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-5 py-3.5 sm:block">
+      {!compact ? <div className="hidden border-t border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-5 py-3.5 sm:block">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex min-w-0 items-start gap-3">
             <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-[12px] border border-[color:color-mix(in_srgb,var(--cliente-ai)_22%,transparent)] bg-[var(--cliente-ai-soft)] text-[var(--cliente-ai)]">
@@ -100,12 +102,17 @@ export function CrmHero({
           </div>
           <CrmBadge tone="purple">{assistantBadge}</CrmBadge>
         </div>
-      </div>
+      </div> : null}
 
       <div className="hidden border-t border-[var(--cliente-border)] px-3 py-3 sm:block">
         <CrmTabs active={active} />
       </div>
-      {children ? <div className="border-t border-[var(--cliente-border)] p-3 lg:p-4">{children}</div> : null}
+      {children ? compact ? (
+        <details className="border-t border-[var(--cliente-border)] p-3 lg:p-4">
+          <summary className="cursor-pointer text-sm font-semibold text-[var(--cliente-card-text-soft)]">Indicadores desta visualização</summary>
+          <div className="mt-3">{children}</div>
+        </details>
+      ) : <div className="border-t border-[var(--cliente-border)] p-3 lg:p-4">{children}</div> : null}
     </section>
   );
 }

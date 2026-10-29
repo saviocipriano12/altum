@@ -5,6 +5,7 @@ import {
   deleteTenantTrashPermanently,
   listTenantTrash,
   restoreTenantTrash,
+  TenantDeletionConflict,
 } from "@/lib/server/tenant-data-deletion";
 
 export async function GET(req: Request, context: { params: Promise<{ tenantId: string }> }) {
@@ -30,10 +31,11 @@ export async function POST(req: Request, context: { params: Promise<{ tenantId: 
     const body = (await req.json()) as { trashId?: unknown };
     const trashId = typeof body.trashId === "string" ? body.trashId.trim() : "";
     if (!trashId) return NextResponse.json({ error: "trashId obrigatorio." }, { status: 400 });
-    return NextResponse.json({ ok: true, ...(await restoreTenantTrash({ tenantId, trashId })) });
+    return NextResponse.json({ ok: true, ...(await restoreTenantTrash({ tenantId, trashId, actorId: user.uid, actorName: user.name })) });
   } catch (error) {
     if (error instanceof RouteAuthError) return NextResponse.json({ error: error.message }, { status: error.status });
     if (error instanceof TenantAccessError) return NextResponse.json({ error: error.message }, { status: 403 });
+    if (error instanceof TenantDeletionConflict) return NextResponse.json({ error: error.message, code: "recovery_conflict" }, { status: 409 });
     return NextResponse.json({ error: error instanceof Error ? error.message : "Falha ao restaurar item." }, { status: 500 });
   }
 }
@@ -49,11 +51,12 @@ export async function DELETE(req: Request, context: { params: Promise<{ tenantId
     if (!trashId) return NextResponse.json({ error: "trashId obrigatorio." }, { status: 400 });
     return NextResponse.json({
       ok: true,
-      ...(await deleteTenantTrashPermanently({ tenantId, trashId })),
+      ...(await deleteTenantTrashPermanently({ tenantId, trashId, actorId: user.uid, actorName: user.name })),
     });
   } catch (error) {
     if (error instanceof RouteAuthError) return NextResponse.json({ error: error.message }, { status: error.status });
     if (error instanceof TenantAccessError) return NextResponse.json({ error: error.message }, { status: 403 });
+    if (error instanceof TenantDeletionConflict) return NextResponse.json({ error: error.message, code: "deletion_conflict" }, { status: 409 });
     return NextResponse.json({ error: error instanceof Error ? error.message : "Falha ao excluir item." }, { status: 500 });
   }
 }

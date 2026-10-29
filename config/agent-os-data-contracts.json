@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "purpose": "Inventário canônico dos dados do Agent OS. Não substitui validação de rotas ou regras; torna o escopo esperado revisável.",
+  "collections": [
+    { "name": "agent_missions", "scope": "tenant", "tenantField": "tenantId", "directClientAccess": "server_only" },
+    { "name": "agent_tasks", "scope": "tenant", "tenantField": "tenantId", "directClientAccess": "server_only" },
+    { "name": "agent_runs", "scope": "tenant", "tenantField": "tenantId", "directClientAccess": "server_only" },
+    { "name": "agent_approvals", "scope": "tenant", "tenantField": "tenantId", "directClientAccess": "server_only" },
+    { "name": "agent_approval_policies", "scope": "tenant", "tenantField": "tenantId", "directClientAccess": "server_only" },
+    { "name": "agent_command_attachments", "scope": "tenant", "tenantField": "tenantId", "directClientAccess": "server_only" },
+    { "name": "agent_command_messages", "scope": "tenant", "tenantField": "tenantId", "directClientAccess": "server_only" },
+    { "name": "agent_conversations", "scope": "tenant", "tenantField": "tenantId", "directClientAccess": "server_only" },
+    { "name": "agent_domain_events", "scope": "tenant", "tenantField": "tenantId", "directClientAccess": "server_only" },
+    { "name": "agent_mission_evidence", "scope": "tenant", "tenantField": "tenantId", "directClientAccess": "server_only" },
+    { "name": "agent_objectives", "scope": "tenant", "tenantField": "tenantId", "directClientAccess": "server_only" },
+    { "name": "agent_programs", "scope": "tenant", "tenantField": "tenantId", "directClientAccess": "server_only" },
+    { "name": "agent_ideas", "scope": "tenant", "tenantField": "tenantId", "directClientAccess": "server_only" },
+    { "name": "agent_memories", "scope": "tenant", "tenantField": "tenantId", "directClientAccess": "server_only" },
+    { "name": "agent_runtime_dispatches", "scope": "tenant", "tenantField": "tenantId", "directClientAccess": "server_only" },
+    { "name": "agent_runtime_events", "scope": "tenant", "tenantField": "tenantId", "directClientAccess": "server_only" },
+    { "name": "agent_task_executions", "scope": "tenant", "tenantField": "tenantId", "directClientAccess": "server_only" },
+    { "name": "tool_connections", "scope": "tenant_or_platform", "tenantField": "tenantId", "directClientAccess": "server_only" },
+    { "name": "tool_providers", "scope": "platform", "tenantField": null, "directClientAccess": "server_only" },
+    { "name": "audit_logs", "scope": "tenant_or_platform", "tenantField": "tenantId", "directClientAccess": "admin_read_only" },
+    { "name": "audit_events", "scope": "legacy_chat_bound", "tenantField": null, "directClientAccess": "server_only", "migrationNote": "Leitura atual é autorizada pelo chat; migrar para tenantId explícito antes de usá-la no Agent OS." }
+  ]
+}

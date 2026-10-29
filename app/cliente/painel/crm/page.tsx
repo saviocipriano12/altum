@@ -1,7 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { FormEvent, useCallback, useDeferredValue, useEffect, useMemo, useState } from "react";
+import { commercialValueCoverage, type CommercialRecordIdentity } from "@/lib/crm-commercial-record";
+import { commercialEvidenceFacts } from "@/lib/crm-field-evidence";
+import { CommercialQualificationReview } from "@/components/client/commercial-qualification-review";
+import { CommercialReadNotice } from "@/components/client/commercial-read-notice";
+import { CommercialReadReview } from "@/components/client/commercial-read-review";
+import { CrmDetailRequests, crmDetailScope, reconcileCrmStageDraft } from "@/lib/crm-detail-refresh";
+import { CommercialEvidenceFact, CommercialMediaInsight } from "@/components/client/commercial-evidence-fact";
+import { FormEvent, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   CheckCircle2,
@@ -25,6 +32,8 @@ import {
 import { authedFetch } from "@/app/lib/authed-fetch";
 import { useClienteTenant } from "@/app/cliente/ClientePanelGuard";
 import { CustomerProfileDrawer } from "@/app/cliente/painel/components/customer-profile-drawer";
+import { CommercialActivities } from "@/app/cliente/painel/components/commercial-activities";
+import type { CommercialActivity } from "@/lib/crm-activity";
 import {
   CrmAvatar,
   CrmBadge,
@@ -44,7 +53,8 @@ import {
   formatCrmMoney,
   toCrmDate,
 } from "@/app/cliente/painel/components/crm-workspace";
-import { getPipelineStageLabel, normalizePipelineStageId, type PipelineStageDefinition } from "@/lib/pipeline";
+import { getPipelineStageLabel as resolvePipelineStageLabel, normalizePipelineStageId, type PipelineStageDefinition } from "@/lib/pipeline";
+import { crmPipelineStageOptions } from "@/lib/crm-pipeline-view";
 import type { SalesJourneyRecommendation } from "@/lib/sales-journey";
 import { deriveEcommerceOrderJourney, type EcommerceOrderJourneyState } from "@/lib/ecommerce-journey";
 import { inferClientAccessProfile } from "@/lib/client-access-profiles";
@@ -175,7 +185,7 @@ type LeadDocument = {
   updatedAt?: unknown;
 };
 
-type LeadItem = {
+type LeadItem = Partial<CommercialRecordIdentity> & {
   id: string;
   nome?: string;
   email?: string;
@@ -201,6 +211,8 @@ type LeadItem = {
   last_touch?: Record<string, unknown>;
   attribution?: Record<string, unknown>;
   customFields?: Record<string, string | number | boolean | null>;
+  aiLatestMediaInsight?: unknown;
+  aiCommercialReadState?: unknown;
   status?: string;
   pipelineStage?: string;
   stage?: string;
@@ -540,21 +552,7 @@ function resolveLeadAttribution(lead?: LeadItem | null) {
 }
 
 function resolveLeadAiEvidence(lead?: LeadItem | null) {
-  const evidence = lead?.aiFieldEvidence || {};
-  const getValue = (keys: string[]) => {
-    for (const key of keys) {
-      const value = cleanCrmText(evidence[key]?.value, 160);
-      if (value) return value;
-    }
-    return "Nao capturado";
-  };
-
-  return [
-    { label: "Interesse", value: getValue(["serviceInterest", "activeTopic", "primaryGoal", "custom.servico_interesse"]) },
-    { label: "Urgencia", value: getValue(["urgency", "custom.urgencia"]) },
-    { label: "Orcamento", value: getValue(["budgetBand", "custom.orcamento"]) },
-    { label: "Decisor", value: getValue(["decisionMaker", "custom.decisor"]) },
-  ];
+  return commercialEvidenceFacts(lead);
 }
 
 function formatAiAction(value?: string | null) {
@@ -637,15 +635,18 @@ export default function ClienteCrmPage() {
   const viewFromQuery = (searchParams.get("view") || "list") as ViewKey;
   const { tenant, hasCapability } = useClienteTenant();
   const canOperate = hasCapability("edit_leads");
-  const canManageAssignments = hasCapability("view_team_records") || hasCapability("manage_users") || hasCapability("manage_settings");
+  const canManageAssignments = canOperate && (hasCapability("view_team_records") || hasCapability("manage_users") || hasCapability("manage_settings"));
 
   const [leads, setLeads] = useState<LeadItem[]>([]);
   const [totalLeadCount, setTotalLeadCount] = useState(0);
   const [nextLeadOffset, setNextLeadOffset] = useState<number | null>(null);
   const [stages, setStages] = useState<PipelineStageDefinition[]>([]);
+  const activePipelineTenant = useRef(tenant?.tenantId);
+  activePipelineTenant.current = tenant?.tenantId;
+  const getPipelineStageLabel = useCallback((id: string) => resolvePipelineStageLabel(id, stages), [stages]);
   const [metricsSummary, setMetricsSummary] = useState<MetricsSummaryPayload>({});
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(leadFromQuery);
-  const [detail, setDetail] = useState<LeadDetailPayload | null>(null);
+  const [detailRecord, setDetail] = useState<(LeadDetailPayload & { requestScope: string }) | null>(null);
   const [view, setView] = useState<ViewKey>(viewFromQuery === "pipeline" ? "pipeline" : viewFromQuery === "analytics" ? "analytics" : "list");
   const [search, setSearch] = useState("");
   const deferredSearch = useDeferredValue(search);
@@ -658,7 +659,7 @@ export default function ClienteCrmPage() {
   const [loadingMore, setLoadingMore] = useState(false);
   const [detailLoading, setDetailLoading] = useState(false);
   const [savingStage, setSavingStage] = useState(false);
-  const [savingTask, setSavingTask] = useState(false);
+  const [nextRegisteredActivity, setNextRegisteredActivity] = useState<CommercialActivity | null>(null);
   const [savingNote, setSavingNote] = useState(false);
   const [savingLead, setSavingLead] = useState(false);
   const [savingNewLead, setSavingNewLead] = useState(false);
@@ -674,14 +675,24 @@ export default function ClienteCrmPage() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [lastAssignmentAuditId, setLastAssignmentAuditId] = useState<string | null>(null);
+  const assignmentRequest = useRef<{signature: string; key: string} | null>(null);
   const [importFile, setImportFile] = useState<File | null>(null);
   const [nextStage, setNextStage] = useState("captado");
-  const [taskTitle, setTaskTitle] = useState("");
   const [noteText, setNoteText] = useState("");
   const [editing, setEditing] = useState(false);
+  const [reviewingQualification, setReviewingQualification] = useState(false);
   const [creatingLead, setCreatingLead] = useState(false);
   const [leadForm, setLeadForm] = useState({ ...EMPTY_LEAD_FORM });
   const [newLeadForm, setNewLeadForm] = useState({ ...EMPTY_LEAD_FORM, pipelineStage: "captado" });
+  const detailRequests = useRef(new CrmDetailRequests());
+  const detailScope = crmDetailScope(tenant?.tenantId, tenant?.userId, selectedLeadId);
+  const detail = detailRecord?.requestScope === detailScope ? detailRecord : null;
+  const currentDetailScope = useRef(detailScope);
+  currentDetailScope.current = detailScope;
+  const pauseDetailRefresh = useRef(false);
+  pauseDetailRefresh.current = editing || reviewingQualification || savingLead || savingStage || savingNote || deletingLeads || distributingLeads || importing || Boolean(updatingEcommerceActionId);
+  const previousStageRecord = useRef<{ id: string; stage: string } | null>(null);
+  const [detailSync, setDetailSync] = useState<{ scope: string; checkedAt: number; failed: boolean } | null>(null);
 
   const load = useCallback(async () => {
     if (!tenant?.tenantId) return;
@@ -697,8 +708,10 @@ export default function ClienteCrmPage() {
         error?: string;
         pagination?: { total?: number; nextOffset?: number | null; hasMore?: boolean };
       };
-      const pipelinePayload = (await pipelineRes.json().catch(() => ({}))) as { stages?: PipelineStageDefinition[] };
+      const pipelinePayload = (await pipelineRes.json().catch(() => ({}))) as { stages?: PipelineStageDefinition[]; error?: string };
       if (!leadsRes.ok || leadsPayload.error) throw new Error(leadsPayload.error || "Falha ao carregar CRM.");
+      if (!pipelineRes.ok || pipelinePayload.error || !Array.isArray(pipelinePayload.stages)) throw new Error(pipelinePayload.error || "Nao foi possivel carregar as etapas do funil.");
+      if (activePipelineTenant.current !== tenant.tenantId) return;
       const nextLeads = leadsPayload.items || [];
       setLeads(nextLeads);
       setTotalLeadCount(Number(leadsPayload.pagination?.total ?? nextLeads.length));
@@ -778,27 +791,95 @@ export default function ClienteCrmPage() {
     }
   }, [loadingMore, nextLeadOffset, tenant?.tenantId, totalLeadCount]);
 
-  const loadDetail = useCallback(async (leadId: string | null) => {
+  const loadDetail = useCallback(async (leadId: string | null, options?: { silent?: boolean }) => {
     if (!tenant?.tenantId || !leadId) {
       setDetail(null);
+      setDetailLoading(false);
       return;
     }
-    setDetailLoading(true);
-    try {
-      const res = await authedFetch(`/api/tenant/${tenant.tenantId}/leads/${leadId}`);
-      const payload = (await res.json()) as LeadDetailPayload;
-      if (!res.ok || payload.error) throw new Error(payload.error || "Falha ao carregar ficha.");
-      setDetail(payload);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Falha ao carregar ficha.");
-    } finally {
+    const silent = options?.silent === true;
+    if (silent && pauseDetailRefresh.current) return;
+    const scope = crmDetailScope(tenant.tenantId, tenant.userId, leadId);
+    const ticket = detailRequests.current.begin(scope, silent);
+    if (!ticket) return;
+    const isCurrent = () => detailRequests.current.accepts(ticket, currentDetailScope.current);
+    if (!silent) setDetailLoading(true);
+    const timeout = window.setTimeout(() => {
+      if (!isCurrent()) return;
+      setDetailSync(current => ({ scope, checkedAt: current?.scope === scope ? current.checkedAt : 0, failed: true }));
       setDetailLoading(false);
+      if (!silent) setError("A ficha demorou para responder. Tentaremos atualizar novamente.");
+      detailRequests.current.cancelScope(scope);
+    }, 15_000);
+    try {
+      const res = await authedFetch(`/api/tenant/${tenant.tenantId}/leads/${leadId}`, { signal: ticket.controller.signal });
+      const payload = (await res.json()) as LeadDetailPayload;
+      if (!isCurrent()) return;
+      if (res.status === 403 || res.status === 404) {
+        setError(payload.error || "Este cliente não está mais disponível para você.");
+        setDetail(null);
+        setLeads(current => current.filter(lead => lead.id !== leadId));
+        setSelectedLeadId(null);
+        setEditing(false);
+        throw new Error(payload.error || "Este cliente não está mais disponível para você.");
+      }
+      if (!res.ok || payload.error) throw new Error(payload.error || "Falha ao carregar ficha.");
+      if (payload.lead?.id !== leadId) throw new Error("Não foi possível conferir o cliente desta ficha.");
+      if (silent && pauseDetailRefresh.current) return;
+      setDetail({ ...payload, requestScope: scope });
+      setLeads(current => current.map(lead => lead.id === leadId ? { ...lead, ...payload.lead } : lead));
+      setDetailSync({ scope, checkedAt: Date.now(), failed: false });
+    } catch (err) {
+      if (!isCurrent()) return;
+      setDetailSync(current => ({ scope, checkedAt: current?.scope === scope ? current.checkedAt : 0, failed: true }));
+      if (!silent) setError(err instanceof Error ? err.message : "Falha ao carregar ficha.");
+    } finally {
+      window.clearTimeout(timeout);
+      if (isCurrent()) setDetailLoading(false);
+      detailRequests.current.finish(ticket);
     }
-  }, [tenant?.tenantId]);
+  }, [tenant?.tenantId, tenant?.userId]);
 
   useEffect(() => {
     load();
   }, [load]);
+
+  useEffect(() => {
+    const tenantId = tenant?.tenantId;
+    if (!tenantId) return;
+    let active = true;
+    let controller: AbortController | undefined;
+    const refresh = async () => {
+      if (document.visibilityState !== "visible") return;
+      controller?.abort();
+      const requestController = new AbortController();
+      controller = requestController;
+      try {
+        const response = await authedFetch(`/api/tenant/${tenantId}/pipeline`, { signal: requestController.signal });
+        const payload = await response.json() as { stages?: PipelineStageDefinition[]; error?: string };
+        if (!active || requestController.signal.aborted || activePipelineTenant.current !== tenantId) return;
+        if (!response.ok || payload.error || !Array.isArray(payload.stages)) throw new Error(payload.error || "Nao foi possivel atualizar as etapas do funil.");
+        setStages(payload.stages);
+      } catch (error) {
+        if (active && activePipelineTenant.current === tenantId && !(error instanceof Error && error.name === "AbortError")) {
+          setError(error instanceof Error ? error.message : "Nao foi possivel atualizar as etapas do funil.");
+        }
+      }
+    };
+    const onRefresh = () => { void refresh(); };
+    const onSaved = (event: Event) => {
+      if ((event as CustomEvent<{ tenantId: string }>).detail?.tenantId === tenantId) void refresh();
+    };
+    window.addEventListener("focus", onRefresh);
+    document.addEventListener("visibilitychange", onRefresh);
+    window.addEventListener("altum:pipeline-updated", onSaved);
+    return () => {
+      active = false; controller?.abort();
+      window.removeEventListener("focus", onRefresh);
+      document.removeEventListener("visibilitychange", onRefresh);
+      window.removeEventListener("altum:pipeline-updated", onSaved);
+    };
+  }, [tenant?.tenantId]);
 
   useEffect(() => {
     void loadSellerOptions();
@@ -829,12 +910,41 @@ export default function ClienteCrmPage() {
     loadDetail(selectedLeadId);
   }, [loadDetail, selectedLeadId]);
 
-  const selectedLead = useMemo(() => leads.find((lead) => lead.id === selectedLeadId) || detail?.lead || null, [detail?.lead, leads, selectedLeadId]);
+  useEffect(() => {
+    if (!tenant?.tenantId || !selectedLeadId) return;
+    const scope = detailScope;
+    const requests = detailRequests.current;
+    const refresh = () => {
+      if (document.visibilityState === "visible" && !pauseDetailRefresh.current) void loadDetail(selectedLeadId, { silent: true });
+    };
+    const timer = window.setInterval(refresh, 20_000);
+    window.addEventListener("focus", refresh);
+    document.addEventListener("visibilitychange", refresh);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener("focus", refresh);
+      document.removeEventListener("visibilitychange", refresh);
+      requests.cancelScope(scope);
+    };
+  }, [detailScope, loadDetail, selectedLeadId, tenant?.tenantId]);
+
+  const selectedLead = useMemo(() => detail?.lead?.id === selectedLeadId ? detail.lead : leads.find((lead) => lead.id === selectedLeadId) || null, [detail?.lead, leads, selectedLeadId]);
+  const detailSyncMessage = editing || reviewingQualification ? "Atualizações pausadas durante a edição" : detailSync?.scope === detailScope && detailSync.failed
+    ? "Não foi possível atualizar a ficha. Tentaremos novamente."
+    : detailSync?.scope === detailScope && detailSync.checkedAt
+      ? `Conferido às ${new Date(detailSync.checkedAt).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}` : "Carregando ficha…";
 
   useEffect(() => {
     if (!selectedLead) return;
     const stage = normalizeStage(selectedLead);
-    setNextStage(stage);
+    const prior = previousStageRecord.current;
+    const incoming = { id: selectedLead.id, stage };
+    setNextStage(current => reconcileCrmStageDraft(current, prior, incoming));
+    previousStageRecord.current = incoming;
+    if (editing) {
+      if (prior && prior.id !== incoming.id) setEditing(false);
+      return;
+    }
     setLeadForm({
       nome: selectedLead.nome || "",
       email: selectedLead.email || "",
@@ -844,15 +954,13 @@ export default function ClienteCrmPage() {
       channel: selectedLead.channel || "",
       priority: selectedLead.priority || "medium",
       heat: selectedLead.heat || "morno",
-      potentialValue: selectedLead.potentialValue ? String(selectedLead.potentialValue) : "",
+      potentialValue: typeof selectedLead.potentialValue === "number" ? String(selectedLead.potentialValue) : "",
       notes: selectedLead.notes || "",
     });
-  }, [selectedLead]);
+  }, [selectedLead, editing]);
 
   const stageOptions = useMemo(() => {
-    const fromPipeline = stages.map((stage) => stage.id).filter(Boolean);
-    const fromLeads = leads.map(normalizeStage);
-    return Array.from(new Set(["captado", ...fromPipeline, ...fromLeads]));
+    return crmPipelineStageOptions(stages, leads.map(normalizeStage));
   }, [leads, stages]);
 
   const filteredLeads = useMemo(() => {
@@ -869,7 +977,7 @@ export default function ClienteCrmPage() {
       if (focusFilter === "no_owner" && ownerKey(lead)) return false;
       if (focusFilter === "hot" && String(lead.heat || "").toLowerCase() !== "quente" && lead.aiCommercialTemperature !== "hot") return false;
       if (!term) return true;
-      return `${lead.nome || ""} ${lead.empresa || ""} ${lead.email || ""} ${lead.telefone || ""} ${lead.owner || ""} ${lead.origem || ""} ${lead.sourceLabel || ""} ${lead.campaignName || ""}`.toLowerCase().includes(term);
+      return `${lead.nome || ""} ${lead.opportunityTitle || ""} ${lead.empresa || ""} ${lead.email || ""} ${lead.telefone || ""} ${lead.owner || ""} ${lead.origem || ""} ${lead.sourceLabel || ""} ${lead.campaignName || ""}`.toLowerCase().includes(term);
     });
   }, [channelFilter, deferredSearch, focusFilter, heatFilter, leads, ownerFilter, stageFilter]);
 
@@ -965,11 +1073,11 @@ export default function ClienteCrmPage() {
   }, [leads, performanceByOwner]);
 
   const summary = useMemo(() => {
-    const totalValue = filteredLeads.reduce((sum, lead) => sum + (lead.potentialValue || 0), 0);
+    const valueCoverage = commercialValueCoverage(filteredLeads);
     const hot = filteredLeads.filter((lead) => String(lead.heat || "").toLowerCase() === "quente").length;
     const noOwner = filteredLeads.filter((lead) => !lead.owner && !lead.ownerId).length;
     const proposal = filteredLeads.filter((lead) => normalizeStage(lead).includes("proposta")).length;
-    return { total: filteredLeads.length, totalValue, hot, noOwner, proposal };
+    return { total: filteredLeads.length, ...valueCoverage, hot, noOwner, proposal };
   }, [filteredLeads]);
 
   const prioritySummary = useMemo(() => {
@@ -993,7 +1101,7 @@ export default function ClienteCrmPage() {
   const leadsByStage = useMemo(() => {
     return stageOptions.map((stage) => {
       const items = filteredLeads.filter((lead) => normalizeStage(lead) === stage);
-      return { stage, items, totalValue: items.reduce((sum, lead) => sum + (lead.potentialValue || 0), 0) };
+      return { stage, items, ...commercialValueCoverage(items) };
     });
   }, [filteredLeads, stageOptions]);
 
@@ -1062,7 +1170,7 @@ export default function ClienteCrmPage() {
       const res = await authedFetch(`/api/tenant/${tenant.tenantId}/leads/${selectedLeadId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...leadForm, potentialValue: Number(leadForm.potentialValue || 0) }),
+        body: JSON.stringify({ ...leadForm, potentialValue: leadForm.potentialValue.trim() ? Number(leadForm.potentialValue) : null }),
       });
       const payload = (await res.json().catch(() => ({}))) as { error?: string };
       if (!res.ok || payload.error) throw new Error(payload.error || "Falha ao salvar contato.");
@@ -1074,29 +1182,6 @@ export default function ClienteCrmPage() {
       setError(err instanceof Error ? err.message : "Falha ao salvar contato.");
     } finally {
       setSavingLead(false);
-    }
-  }
-
-  async function createTask(event: FormEvent) {
-    event.preventDefault();
-    if (!tenant?.tenantId || !selectedLeadId || !taskTitle.trim() || !canOperate) return;
-    setSavingTask(true);
-    setError(null);
-    try {
-      const res = await authedFetch(`/api/tenant/${tenant.tenantId}/leads/${selectedLeadId}/tasks`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title: taskTitle.trim(), status: "pending", priority: "medium", type: "follow_up" }),
-      });
-      const payload = (await res.json().catch(() => ({}))) as { error?: string };
-      if (!res.ok || payload.error) throw new Error(payload.error || "Falha ao criar tarefa.");
-      setTaskTitle("");
-      setNotice("Tarefa criada.");
-      await loadDetail(selectedLeadId);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Falha ao criar tarefa.");
-    } finally {
-      setSavingTask(false);
     }
   }
 
@@ -1185,7 +1270,7 @@ export default function ClienteCrmPage() {
 
   async function deleteSelectedLeads() {
     if (!tenant?.tenantId || !selectedLeadIds.length || !canOperate) return;
-    if (!window.confirm(`Apagar definitivamente ${selectedLeadIds.length} contato(s), conversas e dados relacionados?`)) return;
+    if (!window.confirm(`Mover ${selectedLeadIds.length} contato(s), conversas e dados relacionados para a lixeira?`)) return;
     setDeletingLeads(true);
     setError(null);
     try {
@@ -1196,7 +1281,7 @@ export default function ClienteCrmPage() {
       });
       const payload = (await res.json().catch(() => ({}))) as { deleted?: number; error?: string };
       if (!res.ok) throw new Error(payload.error || "Falha ao apagar contatos.");
-      setNotice(`${payload.deleted || 0} contato(s) apagado(s) definitivamente.`);
+      setNotice(`${payload.deleted || 0} contato(s) movido(s) para a lixeira.`);
       setSelectedLeadIds([]);
       setSelectedLeadId(null);
       setDetail(null);
@@ -1209,8 +1294,9 @@ export default function ClienteCrmPage() {
   }
 
   const selectedJourney = detail?.salesJourney || selectedLead?.salesJourney || null;
+  const registeredActivity = nextRegisteredActivity?.leadId === selectedLead?.id ? nextRegisteredActivity : null;
   const selectedNextAction =
-    selectedJourney?.actionLabel || (cleanCrmText(selectedLead?.aiNextAction)
+    registeredActivity?.title || selectedJourney?.actionLabel || (cleanCrmText(selectedLead?.aiNextAction)
       ? formatAiAction(selectedLead?.aiNextAction)
       : detail?.qualification?.nextAction ||
         selectedLead?.qualification?.nextAction ||
@@ -1265,7 +1351,7 @@ export default function ClienteCrmPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ...newLeadForm,
-          potentialValue: Number(newLeadForm.potentialValue || 0),
+          potentialValue: newLeadForm.potentialValue.trim() ? Number(newLeadForm.potentialValue) : null,
         }),
       });
       const payload = (await res.json().catch(() => ({}))) as { leadId?: string; error?: string };
@@ -1282,7 +1368,7 @@ export default function ClienteCrmPage() {
       if (!res.ok || !payload.leadId) throw new Error(payload.error || "Falha ao criar contato.");
 
       setCreatingLead(false);
-      setNewLeadForm({ ...EMPTY_LEAD_FORM, pipelineStage: "captado" });
+      setNewLeadForm({ ...EMPTY_LEAD_FORM, pipelineStage: stageOptions[0] || "captado" });
       setSelectedLeadId(payload.leadId);
       setNotice("Contato criado. A ficha comercial ja esta pronta para a proxima acao.");
       router.replace(`/cliente/painel/crm?leadId=${encodeURIComponent(payload.leadId)}`);
@@ -1313,18 +1399,22 @@ export default function ClienteCrmPage() {
     setError(null);
     setNotice(null);
     try {
+      const body = {
+        leadIds: targetIds.slice().sort(),
+        onlyUnassigned: !explicitLeadIds?.length && selectedLeadIds.length === 0,
+        mode,
+        assigneeUserId: mode === "specific" ? targetSellerId : undefined,
+      };
+      const signature = JSON.stringify([tenant.tenantId, body]);
+      if (assignmentRequest.current?.signature !== signature) assignmentRequest.current = {signature, key: crypto.randomUUID()};
       const res = await authedFetch(`/api/tenant/${tenant.tenantId}/leads/distribute`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          leadIds: targetIds,
-          onlyUnassigned: !explicitLeadIds?.length && selectedLeadIds.length === 0,
-          mode,
-          assigneeUserId: mode === "specific" ? targetSellerId : undefined,
-        }),
+        body: JSON.stringify({...body, requestId: assignmentRequest.current.key}),
       });
       const payload = (await res.json().catch(() => ({}))) as { assigned?: number; error?: string; message?: string; auditId?: string; undoAvailable?: boolean };
       if (!res.ok || payload.error) throw new Error(payload.error || "Falha ao distribuir oportunidades.");
+      assignmentRequest.current = null;
       setSelectedLeadIds([]);
       setLastAssignmentAuditId(payload.undoAvailable && payload.auditId ? payload.auditId : null);
       setNotice(
@@ -1355,10 +1445,10 @@ export default function ClienteCrmPage() {
       const res = await authedFetch(`/api/tenant/${tenant.tenantId}/leads/distribute/${lastAssignmentAuditId}/undo`, {
         method: "POST",
       });
-      const payload = (await res.json().catch(() => ({}))) as { restored?: number; error?: string };
+      const payload = (await res.json().catch(() => ({}))) as { restored?: number; skipped?: number; error?: string };
       if (!res.ok || payload.error) throw new Error(payload.error || "Falha ao desfazer distribuicao.");
       setLastAssignmentAuditId(null);
-      setNotice(`${payload.restored || 0} oportunidade(s) voltaram ao responsavel anterior.`);
+      setNotice(`${payload.restored || 0} oportunidade(s) voltaram ao responsável anterior.${payload.skipped ? ` ${payload.skipped} foram preservadas porque receberam alterações depois da distribuição.` : ""}`);
       await load();
       if (selectedLeadId) await loadDetail(selectedLeadId);
     } catch (err) {
@@ -1368,10 +1458,37 @@ export default function ClienteCrmPage() {
     }
   }
 
+  const assignmentTools = canManageAssignments && selectedLeadIds.length ? (
+    <div className="flex flex-wrap items-center gap-2">
+                  <CrmSelect aria-label="Vendedor para atribuição" value={assignmentSellerId} onChange={(event) => setAssignmentSellerId(event.target.value)} className="min-w-[190px]">
+                    <option value="">Escolha um vendedor</option>
+                    {sellerOptions.map((seller) => <option key={seller.id} value={seller.id}>{seller.name} • {presenceLabel(seller.presence)}</option>)}
+                  </CrmSelect>
+                  <button
+                    type="button"
+                    onClick={() => void distributeLeads("specific")}
+                    disabled={distributingLeads || !assignmentSellerId}
+                    className="inline-flex items-center gap-2 rounded-[14px] bg-[var(--cliente-primary)] px-3 py-2 text-xs font-black text-white transition hover:brightness-95 disabled:opacity-55"
+                  >
+                    {distributingLeads ? <Loader2 className="h-4 w-4 animate-spin" /> : <UsersRound className="h-4 w-4" />}
+                    Atribuir {selectedLeadIds.length}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void distributeLeads("unassign")}
+                    disabled={distributingLeads}
+                    className="inline-flex items-center gap-2 rounded-[14px] border border-[var(--cliente-border)] bg-[var(--cliente-card)] px-3 py-2 text-xs font-black text-[var(--cliente-card-text-soft)] transition hover:bg-[var(--cliente-panel-soft)] disabled:opacity-55"
+                  >
+                    Deixar sem responsavel
+                  </button>
+    </div>
+              ) : null;
+
   return (
     <>
       <MobileCrmScreen
         leads={filteredLeads}
+        stages={stages}
         loading={loading}
         search={search}
         focus={focusFilter}
@@ -1383,11 +1500,21 @@ export default function ClienteCrmPage() {
         onFocus={setFocusFilter}
         onRefresh={load}
         onOpenPipeline={() => setViewAndUrl("pipeline")}
+        canManageAssignments={canManageAssignments}
+        selectedLeadIds={selectedLeadIds}
+        onToggleSelection={toggleLeadSelection}
+        assignmentTools={assignmentTools}
+        assignmentFeedback={<>
+          {error ? <CrmNotice tone="red">{error}</CrmNotice> : null}
+          {notice ? <CrmNotice tone="green">{notice}</CrmNotice> : null}
+          {lastAssignmentAuditId ? <button type="button" onClick={() => void undoLastDistribution()} disabled={distributingLeads} className="min-h-11 rounded-xl border border-[var(--cliente-border)] px-3 text-sm font-semibold disabled:opacity-55">Desfazer distribuição</button> : null}
+        </>}
       />
       <CrmWorkspace className="hidden lg:block">
       <CrmHero
+        compact
         active={view === "pipeline" ? "Funil" : "Lista"}
-        title="Clientes, oportunidades e proxima acao."
+        title="Clientes & Oportunidades"
         description="Lista, funil e resposta comercial em uma rotina simples para usar no celular."
         assistantTitle="Prioridade comercial"
         assistantSubtitle="quem merece atencao agora"
@@ -1417,8 +1544,8 @@ export default function ClienteCrmPage() {
         }
       >
         <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-          <CrmMetric label="Clientes na visao atual" value={String(summary.total)} detail={`${totalLeadCount} na base`} icon={UsersRound} tone="blue" />
-          <CrmMetric label="Valor em carteira" value={formatCrmMoney(summary.totalValue)} detail="oportunidades abertas" icon={DollarSign} tone="green" />
+          <CrmMetric label="Clientes e oportunidades" value={String(summary.total)} detail={`${totalLeadCount} registros na base`} icon={UsersRound} tone="blue" />
+          <CrmMetric label="Valor nesta visão" value={summary.knownValueCount ? formatCrmMoney(summary.totalValue) : "Não informado"} detail={`${summary.knownValueCount} com valor · ${summary.unknownValueCount} sem valor`} icon={DollarSign} tone="green" />
           <CrmMetric label="Precisam resposta" value={String(prioritySummary.needsResponse)} detail="filtre e responda" icon={MessageSquareText} tone={prioritySummary.needsResponse ? "purple" : "neutral"} />
           <CrmMetric label="Sem responsavel" value={String(prioritySummary.noOwner)} detail="distribuir hoje" icon={ClipboardList} tone={prioritySummary.noOwner ? "orange" : "neutral"} />
         </div>
@@ -1539,7 +1666,7 @@ export default function ClienteCrmPage() {
               title={view === "pipeline" ? "Kanban de oportunidades" : "Lista de clientes e oportunidades"}
               description="Lista, filtros, prioridade comercial e painel lateral para agir rapido sem sair da tela."
               action={canOperate ? (
-                <CrmButton type="button" tone="primary" onClick={() => setCreatingLead(true)}>
+                <CrmButton type="button" tone="primary" onClick={() => { setNewLeadForm((current) => ({ ...current, pipelineStage: stageOptions[0] || "captado" })); setCreatingLead(true); }}>
                   <Plus className="h-4 w-4" />
                   Novo cliente
                 </CrmButton>
@@ -1588,31 +1715,7 @@ export default function ClienteCrmPage() {
                   Limpar filtros
                 </button>
               ) : null}
-              {canManageAssignments && selectedLeadIds.length ? (
-                <>
-                  <CrmSelect value={assignmentSellerId} onChange={(event) => setAssignmentSellerId(event.target.value)} className="min-w-[190px]">
-                    <option value="">Escolha um vendedor</option>
-                    {sellerOptions.map((seller) => <option key={seller.id} value={seller.id}>{seller.name} • {presenceLabel(seller.presence)}</option>)}
-                  </CrmSelect>
-                  <button
-                    type="button"
-                    onClick={() => void distributeLeads("specific")}
-                    disabled={distributingLeads || !assignmentSellerId}
-                    className="inline-flex items-center gap-2 rounded-[14px] bg-[var(--cliente-primary)] px-3 py-2 text-xs font-black text-white transition hover:brightness-95 disabled:opacity-55"
-                  >
-                    {distributingLeads ? <Loader2 className="h-4 w-4 animate-spin" /> : <UsersRound className="h-4 w-4" />}
-                    Atribuir {selectedLeadIds.length}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => void distributeLeads("unassign")}
-                    disabled={distributingLeads}
-                    className="inline-flex items-center gap-2 rounded-[14px] border border-[var(--cliente-border)] bg-[var(--cliente-card)] px-3 py-2 text-xs font-black text-[var(--cliente-card-text-soft)] transition hover:bg-[var(--cliente-panel-soft)] disabled:opacity-55"
-                  >
-                    Deixar sem responsavel
-                  </button>
-                </>
-              ) : null}
+              {assignmentTools}
               {canOperate && selectedLeadIds.length ? (
                 <button
                   type="button"
@@ -1621,7 +1724,7 @@ export default function ClienteCrmPage() {
                   className="inline-flex items-center gap-2 rounded-[14px] bg-rose-600 px-3 py-2 text-xs font-black text-white transition hover:bg-rose-700 disabled:opacity-60 sm:ml-auto"
                 >
                   {deletingLeads ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
-                  Apagar {selectedLeadIds.length}
+                  Mover para lixeira ({selectedLeadIds.length})
                 </button>
               ) : null}
               {canManageAssignments ? (
@@ -1669,7 +1772,7 @@ export default function ClienteCrmPage() {
               </div>
               <div className="divide-y divide-[var(--cliente-border)]">
               {loading ? <div className="p-5"><CrmEmpty title="Carregando clientes" /></div> : null}
-              {!loading && filteredLeads.length === 0 ? <div className="p-5"><CrmEmpty title="Nenhum contato encontrado" /></div> : null}
+              {!loading && filteredLeads.length === 0 ? <div className="p-5"><CrmEmpty title={nextLeadOffset !== null ? "Nenhum contato entre os clientes carregados" : "Nenhum contato encontrado"} description={nextLeadOffset !== null ? "Use Carregar mais clientes abaixo para ampliar a busca." : undefined} /></div> : null}
               {filteredLeads.map((lead) => {
                 const stage = normalizeStage(lead);
                 return (
@@ -1688,7 +1791,7 @@ export default function ClienteCrmPage() {
                   >
                     <input
                       type="checkbox"
-                      aria-label={`Selecionar ${lead.nome || "contato"}`}
+                      aria-label={`Selecionar ${lead.nome || "contato"}${lead.opportunityTitle ? ` · ${lead.opportunityTitle}` : ""}`}
                       checked={selectedLeadIds.includes(lead.id)}
                       onClick={(event) => event.stopPropagation()}
                       onChange={() => toggleLeadSelection(lead.id)}
@@ -1698,7 +1801,7 @@ export default function ClienteCrmPage() {
                       <div className="min-w-0">
                         <CrmAvatar
                           name={lead.nome}
-                          subtitle={lead.empresa || lead.telefone || lead.email || "Sem empresa"}
+                          subtitle={[lead.opportunityTitle, lead.empresa || lead.telefone || lead.email || "Sem empresa"].filter(Boolean).join(" · ")}
                           photoUrl={leadPhotoUrl(lead)}
                         />
                         <div className="mt-2 flex flex-wrap gap-2">
@@ -1728,10 +1831,10 @@ export default function ClienteCrmPage() {
             <div className="client-scrollbar min-h-[calc(100vh-18rem)] overflow-x-auto overflow-y-hidden p-4">
               <div className="flex min-w-max gap-4 pb-2">
               {leadsByStage.map((column) => (
-                <section key={column.stage} className="flex max-h-[calc(100vh-18rem)] w-[320px] shrink-0 flex-col rounded-[18px] border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)]">
+                <section key={column.stage} style={{ borderTopColor: stages.find((stage) => stage.id === column.stage)?.color, borderTopWidth: 3 }} className="flex max-h-[calc(100vh-18rem)] w-[320px] shrink-0 flex-col rounded-[18px] border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)]">
                   <div className="border-b border-[var(--cliente-border)] p-4">
                     <p className="text-sm font-black text-[var(--cliente-card-text)]">{getPipelineStageLabel(column.stage)}</p>
-                    <p className="mt-1 text-xs text-[var(--cliente-card-text-soft)]">{column.items.length} oportunidades | {formatCrmMoney(column.totalValue)}</p>
+                    <p className="mt-1 text-xs text-[var(--cliente-card-text-soft)]">{column.items.length} oportunidades | {column.knownValueCount ? formatCrmMoney(column.totalValue) : "Valor não informado"}{column.unknownValueCount ? ` · ${column.unknownValueCount} sem valor` : ""}</p>
                   </div>
                   <div className="client-scrollbar min-h-0 flex-1 space-y-3 overflow-y-auto p-3">
                     {column.items.length === 0 ? <CrmEmpty title="Sem itens" /> : null}
@@ -1743,7 +1846,7 @@ export default function ClienteCrmPage() {
                         <button type="button" onClick={() => selectLead(lead.id)} className="w-full text-left">
                           <CrmAvatar
                             name={lead.nome}
-                            subtitle={lead.empresa || lead.telefone || lead.email || "Sem empresa"}
+                            subtitle={[lead.opportunityTitle, lead.empresa || lead.telefone || lead.email || "Sem empresa"].filter(Boolean).join(" · ")}
                             photoUrl={leadPhotoUrl(lead)}
                             size="sm"
                           />
@@ -1798,7 +1901,7 @@ export default function ClienteCrmPage() {
                   <div className="flex items-center justify-between gap-3">
                     <div>
                       <p className="text-sm font-black text-[var(--cliente-card-text)]">{getPipelineStageLabel(column.stage)}</p>
-                      <p className="mt-1 text-xs text-[var(--cliente-card-text-soft)]">{formatCrmMoney(column.totalValue)}</p>
+                      <p className="mt-1 text-xs text-[var(--cliente-card-text-soft)]">{column.knownValueCount ? formatCrmMoney(column.totalValue) : "Valor não informado"}{column.unknownValueCount ? ` · ${column.unknownValueCount} sem valor` : ""}</p>
                     </div>
                     <CrmBadge tone="blue">{column.items.length}</CrmBadge>
                   </div>
@@ -1857,13 +1960,16 @@ export default function ClienteCrmPage() {
 
           <CrmPanel>
             <CrmSectionTitle eyebrow="Painel lateral" title="Detalhes e acoes" description="Ao clicar em um cliente, o contexto comercial abre aqui para agir sem sair da tela." />
+            {selectedLead ? <p role="status" className="mt-2 text-xs text-[var(--cliente-card-text-soft)]">
+              {detailSyncMessage}
+            </p> : null}
             {selectedLead ? (
               <div className="mt-5 space-y-4">
                 <div className="rounded-[20px] border border-[var(--cliente-border)] bg-[linear-gradient(180deg,color-mix(in_srgb,var(--cliente-primary)_8%,var(--cliente-card)),var(--cliente-card))] p-4">
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <CrmAvatar
                       name={selectedLead.nome}
-                      subtitle={selectedLead.empresa || selectedLead.email || selectedLead.telefone}
+                      subtitle={[selectedLead.opportunityTitle, selectedLead.empresa || selectedLead.email || selectedLead.telefone].filter(Boolean).join(" · ")}
                       size="lg"
                       photoUrl={leadPhotoUrl(selectedLead)}
                     />
@@ -2078,10 +2184,11 @@ export default function ClienteCrmPage() {
                 <div className="rounded-[18px] border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-4">
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
-                      <p className="text-xs font-black uppercase text-[var(--cliente-card-text-soft)]">Proximo passo</p>
+                      <p className="text-xs font-black uppercase text-[var(--cliente-card-text-soft)]">{registeredActivity ? "Retorno registrado" : "Sugestão da Altum"}</p>
                       <p className="mt-2 text-sm font-bold leading-6 text-[var(--cliente-card-text)]">{selectedNextAction}</p>
+                      {registeredActivity ? <p className="mt-1 text-xs text-[var(--cliente-card-text-soft)]">{formatCrmDate(registeredActivity.dueAt, "Sem prazo definido")} · {registeredActivity.ownerName || "Responsável não informado"}</p> : null}
                     </div>
-                    <CrmBadge tone={detail?.stagePolicy?.slaBreached ? "orange" : "purple"}>{detail?.stagePolicy?.slaBreached ? "agir hoje" : "proxima acao"}</CrmBadge>
+                    <CrmBadge tone={registeredActivity ? "blue" : detail?.stagePolicy?.slaBreached ? "orange" : "purple"}>{registeredActivity ? "Registrado na Agenda" : detail?.stagePolicy?.slaBreached ? "agir hoje" : "sugestão"}</CrmBadge>
                   </div>
                   {selectedJourney ? (
                     <div className="mt-4 rounded-[16px] border border-[color:color-mix(in_srgb,var(--cliente-ai)_22%,transparent)] bg-[var(--cliente-ai-soft)] p-3">
@@ -2136,7 +2243,9 @@ export default function ClienteCrmPage() {
                   ) : null}
                 </div>
 
-                <div className="rounded-[18px] border border-[color:color-mix(in_srgb,var(--cliente-primary)_18%,var(--cliente-border))] bg-[var(--cliente-card)] p-4">
+                <details key={`attribution-${selectedLead.id}`} className="rounded-[18px] border border-[color:color-mix(in_srgb,var(--cliente-primary)_18%,var(--cliente-border))] bg-[var(--cliente-card)] p-4">
+                  <summary className="cursor-pointer text-sm font-semibold text-[var(--cliente-card-text)]">Origem e campanha</summary>
+                  <div className="mt-3">
                   <div className="flex items-start justify-between gap-3">
                     <div>
                       <p className="text-xs font-black uppercase text-[var(--cliente-primary)]">Origem e campanha</p>
@@ -2155,7 +2264,8 @@ export default function ClienteCrmPage() {
                   <p className="mt-3 text-xs leading-5 text-[var(--cliente-card-text-soft)]">
                     Criativo/conteudo: {selectedAttribution.content}. Essa leitura alimenta campanhas e relatorios quando UTMs, gclid ou fbclid chegam corretamente.
                   </p>
-                </div>
+                  </div>
+                </details>
 
                 <div className="rounded-[18px] border border-[color:color-mix(in_srgb,var(--cliente-primary)_22%,var(--cliente-border))] bg-[linear-gradient(135deg,color-mix(in_srgb,var(--cliente-primary)_10%,var(--cliente-card)),var(--cliente-card))] p-4">
                   <div className="flex items-start justify-between gap-3">
@@ -2165,19 +2275,19 @@ export default function ClienteCrmPage() {
                         Resumo comercial
                       </p>
                       <p className="mt-2 text-sm font-bold leading-6 text-[var(--cliente-card-text)]">
-                        {selectedCommercialDossier?.title || selectedLead.aiRecommendedOffer || "Contexto pronto para atendimento e venda"}
+                        {selectedCommercialDossier?.title || selectedLead.aiRecommendedOffer || "Contexto da negociação"}
                       </p>
                       <p className="mt-2 text-xs leading-5 text-[var(--cliente-card-text-soft)]">
                         {selectedCommercialDossier?.sellerBrief || selectedCommercialDossier?.summary || selectedLead.aiLeadSummary || "Sem resumo comercial consolidado ainda."}
                       </p>
                     </div>
-                    <CrmBadge tone="green">{selectedCommercialDossier?.triggerLabel || "ao vivo"}</CrmBadge>
+                    <CrmBadge>{selectedCommercialDossier?.triggerLabel || (selectedCommercialDossier?.sellerBrief || selectedCommercialDossier?.summary || selectedLead.aiLeadSummary ? "Resumo registrado" : "Sem resumo")}</CrmBadge>
                   </div>
                   <div className="mt-4 grid grid-cols-2 gap-2">
-                    <SalesFact label="Objetivo" value={selectedCommercialDossier?.objective || "Confirmar contexto"} />
-                    <SalesFact label="Oferta" value={selectedCommercialDossier?.recommendedOffer || selectedLead.aiRecommendedOffer || "Validar"} />
+                    <SalesFact label="Objetivo" value={selectedCommercialDossier?.objective || "Não identificado"} />
+                    <SalesFact label="Oferta" value={selectedCommercialDossier?.recommendedOffer || selectedLead.aiRecommendedOffer || "Não identificada"} />
                     <SalesFact label="Proximo passo" value={formatAiAction(selectedCommercialDossier?.nextAction || selectedLead.aiNextAction)} />
-                    <SalesFact label="Atualizado" value={formatCrmDate(selectedCommercialDossier?.updatedAt, "agora")} />
+                    <SalesFact label="Atualizado" value={formatCrmDate(selectedCommercialDossier?.updatedAt, "Sem data registrada")} />
                   </div>
                   {(selectedCommercialDossier?.diagnosis || selectedCommercialDossier?.personalizedPlan || selectedCommercialDossier?.sellerNextMove) ? (
                     <div className="mt-4 rounded-[16px] border border-[color:color-mix(in_srgb,var(--cliente-ai)_20%,var(--cliente-border))] bg-[var(--cliente-ai-soft)] p-3">
@@ -2194,7 +2304,7 @@ export default function ClienteCrmPage() {
                         {(selectedCommercialDossier?.painPoints || []).slice(0, 4).map((item) => (
                           <CrmBadge key={item} tone="orange">{item}</CrmBadge>
                         ))}
-                        {!(selectedCommercialDossier?.painPoints || []).length ? <CrmBadge>sem dores</CrmBadge> : null}
+                        {!(selectedCommercialDossier?.painPoints || []).length ? <CrmBadge>Não identificadas</CrmBadge> : null}
                       </div>
                     </div>
                     <div>
@@ -2219,7 +2329,9 @@ export default function ClienteCrmPage() {
                   ) : null}
                 </div>
 
-                <div className="rounded-[18px] border border-[color:color-mix(in_srgb,var(--cliente-ai)_20%,var(--cliente-border))] bg-[var(--cliente-ai-soft)] p-4">
+                <details key={`ai-evidence-${selectedLead.id}`} className="rounded-[18px] border border-[color:color-mix(in_srgb,var(--cliente-ai)_20%,var(--cliente-border))] bg-[var(--cliente-ai-soft)] p-4">
+                  <summary className="cursor-pointer text-sm font-semibold text-[var(--cliente-ai)]">Análise e evidências da Altum</summary>
+                  <div className="mt-3">
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <p className="flex items-center gap-2 text-xs font-black uppercase text-[var(--cliente-ai)]">
@@ -2239,12 +2351,18 @@ export default function ClienteCrmPage() {
                   {selectedAiEvidence.length ? (
                     <div className="mt-4 grid grid-cols-2 gap-2">
                       {selectedAiEvidence.slice(0, 4).map((item) => (
-                        <SalesFact key={item.label} label={item.label} value={item.value} />
+                        <CommercialEvidenceFact key={item.label} fact={item} />
                       ))}
                     </div>
                   ) : null}
+                  <CommercialMediaInsight insight={selectedLead.aiLatestMediaInsight} />
+                  <CommercialReadNotice state={selectedLead.aiCommercialReadState} />
+                  {tenant?.tenantId && canOperate && isDesktopCrmViewport ? <CommercialReadReview key={`read:${tenant.tenantId}:${tenant.userId}:${selectedLead.id}`} tenantId={tenant.tenantId} leadId={selectedLead.id} state={selectedLead.aiCommercialReadState} onSaved={() => { void loadDetail(selectedLead.id); }} /> : null}
+                  {tenant?.tenantId && isDesktopCrmViewport ? <CommercialQualificationReview key={`${tenant.tenantId}:${tenant.userId}:${selectedLead.id}`} tenantId={tenant.tenantId} leadId={selectedLead.id} canEdit={canOperate}
+                    onSaved={() => { void loadDetail(selectedLead.id); }} onEditingChange={setReviewingQualification} /> : null}
                   {selectedLead.aiLeadSummary ? <p className="mt-3 text-xs leading-5 text-[var(--cliente-card-text-soft)]">{selectedLead.aiLeadSummary}</p> : null}
-                </div>
+                  </div>
+                </details>
 
                 <div className="rounded-[18px] border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-4">
                   <div className="flex items-center justify-between gap-3">
@@ -2341,13 +2459,7 @@ export default function ClienteCrmPage() {
             {detailLoading ? <div className="mt-4"><CrmEmpty title="Carregando ficha" /></div> : null}
             {selectedLead ? (
               <div className="mt-4 space-y-4">
-                <form onSubmit={createTask} className="space-y-2">
-                  <CrmInput value={taskTitle} onChange={(event) => setTaskTitle(event.target.value)} disabled={!canOperate} placeholder="Criar proxima acao" className="w-full" />
-                  <CrmButton type="submit" disabled={!canOperate || savingTask || !taskTitle.trim()} className="w-full">
-                    {savingTask ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
-                    Criar tarefa
-                  </CrmButton>
-                </form>
+                <CommercialActivities key={selectedLead.id} leadId={selectedLead.id} leads={[selectedLead]} onChanged={() => loadDetail(selectedLead.id)} onNextActivityChange={setNextRegisteredActivity} />
                 <form onSubmit={createNote} className="space-y-2">
                   <CrmTextarea value={noteText} onChange={(event) => setNoteText(event.target.value)} disabled={!canOperate} placeholder="Adicionar nota interna" rows={3} className="w-full" />
                   <CrmButton type="submit" disabled={!canOperate || savingNote || !noteText.trim()} className="w-full">
@@ -2356,12 +2468,6 @@ export default function ClienteCrmPage() {
                   </CrmButton>
                 </form>
                 <div className="space-y-2">
-                  {(detail?.tasks || []).slice(0, 4).map((task) => (
-                    <div key={task.id} className="rounded-[14px] border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-3">
-                      <p className="text-xs font-black text-[var(--cliente-card-text)]">{task.title || "Tarefa"}</p>
-                      <p className="mt-1 text-[11px] text-[var(--cliente-card-text-soft)]">{task.status || "pending"} | {formatCrmDate(task.dueAt, "sem prazo")}</p>
-                    </div>
-                  ))}
                   {(detail?.notes || []).slice(0, 3).map((note) => (
                     <div key={note.id} className="rounded-[14px] border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-3">
                       <p className="text-xs text-[var(--cliente-card-text)]">{note.text || "-"}</p>
@@ -2428,7 +2534,7 @@ export default function ClienteCrmPage() {
         open={editing && Boolean(selectedLead)}
         onClose={() => setEditing(false)}
         title={selectedLead?.nome || "Contato"}
-        subtitle={selectedLead?.empresa || selectedLead?.telefone || selectedLead?.email}
+        subtitle={[selectedLead?.opportunityTitle, selectedLead?.empresa || selectedLead?.telefone || selectedLead?.email].filter(Boolean).join(" · ")}
         photoUrl={leadPhotoUrl(selectedLead)}
         status={selectedLead ? getPipelineStageLabel(normalizeStage(selectedLead)) : undefined}
         meta={
@@ -2483,7 +2589,7 @@ export default function ClienteCrmPage() {
         open={showLeadDrawer && Boolean(selectedLead)}
         onClose={() => setShowLeadDrawer(false)}
         title={selectedLead?.nome || "Contato"}
-        subtitle={selectedLead?.empresa || selectedLead?.telefone || selectedLead?.email}
+        subtitle={[selectedLead?.opportunityTitle, selectedLead?.empresa || selectedLead?.telefone || selectedLead?.email].filter(Boolean).join(" · ")}
         photoUrl={leadPhotoUrl(selectedLead)}
         status={selectedLead ? getPipelineStageLabel(normalizeStage(selectedLead)) : undefined}
         meta={
@@ -2499,6 +2605,7 @@ export default function ClienteCrmPage() {
       >
         {showLeadDrawer && selectedLead ? (
           <div className="space-y-4">
+            <p role="status" className="text-xs text-[var(--cliente-card-text-soft)]">{detailSyncMessage}</p>
             <div className="grid gap-2 sm:grid-cols-2">
               <Link href={`/cliente/painel/inbox?leadId=${encodeURIComponent(selectedLead.id)}`} className="inline-flex items-center justify-center gap-2 rounded-[14px] border border-[var(--cliente-border)] bg-[var(--cliente-card)] px-3 py-3 text-sm font-bold text-[var(--cliente-card-text)] transition hover:bg-[var(--cliente-panel-soft)]">
                 Conversa
@@ -2571,10 +2678,15 @@ export default function ClienteCrmPage() {
               {selectedAiEvidence.length ? (
                 <div className="mt-4 grid grid-cols-2 gap-2">
                   {selectedAiEvidence.slice(0, 4).map((item) => (
-                    <SalesFact key={item.label} label={item.label} value={item.value} />
+                    <CommercialEvidenceFact key={item.label} fact={item} />
                   ))}
                 </div>
               ) : null}
+              <CommercialMediaInsight insight={selectedLead.aiLatestMediaInsight} />
+              <CommercialReadNotice state={selectedLead.aiCommercialReadState} />
+              {tenant?.tenantId && canOperate && !isDesktopCrmViewport ? <CommercialReadReview key={`read:${tenant.tenantId}:${tenant.userId}:${selectedLead.id}`} tenantId={tenant.tenantId} leadId={selectedLead.id} state={selectedLead.aiCommercialReadState} onSaved={() => { void loadDetail(selectedLead.id); }} /> : null}
+              {tenant?.tenantId && !isDesktopCrmViewport ? <CommercialQualificationReview key={`${tenant.tenantId}:${tenant.userId}:${selectedLead.id}`} tenantId={tenant.tenantId} leadId={selectedLead.id} canEdit={canOperate}
+                onSaved={() => { void loadDetail(selectedLead.id); }} onEditingChange={setReviewingQualification} /> : null}
             </div>
 
             <div className="rounded-[18px] border border-[var(--cliente-border)] bg-[var(--cliente-card)] p-4">
@@ -2648,6 +2760,7 @@ export default function ClienteCrmPage() {
 
 function MobileCrmScreen({
   leads,
+  stages,
   loading,
   search,
   focus,
@@ -2659,8 +2772,10 @@ function MobileCrmScreen({
   onFocus,
   onRefresh,
   onOpenPipeline,
+  canManageAssignments, selectedLeadIds, onToggleSelection, assignmentTools, assignmentFeedback,
 }: {
   leads: LeadItem[];
+  stages: PipelineStageDefinition[];
   loading: boolean;
   search: string;
   focus: FocusFilter;
@@ -2672,9 +2787,12 @@ function MobileCrmScreen({
   onFocus: (value: FocusFilter) => void;
   onRefresh: () => void;
   onOpenPipeline: () => void;
+  canManageAssignments: boolean; selectedLeadIds: string[]; onToggleSelection: (id: string) => void;
+  assignmentTools: React.ReactNode; assignmentFeedback: React.ReactNode;
 }) {
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null);
   const selectedLead = leads.find((lead) => lead.id === selectedLeadId) || null;
+  const getPipelineStageLabel = (id: string) => resolvePipelineStageLabel(id, stages);
   const filters: Array<{ value: FocusFilter; label: string; count?: number }> = [
     { value: "all", label: "Todos" },
     { value: "needs_response", label: "Responder", count: needsResponse },
@@ -2693,8 +2811,9 @@ function MobileCrmScreen({
           <div className="mt-4 grid grid-cols-3 gap-2"><div className="rounded-2xl bg-[var(--cliente-primary-soft)] px-3 py-2.5"><p className="text-[10px] font-semibold text-[var(--cliente-primary)]">Na base</p><p className="mt-1 text-xl font-bold text-[var(--cliente-card-text)]">{total}</p></div><div className="rounded-2xl bg-[var(--cliente-ai-soft)] px-3 py-2.5"><p className="text-[10px] font-semibold text-[var(--cliente-ai)]">Responder</p><p className="mt-1 text-xl font-bold text-[var(--cliente-card-text)]">{needsResponse}</p></div><div className="rounded-2xl bg-[var(--cliente-warning-soft)] px-3 py-2.5"><p className="text-[10px] font-semibold text-[var(--cliente-warning)]">Sem dono</p><p className="mt-1 text-xl font-bold text-[var(--cliente-card-text)]">{noOwner}</p></div></div>
         </header>
         <div className="px-4 py-4"><label className="flex h-12 items-center gap-2 rounded-2xl bg-[var(--cliente-surface-muted)] px-3 text-[var(--cliente-card-text-soft)]"><Search className="h-5 w-5" /><input value={search} onChange={(event) => onSearch(event.target.value)} placeholder="Buscar cliente ou empresa" className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-[var(--cliente-card-text-soft)]" /></label><div className="mt-3 flex gap-2 overflow-x-auto pb-1">{filters.map((item) => <button key={item.value} type="button" onClick={() => onFocus(item.value)} className={`shrink-0 rounded-full px-3 py-2 text-xs font-semibold ${focus === item.value ? 'bg-[var(--cliente-primary)] text-white' : 'bg-[var(--cliente-card)] text-[var(--cliente-card-text-muted)] ring-1 ring-[var(--cliente-border)]'}`}>{item.label}{typeof item.count === 'number' ? ` · ${item.count}` : ''}</button>)}</div></div>
-        <div className="border-y border-[var(--cliente-border)] bg-[var(--cliente-card)]">{loading ? <div className="p-8 text-center text-sm text-[var(--cliente-card-text-soft)]"><Loader2 className="mx-auto mb-2 h-5 w-5 animate-spin" />Carregando clientes</div> : null}{!loading && !leads.length ? <div className="p-8 text-center text-sm text-[var(--cliente-card-text-soft)]">Nenhum cliente neste filtro.</div> : null}{leads.map((lead) => { const pending = Number(lead.chatSummary?.pending || lead.chatSummary?.unresolved || 0); const heat = String(lead.heat || lead.aiCommercialTemperature || '').toLowerCase(); return <button key={lead.id} type="button" onClick={() => setSelectedLeadId(lead.id)} className="flex w-full items-center gap-3 border-b border-[var(--cliente-border)] px-4 py-4 text-left last:border-b-0 active:bg-[var(--cliente-surface-muted)]"><div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[var(--cliente-primary-soft)] text-sm font-bold text-[var(--cliente-primary)]">{(lead.nome || lead.empresa || 'C').slice(0, 2).toUpperCase()}</div><div className="min-w-0 flex-1"><div className="flex items-center gap-2"><p className="truncate text-sm font-semibold text-[var(--cliente-card-text)]">{lead.nome || 'Contato sem nome'}</p>{pending ? <span className="rounded-full bg-[var(--cliente-ai-soft)] px-2 py-0.5 text-[10px] font-semibold text-[var(--cliente-ai)]">Responder</span> : null}</div><p className="mt-1 truncate text-xs text-[var(--cliente-card-text-soft)]">{lead.empresa || lead.origem || 'Sem empresa informada'}</p><div className="mt-2 flex gap-2"><span className="text-[11px] text-[var(--cliente-card-text-muted)]">{getPipelineStageLabel(normalizePipelineStageId(lead.pipelineStage || lead.stage || 'captado'))}</span>{heat ? <span className="text-[11px] font-semibold text-[var(--cliente-warning)]">{heat === 'hot' || heat === 'quente' ? 'Quente' : heat}</span> : null}</div></div><ChevronRight className="h-5 w-5 shrink-0 text-[var(--cliente-card-text-soft)]" /></button>; })}</div>
-        {selectedLead ? <div className="fixed inset-0 z-[70] flex items-end bg-slate-950/30"><div className="w-full rounded-t-[28px] bg-[var(--cliente-card)] p-5 pb-[calc(env(safe-area-inset-bottom)+1.25rem)]"><div className="flex items-start justify-between gap-4"><div className="min-w-0"><p className="text-xs font-semibold text-[var(--cliente-primary)]">Cliente</p><h2 className="mt-1 truncate text-xl font-bold text-[var(--cliente-card-text)]">{selectedLead.nome || 'Contato sem nome'}</h2><p className="mt-1 text-sm text-[var(--cliente-card-text-soft)]">{selectedLead.empresa || selectedLead.telefone || 'Sem empresa informada'}</p></div><button type="button" onClick={() => setSelectedLeadId(null)} className="h-10 rounded-full px-3 text-sm font-semibold text-[var(--cliente-card-text-muted)]">Fechar</button></div><div className="mt-5 grid grid-cols-2 gap-2"><div className="rounded-2xl bg-[var(--cliente-surface-muted)] p-3"><p className="text-[10px] font-semibold text-[var(--cliente-card-text-soft)]">Etapa</p><p className="mt-1 truncate text-sm font-semibold text-[var(--cliente-card-text)]">{getPipelineStageLabel(normalizePipelineStageId(selectedLead.pipelineStage || selectedLead.stage || 'captado'))}</p></div><div className="rounded-2xl bg-[var(--cliente-surface-muted)] p-3"><p className="text-[10px] font-semibold text-[var(--cliente-card-text-soft)]">Próxima ação</p><p className="mt-1 truncate text-sm font-semibold text-[var(--cliente-card-text)]">{selectedLead.aiNextAction || 'Definir ação'}</p></div></div><div className="mt-4"><Link href={`/cliente/painel/inbox?leadId=${encodeURIComponent(selectedLead.id)}`} className="flex min-h-12 items-center justify-center rounded-xl bg-[var(--cliente-success)] px-3 text-sm font-semibold text-white">Abrir conversa</Link></div></div></div> : null}
+        <div className="space-y-3 px-4 pb-4">{assignmentFeedback}{assignmentTools}</div>
+        <div className="border-y border-[var(--cliente-border)] bg-[var(--cliente-card)]">{loading ? <div className="p-8 text-center text-sm text-[var(--cliente-card-text-soft)]"><Loader2 className="mx-auto mb-2 h-5 w-5 animate-spin" />Carregando clientes</div> : null}{!loading && !leads.length ? <div className="p-8 text-center text-sm text-[var(--cliente-card-text-soft)]">Nenhum cliente neste filtro.</div> : null}{leads.map((lead) => { const pending = Number(lead.chatSummary?.pending || lead.chatSummary?.unresolved || 0); const heat = String(lead.heat || lead.aiCommercialTemperature || '').toLowerCase(); return <div key={lead.id} className="flex items-center border-b border-[var(--cliente-border)] last:border-b-0">{canManageAssignments ? <input type="checkbox" aria-label={`Selecionar ${lead.nome || "contato"}${lead.opportunityTitle ? ` · ${lead.opportunityTitle}` : ""}`} checked={selectedLeadIds.includes(lead.id)} onChange={() => onToggleSelection(lead.id)} className="ml-4 h-5 w-5 shrink-0 accent-[var(--cliente-primary)]" /> : null}<button type="button" onClick={() => setSelectedLeadId(lead.id)} className="flex w-full items-center gap-3 border-b border-[var(--cliente-border)] px-4 py-4 text-left last:border-b-0 active:bg-[var(--cliente-surface-muted)]"><div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[var(--cliente-primary-soft)] text-sm font-bold text-[var(--cliente-primary)]">{(lead.nome || lead.empresa || 'C').slice(0, 2).toUpperCase()}</div><div className="min-w-0 flex-1"><div className="flex items-center gap-2"><p className="truncate text-sm font-semibold text-[var(--cliente-card-text)]">{lead.nome || 'Contato sem nome'}</p>{pending ? <span className="rounded-full bg-[var(--cliente-ai-soft)] px-2 py-0.5 text-[10px] font-semibold text-[var(--cliente-ai)]">Responder</span> : null}</div><p className="mt-1 truncate text-xs text-[var(--cliente-card-text-soft)]">{[lead.opportunityTitle, lead.empresa || lead.origem || 'Sem empresa informada'].filter(Boolean).join(' · ')}</p><div className="mt-2 flex gap-2"><span className="text-[11px] text-[var(--cliente-card-text-muted)]">{getPipelineStageLabel(normalizePipelineStageId(lead.pipelineStage || lead.stage || 'captado'))}</span>{heat ? <span className="text-[11px] font-semibold text-[var(--cliente-warning)]">{heat === 'hot' || heat === 'quente' ? 'Quente' : heat}</span> : null}</div></div><ChevronRight className="h-5 w-5 shrink-0 text-[var(--cliente-card-text-soft)]" /></button></div>; })}</div>
+        {selectedLead ? <div className="fixed inset-0 z-[70] flex items-end bg-slate-950/30"><div className="max-h-[90dvh] w-full overflow-y-auto rounded-t-[28px] bg-[var(--cliente-card)] p-5 pb-[calc(env(safe-area-inset-bottom)+1.25rem)]"><div className="flex items-start justify-between gap-4"><div className="min-w-0"><p className="text-xs font-semibold text-[var(--cliente-primary)]">Cliente</p><h2 className="mt-1 truncate text-xl font-bold text-[var(--cliente-card-text)]">{selectedLead.nome || 'Contato sem nome'}</h2><p className="mt-1 text-sm text-[var(--cliente-card-text-soft)]">{[selectedLead.opportunityTitle, selectedLead.empresa || selectedLead.telefone || 'Sem empresa informada'].filter(Boolean).join(' · ')}</p></div><button type="button" onClick={() => setSelectedLeadId(null)} className="h-10 rounded-full px-3 text-sm font-semibold text-[var(--cliente-card-text-muted)]">Fechar</button></div><div className="mt-5 grid grid-cols-2 gap-2"><div className="rounded-2xl bg-[var(--cliente-surface-muted)] p-3"><p className="text-[10px] font-semibold text-[var(--cliente-card-text-soft)]">Etapa</p><p className="mt-1 truncate text-sm font-semibold text-[var(--cliente-card-text)]">{getPipelineStageLabel(normalizePipelineStageId(selectedLead.pipelineStage || selectedLead.stage || 'captado'))}</p></div><div className="rounded-2xl bg-[var(--cliente-surface-muted)] p-3"><p className="text-[10px] font-semibold text-[var(--cliente-card-text-soft)]">Responsável</p><p className="mt-1 truncate text-sm font-semibold text-[var(--cliente-card-text)]">{selectedLead.owner || 'Não informado'}</p></div></div><div className="mt-5"><CommercialActivities key={selectedLead.id} leadId={selectedLead.id} leads={[selectedLead]} /></div><div className="mt-4"><Link href={`/cliente/painel/inbox?leadId=${encodeURIComponent(selectedLead.id)}`} className="flex min-h-12 items-center justify-center rounded-xl bg-[var(--cliente-success)] px-3 text-sm font-semibold text-white">Abrir conversa</Link></div></div></div> : null}
       </section>
     </div>
   );

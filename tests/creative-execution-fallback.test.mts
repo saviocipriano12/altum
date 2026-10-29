@@ -29,3 +29,24 @@ test("executor tenta a próxima conexão compatível quando a primeira recusa o 
     globalThis.fetch = originalFetch;
   }
 });
+
+test("adaptador LTX Cloud usa o endpoint oficial assíncrono em vez de um bridge genérico", async () => {
+  const originalFetch = globalThis.fetch;
+  let request = "";
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    request = `${String(input)} ${String(init?.headers instanceof Headers ? init.headers.get("authorization") : (init?.headers as Record<string, string>)?.Authorization || "")}`;
+    return new Response(JSON.stringify({ id: "ltx-job-1" }), { status: 202, headers: { "content-type": "application/json" } });
+  }) as typeof fetch;
+  try {
+    const result = await executeCreativeJobWithFallback({
+      job: { id: "job-ltx", capability: "GENERATE_VIDEO", format: "video", prompt: "Um produto em movimento", tenantId: "tenant-1", projectId: "project-1", outputId: "output-1" },
+      candidates: [{ id: "ltx", connection: { providerId: "ltx-cloud", baseUrl: "https://api.ltx.video", credential: "test-key" } }],
+    });
+    assert.match(request, /https:\/\/api\.ltx\.io\/v2\/text-to-video/);
+    assert.match(request, /Bearer test-key/);
+    assert.equal(result.status, "submitted");
+    assert.equal(result.providerStatusUrl, "https://api.ltx.io/v2/text-to-video/ltx-job-1");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});

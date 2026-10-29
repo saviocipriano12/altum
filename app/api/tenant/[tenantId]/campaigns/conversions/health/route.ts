@@ -17,7 +17,12 @@ type ConversionHealthItem = {
   recent: {
     processed: number;
     failed: number;
+    pending: number;
+    processing: number;
     claimed: number;
+    retrying: number;
+    deadLetter: number;
+    staleLease: number;
     skipped: number;
     total: number;
     lastStatus?: string;
@@ -64,7 +69,7 @@ function toIso(value: unknown) {
 }
 
 function countDispatches(
-  docs: Array<{ channelId: string; status: string; error?: string; updatedAt?: unknown; processedAt?: unknown }>,
+  docs: Array<{ channelId: string; status: string; error?: string; updatedAt?: unknown; processedAt?: unknown; leaseUntil?: unknown }>,
   channelId: string
 ) {
   const related = docs.filter((doc) => doc.channelId === channelId);
@@ -76,10 +81,16 @@ function countDispatches(
       return bTime - aTime;
     });
   const last = recent[0];
+  const now = Date.now();
   return {
     processed: related.filter((doc) => doc.status === "processed").length,
-    failed: related.filter((doc) => doc.status === "failed").length,
+    failed: related.filter((doc) => doc.status === "failed" || doc.status === "dead_letter").length,
+    pending: related.filter((doc) => doc.status === "pending").length,
+    processing: related.filter((doc) => doc.status === "processing").length,
     claimed: related.filter((doc) => doc.status === "claimed").length,
+    retrying: related.filter((doc) => doc.status === "retry").length,
+    deadLetter: related.filter((doc) => doc.status === "dead_letter").length,
+    staleLease: related.filter((doc) => doc.status === "processing" && new Date(toIso(doc.leaseUntil) || 0).getTime() <= now).length,
     skipped: related.filter((doc) => doc.status === "skipped").length,
     total: related.length,
     lastStatus: last?.status,
@@ -106,10 +117,10 @@ export async function GET(
 
     const [channelsSnap, dispatchSnap] = await Promise.all([
       adminDb.collection("tenant_channels").where("tenantId", "==", tenantId).limit(60).get(),
-      adminDb.collection("conversion_dispatches").where("tenantId", "==", tenantId).limit(120).get(),
+      adminDb.collection("conversion_dispatches").where("tenantId", "==", tenantId).limit(501).get(),
     ]);
 
-    const dispatches = dispatchSnap.docs.map((doc) => {
+    const dispatches = dispatchSnap.docs.slice(0, 500).map((doc) => {
       const data = doc.data() as Record<string, unknown>;
       return {
         channelId: clean(data.channelId, 180),
@@ -117,6 +128,7 @@ export async function GET(
         error: clean(data.error, 500),
         updatedAt: data.updatedAt,
         processedAt: data.processedAt,
+        leaseUntil: data.leaseUntil,
       };
     });
 
@@ -141,6 +153,7 @@ export async function GET(
         const accessToken = clean(decryptSecret(data.accessToken), 5000);
         if (!pixelId) issues.push("Meta Pixel ID nao configurado.");
         if (!accessToken) issues.push("Token da Meta ausente ou invalido.");
+        if (!clean(metadata.pageId || data.pageId, 180)) issues.push("Page ID ausente para conversoes de WhatsApp e redes sociais.");
         if (pixelId) configuredEvents.push("Lead", "QualifiedLead", "Schedule", "ScheduleCompleted", "Purchase");
       }
 
@@ -164,6 +177,10 @@ export async function GET(
         if (configuredEvents.length === 0) issues.push("Nenhuma Conversion Action configurada.");
       }
 
+      const recent = countDispatches(dispatches, doc.id);
+      if (recent.deadLetter > 0) issues.push(`${recent.deadLetter} conversao(oes) exige(m) reprocessamento manual.`);
+      if (recent.staleLease > 0) issues.push(`${recent.staleLease} envio(s) ficou(aram) com processamento vencido.`);
+
       items.push({
         channelId: doc.id,
         type,
@@ -172,7 +189,7 @@ export async function GET(
         status,
         issues,
         configuredEvents,
-        recent: countDispatches(dispatches, doc.id),
+        recent,
       });
     });
 
@@ -184,12 +201,15 @@ export async function GET(
     return NextResponse.json({
       tenantId,
       checkedAt: new Date().toISOString(),
+      coverage: { complete: dispatchSnap.size <= 500, sampled: dispatches.length, limit: 500 },
       ok: issues.length === 0,
       summary: {
         total: items.length,
         ready: items.filter((item) => item.ready).length,
         failedRecent: items.reduce((sum, item) => sum + item.recent.failed, 0),
         processedRecent: items.reduce((sum, item) => sum + item.recent.processed, 0),
+        pendingRecent: items.reduce((sum, item) => sum + item.recent.pending + item.recent.retrying + item.recent.processing, 0),
+        deadLetterRecent: items.reduce((sum, item) => sum + item.recent.deadLetter, 0),
       },
       issues,
       items,

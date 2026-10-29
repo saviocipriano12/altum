@@ -63,7 +63,10 @@ function phoneJid(value: unknown) {
 
 function resolveInboundJid(body: Record<string, unknown>, data: Record<string, unknown>, key: Record<string, unknown>) {
   const remoteJid = clean(key.remoteJid, 180);
-  if (/@g\.us$/i.test(remoteJid)) return remoteJid;
+  // Conversation identity takes precedence over the phone of a participant.
+  const groupJid = [remoteJid, key.remoteJidAlt, data.remoteJid, record(data.groupMetadata).id]
+    .map((value) => clean(value, 180)).find((value) => /@g\.us$/i.test(value));
+  if (groupJid) return groupJid;
   if (phoneJid(remoteJid)) return remoteJid;
 
   const candidates = [
@@ -71,13 +74,13 @@ function resolveInboundJid(body: Record<string, unknown>, data: Record<string, u
     key.senderPn,
     data.sender,
     body.sender,
-    key.participant,
   ];
   return candidates.map(phoneJid).find(Boolean) || "";
 }
 
 export type EvolutionInbound = {
   kind: "message";
+  fromMe: boolean;
   isGroup: boolean;
   groupJid: string;
   groupName: string;
@@ -87,11 +90,15 @@ export type EvolutionInbound = {
   text: string;
   contactName: string;
   messageId: string;
+  occurredAtMs: number | null;
+  quotedMessageId: string;
+  quotedMessageText: string;
   messageType: "text" | "image" | "video" | "document" | "audio";
   mediaUrl: string;
   mediaBase64: string;
   mediaMimeType: string;
   mediaName: string;
+  mediaDuration?: number;
   mediaThumbnail: string;
   rawMessage: Record<string, unknown>;
 };
@@ -159,38 +166,52 @@ export function parseEvolutionWebhook(body: Record<string, unknown>): EvolutionW
   const event = normalizedEvent(body.event);
   if (event === "messages.update" || event === "send.message.update") return parseDelivery(body);
   if (event === "connection.update") return parseConnection(body);
-  if (event && event !== "messages.upsert") return null;
+  if (event && event !== "messages.upsert" && event !== "send.message") return null;
   const data = record(body.data);
   const key = record(data.key);
-  if (key.fromMe === true) return null;
+  const fromMe = key.fromMe === true;
   const rawMessage = record(data.message);
   const message = unwrapMessage(rawMessage);
   const extended = record(message.extendedTextMessage);
   const selectedMedia = mediaMessage(message);
   const type = selectedMedia?.[0] || "text";
   const media = selectedMedia?.[1] || {};
+  const contextInfo = record(extended.contextInfo || media.contextInfo);
+  const quotedMessage = unwrapMessage(record(contextInfo.quotedMessage));
   const remoteJid = resolveInboundJid(body, data, key);
   const isGroup = /@g\.us$/i.test(remoteJid);
   const from = isGroup ? remoteJid : remoteJid.split("@")[0].replace(/\D/g, "");
   const fallback = type === "image" ? "[Imagem recebida]" : type === "video" ? "[Video recebido]" : type === "document" ? "[Arquivo recebido]" : type === "audio" ? "[Audio recebido]" : "";
   const text = clean(message.conversation) || clean(extended.text) || clean(media.caption) || fallback;
+  const rawTimestamp = data.messageTimestamp || body.messageTimestamp || body.timestamp;
+  const timestampNumber = Number(rawTimestamp);
+  const occurredAtMs = Number.isFinite(timestampNumber) && timestampNumber > 0
+    ? (timestampNumber > 1_000_000_000_000 ? Math.floor(timestampNumber) : Math.floor(timestampNumber * 1000))
+    : null;
   if (!from || (!text && type === "text")) return null;
   return {
     kind: "message",
+    fromMe,
     isGroup,
     groupJid: isGroup ? remoteJid : "",
-    groupName: isGroup ? clean(data.groupSubject || data.subject || record(data.groupMetadata).subject, 180) : "",
+    groupName: isGroup ? clean(data.groupSubject || data.subject || record(data.groupMetadata).subject || record(data.group).subject, 180) : "",
     participantJid: isGroup ? clean(key.participantAlt || key.participant, 180) : "",
     participantName: isGroup ? clean(data.pushName, 180) : "",
     from,
     text,
-    contactName: clean(data.pushName, 180) || from,
+    contactName: fromMe ? from : clean(data.pushName, 180) || from,
     messageId: clean(key.id, 260),
+    occurredAtMs,
+    quotedMessageId: clean(contextInfo.stanzaId, 260),
+    quotedMessageText:
+      clean(quotedMessage.conversation, 1200) ||
+      clean(record(quotedMessage.extendedTextMessage).text, 1200),
     messageType: type,
     mediaUrl: clean(media.url, 1400),
     mediaBase64: cleanBase64(media.base64 || message.base64 || rawMessage.base64 || data.base64),
     mediaMimeType: clean(media.mimetype || media.mime_type, 180),
     mediaName: clean(media.fileName || media.filename, 240),
+    ...(Number.isFinite(Number(media.seconds)) && Number(media.seconds) >= 0 ? { mediaDuration: Number(media.seconds) } : {}),
     mediaThumbnail: cleanThumbnail(media.jpegThumbnail || media.thumbnail || message.jpegThumbnail),
     rawMessage: data,
   };

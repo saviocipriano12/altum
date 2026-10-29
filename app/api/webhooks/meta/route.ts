@@ -1,9 +1,9 @@
 import { after, NextResponse } from "next/server";
+import { extractInstagramMessageContext, type InstagramMessageContext } from "@/lib/instagram-message-context";
 import { FieldValue, type DocumentReference } from "firebase-admin/firestore";
 import { adminDb } from "@/app/lib/server/firebase-admin";
 import {
   findMetaChannelForWebhook,
-  fetchMetaConversationProfile,
   getMetaAdsChannelForLeadgen,
   getMetaChannelByVerifyToken,
   getMetaChannelForTenant,
@@ -16,11 +16,13 @@ import { verifyMetaSignature } from "@/app/lib/server/whatsapp-channel";
 import { getMetaEnv } from "@/app/lib/server/integration-oauth";
 import { enqueueIncomingMessageJob, processAiJobAfterSettle, triggerAiQueueWorker } from "@/lib/server/ai/queue";
 import { cacheInboundMessageMedia } from "@/lib/server/ai/multimodal";
+import { captureMessageMediaSource } from "@/lib/server/message-media-source";
 import { upsertAiOperationalAlert } from "@/lib/server/ai/observability";
 import { runLeadAutomations } from "@/lib/server/automations";
+import { processIntakeCreation } from "@/lib/server/crm/intake-occurrence";
 import { buildIncomingChatOperationalPatch, resolveFirstResponseSlaMinutes } from "@/lib/server/chat-operations";
 import { upsertContactProfile } from "@/lib/server/contact-profile";
-import { recordInboundLead } from "@/lib/server/lead-intake";
+import { applyInboundCampaignAttribution, recordInboundLead } from "@/lib/server/lead-intake";
 import { parseMetaSocialEvents } from "@/lib/server/social/meta";
 import {
   getSocialAutomationContactState,
@@ -32,10 +34,24 @@ import {
 } from "@/lib/server/social/service";
 import { getTenantSettings } from "@/lib/server/tenant";
 import { resolveInboundAssignment } from "@/lib/server/tenant-routing";
+import {
+  normalizeCanonicalInboundEvent,
+  shouldAdvanceConversationCursor,
+  type CanonicalInboundAttachmentInput,
+} from "@/lib/server/messaging/inbound-event";
+import { recordInboundEventMetricSafe } from "@/lib/server/messaging/inbound-observability";
+import { resolveCanonicalSocialChat } from "@/lib/server/social-chat-identity";
+import { resolveCanonicalSocialLead } from "@/lib/server/social-lead-identity";
+import { resolveMetaContactProfile, refreshStoredMetaContactProfile, isGenericMetaContactName } from "@/lib/server/meta-contact-profile";
+import { refreshInstagramStoryMessage } from "@/lib/server/instagram-story-context";
+import { persistMetaOutgoingMessage } from "@/lib/server/meta-outgoing-message";
+import { dispatchLeadConversionEvents } from "@/lib/server/pixels/conversions";
 
 const VERSION = process.env.META_GRAPH_VERSION || "v21.0";
 
 type ParsedMetaEvent = {
+  isEcho: boolean;
+  instagramContext: InstagramMessageContext | null;
   eventId: string;
   senderId: string;
   recipientId: string;
@@ -51,6 +67,20 @@ type ParsedMetaEvent = {
   mediaSize?: number | null;
   mediaThumbnail?: string | null;
   contactPhotoUrl?: string | null;
+  attachments: CanonicalInboundAttachmentInput[];
+  quotedMessage: {
+    providerMessageId?: string | null;
+    senderExternalId?: string | null;
+    text?: string | null;
+  } | null;
+  campaign: {
+    id?: string | null;
+    name?: string | null;
+    source?: string | null;
+    medium?: string | null;
+    adId?: string | null;
+    clickId?: string | null;
+  } | null;
 };
 
 type ParsedLeadgenEvent = {
@@ -112,6 +142,7 @@ function buildAttachmentText(value: unknown) {
       if (type === "audio") return "[Audio recebido]";
       if (type === "video") return "[Video recebido]";
       if (type === "file") return "[Arquivo recebido]";
+      if (type === "story_mention") return "Mencionou você em um story";
       return `[${type} recebido]`;
     })
     .filter(Boolean);
@@ -158,6 +189,34 @@ function extractMetaAttachmentMeta(message: Record<string, unknown>) {
   };
 }
 
+function extractMetaAttachments(message: Record<string, unknown>): CanonicalInboundAttachmentInput[] {
+  const attachments = Array.isArray(message.attachments) ? message.attachments : [];
+  return attachments.slice(0, 12).flatMap((raw) => {
+    if (!raw || typeof raw !== "object") return [];
+    const attachment = raw as Record<string, unknown>;
+    const payload = attachment.payload && typeof attachment.payload === "object"
+      ? (attachment.payload as Record<string, unknown>)
+      : {};
+    return [{
+      type: cleanString(attachment.type, 40),
+      url: cleanString(payload.url, 1200),
+      providerMediaId: cleanString(payload.id || attachment.id, 260),
+      name: cleanString(attachment.title, 160) || cleanString(payload.title, 160),
+      mimeType: cleanString(payload.mime_type, 120),
+      caption: cleanString(attachment.caption || payload.caption, 1200),
+      durationMs:
+        cleanNumber(payload.duration_ms) ??
+        cleanNumber(payload.duration) ??
+        cleanNumber(attachment.duration_ms) ??
+        cleanNumber(attachment.duration),
+      width: cleanNumber(payload.width) ?? cleanNumber(attachment.width),
+      height: cleanNumber(payload.height) ?? cleanNumber(attachment.height),
+      sizeBytes: cleanNumber(payload.file_size) ?? cleanNumber(attachment.file_size),
+      thumbnailUrl: cleanString(payload.preview_url, 1200),
+    }];
+  });
+}
+
 function extractMetaProfilePhoto(
   event: Record<string, unknown>,
   sender: Record<string, unknown>,
@@ -198,7 +257,7 @@ function parseMetaEvents(body: Record<string, unknown>) {
           ? (event.message as Record<string, unknown>)
           : null;
 
-      if (!message || message.is_echo === true) continue;
+      if (!message) continue;
 
       const sender =
         event.sender && typeof event.sender === "object"
@@ -214,6 +273,13 @@ function parseMetaEvents(body: Record<string, unknown>) {
       const text = extractTextFromMessage(message);
       const messageId = cleanString(message.mid || message.id, 220);
       const mediaMeta = extractMetaAttachmentMeta(message);
+      const attachments = extractMetaAttachments(message);
+      const replyTo = message.reply_to && typeof message.reply_to === "object"
+        ? (message.reply_to as Record<string, unknown>)
+        : {};
+      const referral = event.referral && typeof event.referral === "object"
+        ? (event.referral as Record<string, unknown>)
+        : {};
       const contactPhotoUrl = extractMetaProfilePhoto(event, sender, recipient);
       const timestamp =
         typeof event.timestamp === "number"
@@ -225,8 +291,10 @@ function parseMetaEvents(body: Record<string, unknown>) {
       if (!senderId || !recipientId || !text) continue;
 
       parsed.push({
+        isEcho: message.is_echo === true,
+        instagramContext: extractInstagramMessageContext(message),
         entryId,
-        eventId: messageId || `${senderId}_${recipientId}_${timestamp || Date.now()}`,
+        eventId: messageId,
         senderId,
         recipientId,
         text,
@@ -241,6 +309,24 @@ function parseMetaEvents(body: Record<string, unknown>) {
         mediaSize: mediaMeta.mediaSize,
         mediaThumbnail: mediaMeta.mediaThumbnail,
         contactPhotoUrl,
+        attachments,
+        quotedMessage: Object.keys(replyTo).length
+          ? {
+              providerMessageId: cleanString(replyTo.mid || replyTo.message_id, 220) || null,
+              senderExternalId: cleanString(replyTo.sender_id, 180) || null,
+              text: cleanString(replyTo.text, 1200) || null,
+            }
+          : null,
+        campaign: Object.keys(referral).length
+          ? {
+              id: cleanString(referral.campaign_id, 240) || null,
+              name: cleanString(referral.campaign_name, 240) || null,
+              source: cleanString(referral.source, 120) || null,
+              medium: cleanString(referral.type, 120) || null,
+              adId: cleanString(referral.ad_id, 240) || null,
+              clickId: cleanString(referral.ctwa_clid, 300) || null,
+            }
+          : null,
       });
     }
   }
@@ -503,31 +589,6 @@ async function resolveOwnerName(ownerId: string | null) {
   return cleanString((snap.data() as { name?: unknown }).name, 160) || null;
 }
 
-async function resolveLeadByExternalId(
-  tenantId: string,
-  channelType: MetaConversationChannelType,
-  externalProfileId: string
-) {
-  const snap = await adminDb
-    .collection("leads")
-    .where("tenantId", "==", tenantId)
-    .where("externalProfileId", "==", externalProfileId)
-    .limit(1)
-    .get();
-
-  if (snap.empty) {
-    return { leadId: null as string | null, ownerId: null as string | null };
-  }
-
-  const leadDoc = snap.docs[0];
-  const leadData = leadDoc.data() as { ownerId?: unknown };
-  return {
-    leadId: leadDoc.id,
-    ownerId: cleanString(leadData.ownerId, 180) || null,
-    channel: channelType,
-  };
-}
-
 function makeMetaContactName(channelType: MetaConversationChannelType, externalId: string) {
   const suffix = externalId.slice(-6) || externalId;
   return channelType === "instagram" ? `Instagram ${suffix}` : `Messenger ${suffix}`;
@@ -535,52 +596,46 @@ function makeMetaContactName(channelType: MetaConversationChannelType, externalI
 
 async function ensureLead(input: {
   tenantId: string;
+  channelId: string;
   channelType: MetaConversationChannelType;
   externalProfileId: string;
+  contactId: string | null;
   contactName: string;
 }) {
-  const existing = await resolveLeadByExternalId(input.tenantId, input.channelType, input.externalProfileId);
-  if (existing.leadId) {
-    return existing;
-  }
-
-  const leadRef = adminDb.collection("leads").doc();
   const inboundAssignee = await resolveInboundAssignment(input.tenantId, { channel: input.channelType, priority: "medium", responsibility: "lead" });
-  await leadRef.set({
+  const canonical = await resolveCanonicalSocialLead({
     tenantId: input.tenantId,
-    nome: input.contactName,
-    origem: input.channelType === "instagram" ? "instagram_dm" : "facebook_messenger",
+    contactId: input.contactId,
     channel: input.channelType,
-    sourceType: input.channelType === "instagram" ? "instagram_dm" : "facebook_messenger",
-    pipelineStage: "captado",
-    stage: "captado",
-    status: "novo",
     externalProfileId: input.externalProfileId,
-    ownerId: inboundAssignee?.userId || null,
-    owner: inboundAssignee?.name || null,
-    score: null,
-    heat: "frio",
-    priority: "medium",
-    createdAt: FieldValue.serverTimestamp(),
-    updatedAt: FieldValue.serverTimestamp(),
+    creationWorkflow: { channelId: input.channelId, actorId: "meta_webhook", actorName: "Meta Webhook" },
+    createData: {
+      tenantId: input.tenantId,
+      contactId: input.contactId,
+      nome: input.contactName,
+      origem: input.channelType === "instagram" ? "instagram_dm" : "facebook_messenger",
+      channel: input.channelType,
+      sourceType: input.channelType === "instagram" ? "instagram_dm" : "facebook_messenger",
+      pipelineStage: "captado",
+      stage: "captado",
+      status: "novo",
+      externalProfileId: input.externalProfileId,
+      ownerId: inboundAssignee?.userId || null,
+      owner: inboundAssignee?.name || null,
+      score: null,
+      heat: "frio",
+      priority: "medium",
+      createdAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
+    },
   });
-
-  await leadRef.collection("events").add({
-    type: "system",
-    title: "Lead criado",
-    detail: `Lead criado automaticamente a partir de ${input.channelType}.`,
-    createdAt: FieldValue.serverTimestamp(),
-  });
-
-  await runLeadAutomations({
-    tenantId: input.tenantId,
-    trigger: "lead_created",
-    leadId: leadRef.id,
-    actorId: "meta_webhook",
-    actorName: "Meta Webhook",
-  });
-
-  return { leadId: leadRef.id, ownerId: inboundAssignee?.userId || null };
+  const lead = await canonical.leadRef.get();
+  return {
+    leadId: canonical.leadRef.id,
+    created: canonical.created,
+    creationJobId: canonical.creationJobId,
+    ownerId: cleanString(lead.data()?.ownerId, 180) || inboundAssignee?.userId || null,
+  };
 }
 
 async function upsertChatForMetaEvent(input: {
@@ -594,19 +649,16 @@ async function upsertChatForMetaEvent(input: {
   ownerId: string | null;
   leadId: string | null;
   lastMessage: string;
+  lastMessageOccurredAtMs: number;
   slaMinutes: number;
 }) {
-  const chatQuery = await adminDb
-    .collection("chats")
-    .where("tenantId", "==", input.tenantId)
-    .where("channel", "==", input.channelType)
-    .where("contactExternalId", "==", input.contactExternalId)
-    .limit(1)
-    .get();
-
-  if (chatQuery.empty) {
-    const ownerName = await resolveOwnerName(input.ownerId);
-    const newChat = await adminDb.collection("chats").add({
+  const ownerName = await resolveOwnerName(input.ownerId);
+  const canonical = await resolveCanonicalSocialChat({
+    tenantId: input.tenantId,
+    channel: input.channelType,
+    channelId: input.channelId,
+    externalProfileId: input.contactExternalId,
+    createData: {
       tenantId: input.tenantId,
       channel: input.channelType,
       channelId: input.channelId,
@@ -615,7 +667,8 @@ async function upsertChatForMetaEvent(input: {
       contactName: input.contactName,
       contactPhotoUrl: input.contactPhotoUrl || null,
       lastMessage: input.lastMessage,
-      lastMessageTime: FieldValue.serverTimestamp(),
+      lastMessageTime: new Date(input.lastMessageOccurredAtMs),
+      lastInboundOccurredAtMs: input.lastMessageOccurredAtMs,
       ownerId: input.ownerId,
       ownerName,
       leadId: input.leadId,
@@ -626,27 +679,37 @@ async function upsertChatForMetaEvent(input: {
       }),
       createdAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
-    });
-
-    return { chatId: newChat.id, ownerId: input.ownerId };
+    },
+  });
+  if (canonical.created) {
+    return { chatId: canonical.chatRef.id, ownerId: input.ownerId, outOfOrder: false };
   }
 
-  const chatDoc = chatQuery.docs[0];
-  const chatData = chatDoc.data() as { ownerId?: unknown; assignedTo?: unknown; leadId?: unknown };
+  const chatDoc = await canonical.chatRef.get();
+  const chatData = (chatDoc.data() || {}) as { ownerId?: unknown; assignedTo?: unknown; leadId?: unknown; lastInboundOccurredAtMs?: unknown; contactName?: string; contactPhotoUrl?: string };
   const resolvedOwnerId =
     cleanString(chatData.ownerId, 180) || cleanString(chatData.assignedTo, 180) || input.ownerId || null;
 
-  await chatDoc.ref.set(
+  const advancesCursor = shouldAdvanceConversationCursor({
+    previousOccurredAtMs: chatData.lastInboundOccurredAtMs,
+    incomingOccurredAtMs: input.lastMessageOccurredAtMs,
+  });
+  await canonical.chatRef.set(
     {
       tenantId: input.tenantId,
       channel: input.channelType,
       channelId: input.channelId,
       channelExternalAccountId: input.channelExternalAccountId,
       contactExternalId: input.contactExternalId,
-      contactName: input.contactName,
-      contactPhotoUrl: input.contactPhotoUrl || null,
-      lastMessage: input.lastMessage,
-      lastMessageTime: FieldValue.serverTimestamp(),
+      contactName: isGenericMetaContactName(input.contactName) && !isGenericMetaContactName(chatData.contactName) ? chatData.contactName : input.contactName,
+      contactPhotoUrl: input.contactPhotoUrl || chatData.contactPhotoUrl || null,
+      ...(advancesCursor
+        ? {
+            lastMessage: input.lastMessage,
+            lastMessageTime: new Date(input.lastMessageOccurredAtMs),
+            lastInboundOccurredAtMs: input.lastMessageOccurredAtMs,
+          }
+        : {}),
       ownerId: resolvedOwnerId,
       ownerName: await resolveOwnerName(resolvedOwnerId),
       leadId: cleanString(chatData.leadId, 180) || input.leadId,
@@ -660,7 +723,7 @@ async function upsertChatForMetaEvent(input: {
     { merge: true }
   );
 
-  return { chatId: chatDoc.id, ownerId: resolvedOwnerId };
+  return { chatId: canonical.chatRef.id, ownerId: resolvedOwnerId, outOfOrder: !advancesCursor };
 }
 
 export async function GET(req: Request) {
@@ -696,6 +759,7 @@ export async function POST(req: Request) {
   let currentEventRef: DocumentReference | null = null;
 
   try {
+    const webhookReceivedAtMs = Date.now();
     const rawBody = await req.text();
     const signature = req.headers.get("x-hub-signature-256") || req.headers.get("x-hub-signature");
     const body = JSON.parse(rawBody) as Record<string, unknown>;
@@ -737,11 +801,11 @@ export async function POST(req: Request) {
     const firstEvent = parsedEvents[0];
     const firstSocialEvent = socialEvents[0];
     const firstLeadgen = leadgenEvents[0];
-    const resolved = firstEvent
+    let resolved = firstEvent
       ? await findMetaChannelForWebhook({
           objectType,
           entryId: firstEvent.entryId,
-          recipientId: firstEvent.recipientId,
+          recipientId: firstEvent.isEcho ? firstEvent.senderId : firstEvent.recipientId,
         })
       : firstSocialEvent
         ? await findMetaChannelForWebhook({
@@ -755,12 +819,19 @@ export async function POST(req: Request) {
         });
 
     if (!resolved) {
+      for (const event of parsedEvents.slice(1)) {
+        resolved = await findMetaChannelForWebhook({ objectType, entryId: event.entryId, recipientId: event.isEcho ? event.senderId : event.recipientId });
+        if (resolved) break;
+      }
+    }
+
+    if (!resolved) {
       console.info("Webhook Meta ignorado por canal desconhecido.", {
         objectType,
         firstEvent: firstEvent
           ? {
               entryId: firstEvent.entryId,
-              recipientId: firstEvent.recipientId,
+              recipientId: firstEvent.isEcho ? firstEvent.senderId : firstEvent.recipientId,
               senderId: firstEvent.senderId,
               eventId: firstEvent.eventId,
             }
@@ -830,17 +901,20 @@ export async function POST(req: Request) {
     }
 
     for (const event of parsedEvents) {
-      const resolvedConversationChannel = isMetaConversationChannelType(resolved.type)
-        ? (resolved as MetaChannelConfig)
-        : null;
+      const eventChannel = await findMetaChannelForWebhook({ objectType, entryId: event.entryId, recipientId: event.isEcho ? event.senderId : event.recipientId });
+      const resolvedConversationChannel = eventChannel && isMetaConversationChannelType(eventChannel.type)
+        ? eventChannel : null;
       if (!resolvedConversationChannel) {
+        continue;
+      }
+      if (!globalAppSecret && !verifyMetaSignature(rawBody, signature, resolvedConversationChannel.appSecret || "")) {
         continue;
       }
 
       const channel: MetaChannelConfig =
         (await getMetaChannelForTenant(resolvedConversationChannel.tenantId, resolvedConversationChannel.type, {
           channelId: resolvedConversationChannel.id,
-          externalAccountId: event.recipientId,
+          externalAccountId: event.isEcho ? event.senderId : event.recipientId,
           pageId: event.entryId,
         })) || resolvedConversationChannel;
 
@@ -848,19 +922,80 @@ export async function POST(req: Request) {
         continue;
       }
 
+      const outgoing = [channel.externalAccountId, channel.pageId].includes(event.senderId);
+      if (event.isEcho && !outgoing) continue;
+      if (outgoing) {
+        const normalized = normalizeCanonicalInboundEvent({ tenantId: channel.tenantId, channel: channel.type,
+          channelId: channel.id, provider: "meta", providerEventId: event.eventId, senderExternalId: event.senderId,
+          recipientExternalId: event.recipientId, occurredAt: event.timestamp, receivedAt: webhookReceivedAtMs,
+          text: event.text, attachments: event.attachments, quotedMessage: event.quotedMessage });
+        if (!event.eventId || !normalized.accepted) continue;
+        const result = await persistMetaOutgoingMessage({ channel, event: normalized.event, source: "meta_native_echo" });
+        await adminDb.collection("tenant_channels").doc(channel.id).update({ lastWebhookAt: FieldValue.serverTimestamp() });
+        processed.push({ tenantId: channel.tenantId, channel: channel.type, chatId: result.chatId,
+          messageId: result.messageId, status: result.created ? "persisted_native_outgoing" : "duplicate_outgoing" });
+        continue;
+      }
+
+      const normalizedInbound = normalizeCanonicalInboundEvent({
+        tenantId: channel.tenantId,
+        channel: channel.type,
+        channelId: channel.id,
+        provider: "meta",
+        providerEventId: event.eventId,
+        senderExternalId: event.senderId,
+        recipientExternalId: event.recipientId,
+        occurredAt: event.timestamp,
+        receivedAt: webhookReceivedAtMs,
+        text: event.text,
+        attachments: event.attachments,
+        quotedMessage: event.quotedMessage,
+        campaign: event.campaign,
+      });
+      if (!normalizedInbound.accepted) {
+        console.warn("Webhook Meta ignorado por normalizacao canonica.", {
+          tenantId: channel.tenantId,
+          channelType: channel.type,
+          channelId: channel.id,
+          reason: normalizedInbound.reason,
+        });
+        processed.push({
+          tenantId: channel.tenantId,
+          channel: channel.type,
+          status: "ignored_invalid_inbound",
+          reason: normalizedInbound.reason,
+        });
+        await recordInboundEventMetricSafe({
+          tenantId: channel.tenantId,
+          channel: channel.type,
+          outcome: "invalid",
+          reason: normalizedInbound.reason,
+        });
+        continue;
+      }
+      const inbound = normalizedInbound.event;
+
       const claim = await claimMetaWebhookEvent({
         tenantId: channel.tenantId,
         channelType: channel.type,
-        eventId: event.eventId,
+        eventId: inbound.eventKey,
       });
 
       if (!claim.shouldProcess) {
+        await recordInboundEventMetricSafe({
+          tenantId: channel.tenantId,
+          channel: channel.type,
+          outcome: "duplicate",
+          reason: claim.reason,
+          deliveryClass: inbound.deliveryClass,
+          attachmentCount: inbound.attachments.length,
+        });
         continue;
       }
 
       currentEventRef = claim.eventRef;
 
-      const profile = await fetchMetaConversationProfile({ channel, userId: event.senderId }).catch(() => null);
+      const profile = await resolveMetaContactProfile({ channel, userId: event.senderId });
       const contactName =
         profile?.name ||
         profile?.username ||
@@ -868,12 +1003,35 @@ export async function POST(req: Request) {
       const contactPhotoUrl = event.contactPhotoUrl || profile?.photoUrl || null;
       const tenantSettings = await getTenantSettings(channel.tenantId);
       const slaMinutes = resolveFirstResponseSlaMinutes(tenantSettings as Record<string, unknown> | null);
+      const initialContactId = await upsertContactProfile({
+        tenantId: channel.tenantId,
+        externalProfileId: event.senderId,
+        channel: channel.type,
+        name: contactName,
+        photoUrl: contactPhotoUrl,
+      });
       const lead = await ensureLead({
         tenantId: channel.tenantId,
+        channelId: channel.id,
         channelType: channel.type,
         externalProfileId: event.senderId,
+        contactId: initialContactId,
         contactName,
       });
+      if (lead.leadId && inbound.campaign) {
+        await applyInboundCampaignAttribution({
+          tenantId: channel.tenantId,
+          leadId: lead.leadId,
+          channel: channel.type,
+          sourceType: channel.type === "instagram" ? "instagram_dm" : "facebook_messenger",
+          sourceLabel: channel.type === "instagram" ? "Instagram via anuncio Meta" : "Messenger via anuncio Meta",
+          campaign: inbound.campaign,
+          occurredAtMs: inbound.orderingTimestampMs,
+        });
+      }
+      if (lead.leadId) {
+        await dispatchLeadConversionEvents({ tenantId: channel.tenantId, leadId: lead.leadId, reason: "lead_created" });
+      }
       if (lead.leadId && !lead.ownerId) {
         const inboundAssignee = await resolveInboundAssignment(channel.tenantId, { channel: channel.type, priority: "medium", responsibility: "lead" });
         if (inboundAssignee) {
@@ -899,9 +1057,12 @@ export async function POST(req: Request) {
         contactPhotoUrl,
         ownerId: lead.ownerId,
         leadId: lead.leadId,
-        lastMessage: event.text,
+        lastMessage: inbound.text,
+        lastMessageOccurredAtMs: inbound.orderingTimestampMs,
         slaMinutes,
       });
+
+      if (lead.creationJobId) await processIntakeCreation(lead.creationJobId, channel.tenantId);
 
       let leadEmail = "";
       let leadCompany = "";
@@ -929,7 +1090,7 @@ export async function POST(req: Request) {
         }
       }
 
-      await upsertContactProfile({
+      const contactId = await upsertContactProfile({
         tenantId: channel.tenantId,
         externalProfileId: event.senderId,
         leadId: lead.leadId,
@@ -939,46 +1100,83 @@ export async function POST(req: Request) {
         company: leadCompany,
         photoUrl: contactPhotoUrl,
       });
+      if (contactId) {
+        await Promise.all([
+          adminDb.collection("chats").doc(chat.chatId).set({ contactId, updatedAt: FieldValue.serverTimestamp() }, { merge: true }),
+          lead.leadId
+            ? adminDb.collection("leads").doc(lead.leadId).set({ contactId, updatedAt: FieldValue.serverTimestamp() }, { merge: true })
+            : Promise.resolve(),
+        ]);
+      }
 
-      const messageDocId = sanitizeId(
-        `meta_in_${channel.tenantId}_${channel.type}_${event.eventId}`,
-        240
-      );
-      const messageRef = adminDb.collection("messages").doc(messageDocId);
+      await refreshStoredMetaContactProfile({ channel, userId: event.senderId, chatId: chat.chatId, profile }).catch(() => {
+        console.warn("Não foi possível atualizar o perfil da conversa Meta.", { channelId: channel.id, chatId: chat.chatId });
+      });
 
-      await messageRef.set(
+      const messageRef = adminDb.collection("messages").doc(inbound.messageDocumentId);
+      const primaryAttachment = inbound.attachments[0] || null;
+
+      const incomingWrite = await messageRef.set(
         {
           chatId: chat.chatId,
           tenantId: channel.tenantId,
           channel: channel.type,
           channelId: channel.id,
-          text: event.text,
+          text: inbound.text,
           sender: "client",
-          type: event.messageType,
+          type: inbound.messageType,
           ownerId: chat.ownerId,
-          metaMessageId: event.eventId,
-          mediaUrl: event.mediaUrl || null,
-          mediaName: event.mediaName || null,
-          mediaMimeType: event.mediaMimeType || null,
-          mediaDuration: event.mediaDuration ?? null,
-          mediaWidth: event.mediaWidth ?? null,
-          mediaHeight: event.mediaHeight ?? null,
-          mediaSize: event.mediaSize ?? null,
-          mediaThumbnail: event.mediaThumbnail || null,
+          metaMessageId: inbound.providerEventId,
+          inboundEventKey: inbound.eventKey,
+          inboundCanonicalVersion: inbound.version,
+          conversationIdentityKey: inbound.conversationIdentityKey,
+          providerOccurredAtMs: inbound.occurredAtMs,
+          providerOccurredAt: new Date(inbound.occurredAtMs),
+          receivedAt: FieldValue.serverTimestamp(),
+          deliveryClass: inbound.deliveryClass,
+          normalizationNotes: inbound.normalizationNotes,
+          quotedMessage: inbound.quotedMessage,
+          instagramContext: channel.type === "instagram" ? event.instagramContext : null,
+          campaignContext: inbound.campaign,
+          attachments: inbound.attachments,
+          mediaUrl: primaryAttachment?.url || null,
+          mediaName: primaryAttachment?.name || null,
+          mediaMimeType: primaryAttachment?.mimeType || null,
+          mediaDuration: primaryAttachment?.durationMs ?? null,
+          mediaWidth: primaryAttachment?.width ?? null,
+          mediaHeight: primaryAttachment?.height ?? null,
+          mediaSize: primaryAttachment?.sizeBytes ?? null,
+          mediaThumbnail: primaryAttachment?.thumbnailUrl || null,
           source: "meta_webhook",
-          createdAt: FieldValue.serverTimestamp(),
+          createdAt: new Date(inbound.orderingTimestampMs),
         },
         { merge: true }
       );
+
+      if (channel.type === "instagram" && event.instagramContext?.kind === "story_reply" && event.instagramContext.storyId) {
+        after(async () => {
+          await refreshInstagramStoryMessage({ channel, chatId: chat.chatId, messageId: messageRef.id }).catch(() => {
+            console.warn("Prévia do story não pôde ser atualizada.", { channelId: channel.id, messageId: messageRef.id });
+          });
+        });
+      }
+
+      const mediaCacheSource = ["audio", "image", "video", "document"].includes(inbound.messageType)
+        ? await captureMessageMediaSource({tenantId: channel.tenantId, chatId: chat.chatId, messageId: messageRef.id, expectedRevision: incomingWrite.writeTime}).catch(() => null) : null;
+
+      await adminDb.collection("tenant_channels").doc(channel.id).update({
+        lastWebhookAt: FieldValue.serverTimestamp(), lastInboundAt: FieldValue.serverTimestamp(),
+      }).catch(() => console.warn("Não foi possível registrar a última recepção do canal Meta.", { channelId: channel.id }));
 
       if (lead.leadId) {
         await runLeadAutomations({
           tenantId: channel.tenantId,
           trigger: "message_received",
+          sourceMessageId: messageRef.id,
           leadId: lead.leadId,
           chatId: chat.chatId,
           channel: channel.type,
-          messageText: event.text,
+          messageText: inbound.text,
           actorId: "meta_webhook",
           actorName: "Meta Webhook",
         });
@@ -988,7 +1186,7 @@ export async function POST(req: Request) {
       const contactState = await getSocialAutomationContactState(channel.tenantId, channel.type, event.senderId);
       const dmDecision = shouldAutoReplyToDm({
         config: socialConfig,
-        text: event.text,
+        text: inbound.text,
         senderId: event.senderId,
         channel,
         contactState,
@@ -1001,18 +1199,18 @@ export async function POST(req: Request) {
           actorId: event.senderId,
           actorName: contactName,
           optedOut: true,
-          reason: event.text,
+          reason: inbound.text,
         });
       }
 
       await logSocialAutomationStatus({
         tenantId: channel.tenantId,
         channelType: channel.type,
-        eventId: event.eventId,
+        eventId: inbound.providerEventId || inbound.eventKey,
         eventType: "dm",
         actorId: event.senderId,
         actorName: contactName,
-        text: event.text,
+        text: inbound.text,
         status: dmDecision.reason,
         reason:
           dmDecision.reason === "processed"
@@ -1051,6 +1249,47 @@ export async function POST(req: Request) {
           messageId: messageRef.id,
           socialStatus: dmDecision.reason,
         });
+        await recordInboundEventMetricSafe({
+          tenantId: channel.tenantId,
+          channel: channel.type,
+          outcome: "ignored_policy",
+          reason: dmDecision.reason,
+          deliveryClass: inbound.deliveryClass,
+          attachmentCount: inbound.attachments.length,
+        });
+        continue;
+      }
+
+      if (chat.outOfOrder) {
+        await claim.eventRef.set(
+          {
+            status: "processed_out_of_order",
+            tenantId: channel.tenantId,
+            channelType: channel.type,
+            chatId: chat.chatId,
+            leadId: lead.leadId,
+            messageDocId: messageRef.id,
+            inboundEventKey: inbound.eventKey,
+            processedAt: FieldValue.serverTimestamp(),
+            updatedAt: FieldValue.serverTimestamp(),
+          },
+          { merge: true }
+        );
+        processed.push({
+          tenantId: channel.tenantId,
+          channel: channel.type,
+          chatId: chat.chatId,
+          messageId: messageRef.id,
+          status: "persisted_out_of_order_ai_skipped",
+        });
+        await recordInboundEventMetricSafe({
+          tenantId: channel.tenantId,
+          channel: channel.type,
+          outcome: "out_of_order",
+          reason: "older_than_conversation_cursor",
+          deliveryClass: inbound.deliveryClass,
+          attachmentCount: inbound.attachments.length,
+        });
         continue;
       }
 
@@ -1059,28 +1298,37 @@ export async function POST(req: Request) {
         chatId: chat.chatId,
         messageId: messageRef.id,
         source: `webhook_${channel.type}`,
-        dedupeKey: `${channel.tenantId}_${messageRef.id}`,
+        dedupeKey: inbound.eventKey,
       });
 
       triggerAiQueueWorker({ limit: 8, drain: true });
       after(async () => {
-        if (["audio", "image", "video", "document"].includes(String(event.messageType || "").toLowerCase())) {
+        if (mediaCacheSource && ["audio", "image", "video", "document"].includes(inbound.messageType)) {
           await cacheInboundMessageMedia({
             tenantId: channel.tenantId,
             chatId: chat.chatId,
             messageId: messageRef.id,
+            source: mediaCacheSource,
             message: {
-              type: event.messageType,
-              mediaUrl: event.mediaUrl || null,
-              mediaName: event.mediaName || null,
-              mediaMimeType: event.mediaMimeType || null,
-              mediaDuration: event.mediaDuration ?? null,
-              mediaWidth: event.mediaWidth ?? null,
-              mediaHeight: event.mediaHeight ?? null,
-              mediaSize: event.mediaSize ?? null,
+              type: inbound.messageType,
+              mediaUrl: primaryAttachment?.url || null,
+              mediaName: primaryAttachment?.name || null,
+              mediaMimeType: primaryAttachment?.mimeType || null,
+              mediaDuration: primaryAttachment?.durationMs ?? null,
+              mediaWidth: primaryAttachment?.width ?? null,
+              mediaHeight: primaryAttachment?.height ?? null,
+              mediaSize: primaryAttachment?.sizeBytes ?? null,
             },
-          }).catch((error) => {
+          }).catch(async (error) => {
             console.error("Falha ao cachear midia inbound da Meta:", error);
+            await recordInboundEventMetricSafe({
+              tenantId: channel.tenantId,
+              channel: channel.type,
+              outcome: "media_failed",
+              reason: "meta_media_cache_failed",
+              deliveryClass: inbound.deliveryClass,
+              attachmentCount: inbound.attachments.length,
+            });
           });
         }
         await processAiJobAfterSettle(queue.jobId, { source: `webhook_${channel.type}` });
@@ -1102,6 +1350,15 @@ export async function POST(req: Request) {
         },
         { merge: true }
       );
+
+      await recordInboundEventMetricSafe({
+        tenantId: channel.tenantId,
+        channel: channel.type,
+        outcome: "accepted",
+        reason: "queued_for_ai",
+        deliveryClass: inbound.deliveryClass,
+        attachmentCount: inbound.attachments.length,
+      });
 
       processed.push({
         tenantId: channel.tenantId,

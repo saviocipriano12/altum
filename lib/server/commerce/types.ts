@@ -65,6 +65,12 @@ export interface CommerceProvider {
   credentialFields: readonly (keyof CommerceCredentials)[];
   testConnection(input: { connection: CommerceConnectionConfig; credentials: CommerceCredentials }): Promise<CommerceConnectionTest>;
   sync(input: { connection: CommerceConnectionConfig; credentials: CommerceCredentials; limit: number }): Promise<CommerceSyncResult>;
+  lookupCatalog?(input: {
+    connection: CommerceConnectionConfig;
+    credentials: CommerceCredentials;
+    query?: string;
+    productId?: string;
+  }): Promise<import("@/lib/shopify-live-catalog").LiveCatalogResult>;
 }
 
 export type NormalizedCommerceProduct = {

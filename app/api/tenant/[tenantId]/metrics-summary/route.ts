@@ -1,3 +1,4 @@
+import { readQueryPages } from "@/lib/server/query-pages";
 import { NextResponse } from "next/server";
 import { adminDb } from "@/app/lib/server/firebase-admin";
 import { requireRequestUser, RouteAuthError } from "@/app/lib/server/route-auth";
@@ -75,10 +76,10 @@ function safePct(current: number, previous: number) {
   return ((current - previous) / previous) * 100;
 }
 
-function queryByTenantOrClient(collectionName: string, tenantId: string, clientId: string, limit: number) {
-  return adminDb.collection(collectionName).where("tenantId", "==", tenantId).limit(limit).get().then((snap) => {
+function queryByTenantOrClient(collectionName: string, tenantId: string, clientId: string) {
+  return readQueryPages(adminDb.collection(collectionName).where("tenantId", "==", tenantId)).then((snap) => {
     if (!snap.empty || !clientId || clientId === tenantId) return snap;
-    return adminDb.collection(collectionName).where("clientId", "==", clientId).limit(limit).get();
+    return readQueryPages(adminDb.collection(collectionName).where("clientId", "==", clientId));
   });
 }
 
@@ -477,14 +478,14 @@ export async function GET(
 
     const [leadsSnap, snapshotsSnap, financeSnap, appointmentsSnap, chatsSnap, messagesSnap, chatStateSnap, aiLogsSnap] =
       await Promise.all([
-        queryByTenantOrClient("leads", tenantId, clientId, 700),
-        queryByTenantOrClient("campaign_snapshots", tenantId, clientId, 1800),
-        queryByTenantOrClient("financeiro", tenantId, clientId, 400),
-        queryByTenantOrClient("appointments", tenantId, clientId, 500),
-        adminDb.collection("chats").where("tenantId", "==", tenantId).limit(350).get(),
-        adminDb.collection("messages").where("tenantId", "==", tenantId).limit(1800).get(),
-        adminDb.collection("chat_state").where("tenantId", "==", tenantId).limit(350).get(),
-        adminDb.collection("ai_logs").where("tenantId", "==", tenantId).limit(400).get(),
+        queryByTenantOrClient("leads", tenantId, clientId),
+        queryByTenantOrClient("campaign_snapshots", tenantId, clientId),
+        queryByTenantOrClient("financeiro", tenantId, clientId),
+        queryByTenantOrClient("appointments", tenantId, clientId),
+        readQueryPages(adminDb.collection("chats").where("tenantId", "==", tenantId)),
+        readQueryPages(adminDb.collection("messages").where("tenantId", "==", tenantId)),
+        readQueryPages(adminDb.collection("chat_state").where("tenantId", "==", tenantId)),
+        readQueryPages(adminDb.collection("ai_logs").where("tenantId", "==", tenantId)),
       ]);
 
     const allLeads: GenericRow[] = leadsSnap.docs.map((doc) => ({

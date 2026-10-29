@@ -34,6 +34,12 @@ function cleanText(value: unknown, max = 500) {
   return typeof value === "string" ? value.trim().slice(0, max) : "";
 }
 
+function positiveId(value: unknown): number | null {
+  if (typeof value !== "number" && typeof value !== "string") return null;
+  const id = Number(value);
+  return Number.isSafeInteger(id) && id > 0 ? id : null;
+}
+
 function readProviderConfig() {
   const baseUrl = cleanText(process.env.ALTUM_MEETING_BOT_API_URL, 500).replace(/\/+$/, "");
   const apiKey = cleanText(process.env.ALTUM_MEETING_BOT_API_KEY, 1000);
@@ -95,6 +101,7 @@ async function providerFetch(path: string, init?: RequestInit) {
       ...(init?.headers || {}),
     },
     cache: "no-store",
+    redirect: "error",
     signal: AbortSignal.timeout(30_000),
   });
   if (!response.ok) {
@@ -111,6 +118,7 @@ export async function startMeetingBot(input: { meetingUrl: string; language?: st
   const response = await providerFetch("/bots", {
     method: "POST",
     body: JSON.stringify({
+      platform: target.platform,
       meeting_url: target.meetingUrl,
       bot_name: config.botName,
       language,
@@ -119,9 +127,11 @@ export async function startMeetingBot(input: { meetingUrl: string; language?: st
     }),
   });
   const raw = (await response.json()) as Record<string, unknown>;
+  const providerMeetingId = positiveId(raw.id);
+  if (!providerMeetingId) throw new Error("MEETING_PROVIDER_RESPONSE_INVALID");
   return {
     ...target,
-    providerMeetingId: Number.isFinite(Number(raw.id)) ? Number(raw.id) : null,
+    providerMeetingId,
     status: cleanText(raw.status, 80) || "requested",
     raw,
   };
@@ -140,29 +150,52 @@ export async function stopMeetingBot(target: Pick<MeetingBotTarget, "platform" |
 }
 
 export async function findMeetingRecording(providerMeetingId: number): Promise<MeetingRecording | null> {
-  const response = await providerFetch(`/recordings?meeting_db_id=${encodeURIComponent(String(providerMeetingId))}&limit=10`);
+  if (!positiveId(providerMeetingId)) throw new Error("MEETING_PROVIDER_ID_INVALID");
+  // Vexa api.v1 filters by meeting_id; meeting_db_id is silently ignored upstream.
+  const response = await providerFetch(`/recordings?meeting_id=${encodeURIComponent(String(providerMeetingId))}&limit=10`);
   const payload = (await response.json()) as { recordings?: Array<Record<string, unknown>> };
   const raw = (payload.recordings || []).find((item) => Number(item.meeting_id) === providerMeetingId);
-  if (!raw || !Number.isFinite(Number(raw.id))) return null;
+  if (!raw || !positiveId(raw.id)) return null;
   return {
     id: Number(raw.id),
     meetingId: Number(raw.meeting_id),
     status: cleanText(raw.status, 80),
-    durationSeconds: Number.isFinite(Number(raw.duration_seconds)) ? Number(raw.duration_seconds) : null,
+    durationSeconds: raw.duration_seconds != null && Number.isFinite(Number(raw.duration_seconds)) ? Number(raw.duration_seconds) : null,
   };
 }
 
 export async function downloadMeetingRecording(recordingId: number) {
+  if (!positiveId(recordingId)) throw new Error("MEETING_PROVIDER_ID_INVALID");
   const metadataResponse = await providerFetch(`/recordings/${encodeURIComponent(String(recordingId))}/master?type=audio`);
   const metadata = (await metadataResponse.json()) as { raw_url?: unknown };
   const rawUrl = cleanText(metadata.raw_url, 500);
-  if (!rawUrl.startsWith(`/recordings/${recordingId}/media/`) || !rawUrl.includes("/raw")) {
+  if (!new RegExp(`^/recordings/${recordingId}/media/[0-9]+/raw(?:\\?type=audio)?$`).test(rawUrl)) {
     throw new Error("MEETING_RECORDING_URL_INVALID");
   }
   const response = await providerFetch(rawUrl);
   const length = Number(response.headers.get("content-length") || 0);
   if (length > 24 * 1024 * 1024) throw new Error("MEETING_RECORDING_TOO_LARGE");
-  const bytes = new Uint8Array(await response.arrayBuffer());
+  const reader = response.body?.getReader();
+  if (!reader) throw new Error("MEETING_RECORDING_EMPTY");
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      size += value.byteLength;
+      if (size > 24 * 1024 * 1024) {
+        await reader.cancel();
+        throw new Error("MEETING_RECORDING_TOO_LARGE");
+      }
+      chunks.push(value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  const bytes = new Uint8Array(size);
+  let offset = 0;
+  for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength; }
   if (!bytes.byteLength || bytes.byteLength > 24 * 1024 * 1024) throw new Error("MEETING_RECORDING_TOO_LARGE");
   return {
     bytes,

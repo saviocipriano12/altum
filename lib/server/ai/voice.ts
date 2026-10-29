@@ -29,7 +29,7 @@ const DEFAULT_MAX_VOICE_CHARS = 460;
 const MAX_AUDIO_BYTES = 15 * 1024 * 1024;
 const MIN_AUDIO_BYTES = 1024;
 
-function normalizeVoice(value: unknown) {
+export function normalizeVoice(value: unknown) {
   const normalized = cleanText(value, 40).toLowerCase();
   return ALLOWED_VOICES.has(normalized) ? normalized : "marin";
 }

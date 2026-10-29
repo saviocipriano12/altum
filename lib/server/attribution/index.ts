@@ -20,6 +20,7 @@ export type AttributionTouch = {
   fbclid: string;
   fbc: string;
   fbp: string;
+  ctwaClid?: string;
   clickIds: {
     gclid: string;
     fbclid: string;
@@ -90,6 +91,7 @@ export function normalizeAttributionTouch(value: unknown): AttributionTouch {
     fbclid: clean(touch.fbclid || clickIds.fbclid, 240),
     fbc: clean(touch.fbc, 300),
     fbp: clean(touch.fbp, 300),
+    ctwaClid: clean(touch.ctwaClid || touch.ctwa_clid, 300),
     clickIds: {
       gclid: clean(touch.gclid || clickIds.gclid, 240),
       fbclid: clean(touch.fbclid || clickIds.fbclid, 240),
@@ -119,6 +121,7 @@ export function hasAttributionTouchSignal(touch: AttributionTouch) {
       touch.fbclid
       || touch.fbc
       || touch.fbp
+      || touch.ctwaClid
   );
 }
 
@@ -143,6 +146,7 @@ export function areTouchesEquivalent(left: AttributionTouch, right: AttributionT
     left.fbclid === right.fbclid
     && left.fbc === right.fbc
     && left.fbp === right.fbp
+    && (left.ctwaClid || "") === (right.ctwaClid || "")
   );
 }
 

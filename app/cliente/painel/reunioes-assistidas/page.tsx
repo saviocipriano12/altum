@@ -63,6 +63,7 @@ type AppointmentItem = {
 };
 
 type MeetingSummary = {
+  analysisMode?: "model" | "fallback";
   executiveSummary: string;
   leadNeed: string;
   painPoints: string[];
@@ -73,7 +74,7 @@ type MeetingSummary = {
   followUpMessage: string;
   crmUpdate: string;
   qualification: {
-    temperature: "frio" | "morno" | "quente";
+    temperature: "frio" | "morno" | "quente" | "nao_identificada";
     confidence: number;
     recommendedStage: string;
   };
@@ -110,7 +111,7 @@ type LiveMeetingCoach = {
   translation: string;
   followUpDraft: string;
   qualificationHint: {
-    temperature: "frio" | "morno" | "quente";
+    temperature: "frio" | "morno" | "quente" | "nao_identificada";
     confidence: number;
   };
 };
@@ -248,7 +249,9 @@ function AssistedMeetingsWorkspace() {
   const [speechSupported, setSpeechSupported] = useState(true);
   const [transcribingMedia, setTranscribingMedia] = useState(false);
   const [transcribingMediaName, setTranscribingMediaName] = useState("");
+  const saveRequest = useRef<{signature: string; key: string} | null>(null);
   const [form, setForm] = useState({
+    completeAppointment: false,
     appointmentId: searchParams.get("appointmentId") || "",
     leadId: searchParams.get("leadId") || "",
     title: "",
@@ -331,10 +334,8 @@ function AssistedMeetingsWorkspace() {
     setError(null);
     setNotice(null);
     try {
-      const res = await authedFetch(`/api/tenant/${tenant.tenantId}/assisted-meetings`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+      const body = {
+          completeAppointment: form.completeAppointment,
           appointmentId: form.appointmentId || null,
           leadId: form.leadId || selectedAppointment?.leadId || null,
           title: form.title,
@@ -343,16 +344,23 @@ function AssistedMeetingsWorkspace() {
           meetingUrl: form.meetingUrl || selectedAppointment?.meetingUrl || null,
           transcript: [form.transcript, liveTranscript].filter(Boolean).join("\n\n"),
           notes: [form.notes, liveNotes].filter(Boolean).join("\n\n"),
-        }),
+        };
+      const signature = JSON.stringify([tenant.tenantId, body]);
+      if (saveRequest.current?.signature !== signature) saveRequest.current = {signature, key: crypto.randomUUID()};
+      const res = await authedFetch(`/api/tenant/${tenant.tenantId}/assisted-meetings`, {
+        method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({...body, requestId: saveRequest.current.key}),
       });
       const payload = (await res.json().catch(() => ({}))) as { item?: AssistedMeeting; error?: string };
       if (!res.ok || payload.error || !payload.item) throw new Error(payload.error || "Falha ao gerar resumo da reuniao.");
+      saveRequest.current = null;
       setActiveSession(payload.item);
-      setForm((current) => ({ ...current, transcript: "", notes: "" }));
+      setForm((current) => ({ ...current, transcript: "", notes: "", completeAppointment: false }));
       setLiveTranscript("");
       setLiveNotes("");
       setInterimTranscript("");
-      setNotice("Reuniao analisada, lead atualizado e brief salvo no CRM.");
+      setNotice(payload.item.summary?.analysisMode === "fallback"
+        ? "Registro salvo para revisão. A análise automática não ficou disponível; a qualificação do cliente foi preservada."
+        : "Análise salva no CRM. Revise as sugestões antes de usá-las no atendimento.");
       await loadData();
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : "Falha ao gerar resumo da reuniao.");
@@ -527,7 +535,7 @@ function AssistedMeetingsWorkspace() {
   }
 
   return (
-    <CrmWorkspace className="assisted-meetings-refined">
+    <CrmWorkspace className="assisted-meetings-refined min-w-0 [&_label]:min-w-0 [&_select]:w-full [&_select]:min-w-0 [&_select]:max-w-full [&_textarea]:w-full [&_textarea]:min-w-0 [&_textarea]:max-w-full [&_input:not([type=checkbox])]:w-full [&_input]:min-w-0 [&_input]:max-w-full">
       <CrmHero
         active="Reunioes IA"
         title="Reunioes assistidas por IA, do preparo ao follow-up."
@@ -552,7 +560,7 @@ function AssistedMeetingsWorkspace() {
           </>
         }
       >
-        <div className="grid gap-3 md:grid-cols-4">
+        <div className="grid min-w-0 grid-cols-1 gap-3 md:grid-cols-4">
           <CrmMetric label="Reunioes abertas" value={String(pendingAppointments.length)} detail="Aguardando analise ou conclusao" icon={Video} tone="blue" />
           <CrmMetric label="Analisadas" value={String(completedSessions)} detail="Resumo salvo no CRM" icon={CheckCircle2} tone="green" />
           <CrmMetric label="Quentes" value={String(hotSessions)} detail="Sinais fortes de compra" icon={Sparkles} tone="orange" />
@@ -595,7 +603,7 @@ function AssistedMeetingsWorkspace() {
         />
       </div>
 
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.1fr)_minmax(360px,0.9fr)]">
+      <div className="grid min-w-0 grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1.1fr)_minmax(360px,0.9fr)]">
         <CrmPanel>
           <CrmSectionTitle
             eyebrow="Nova analise"
@@ -603,12 +611,12 @@ function AssistedMeetingsWorkspace() {
             description="Cole a transcricao da chamada ou anote os pontos principais. A Altum cria o documento e alimenta o CRM."
           />
           <form onSubmit={submit} className="mt-5 space-y-4">
-            <div className="grid gap-3 md:grid-cols-2">
+            <div className="grid min-w-0 grid-cols-1 gap-3 md:grid-cols-2">
               <label className="space-y-1.5">
                 <span className="text-xs font-bold text-[var(--cliente-card-text-soft)]">Reuniao da agenda</span>
                 <CrmSelect
                   value={form.appointmentId}
-                  onChange={(event) => setForm((current) => ({ ...current, appointmentId: event.target.value }))}
+                  onChange={(event) => setForm((current) => ({ ...current, appointmentId: event.target.value, completeAppointment: false }))}
                 >
                   <option value="">Selecionar reuniao</option>
                   {appointments.map((item) => (
@@ -652,7 +660,7 @@ function AssistedMeetingsWorkspace() {
               />
             </label>
 
-            <div className="grid gap-3 lg:grid-cols-2">
+            <div className="grid min-w-0 grid-cols-1 gap-3 lg:grid-cols-2">
               <label className="space-y-1.5">
                 <span className="flex flex-wrap items-center justify-between gap-2 text-xs font-bold text-[var(--cliente-card-text-soft)]">
                   <span>Transcrição da reunião</span>
@@ -690,6 +698,11 @@ function AssistedMeetingsWorkspace() {
                 />
               </label>
             </div>
+
+            {form.appointmentId ? <label className="flex min-h-11 items-center gap-3 rounded-xl border border-[var(--cliente-border)] p-3 text-sm">
+              <input type="checkbox" checked={form.completeAppointment} onChange={event => setForm(current => ({...current, completeAppointment: event.target.checked}))} className="h-5 w-5" />
+              Marcar o compromisso como realizado ao salvar
+            </label> : null}
 
             <div className="flex flex-wrap items-center justify-between gap-3 rounded-[18px] border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] p-3">
               <div className="min-w-0">
@@ -735,12 +748,13 @@ function AssistedMeetingsWorkspace() {
             />
             {activeSession?.summary ? (
               <div className="mt-4 space-y-4">
+                {activeSession.summary.analysisMode === "fallback" ? <CrmNotice tone="orange">A análise automática não está disponível neste registro. Revise as notas antes de qualificar o cliente ou definir o próximo passo.</CrmNotice> : null}
                 <div className="flex flex-wrap gap-2">
                   <CrmBadge tone={temperatureTone(activeSession.summary.qualification.temperature)}>
-                    {activeSession.summary.qualification.temperature}
+                    {activeSession.summary.analysisMode === "fallback" ? "Qualificação não identificada" : activeSession.summary.qualification.temperature}
                   </CrmBadge>
-                  <CrmBadge tone="purple">{activeSession.summary.qualification.confidence}% confianca</CrmBadge>
-                  <CrmBadge tone="blue">{activeSession.summary.qualification.recommendedStage}</CrmBadge>
+                  {activeSession.summary.analysisMode !== "fallback" ? <CrmBadge tone="purple">{activeSession.summary.qualification.confidence}% confiança</CrmBadge> : null}
+                  {activeSession.summary.qualification.recommendedStage ? <CrmBadge tone="blue">{activeSession.summary.qualification.recommendedStage}</CrmBadge> : null}
                 </div>
                 <ResultBlock icon={FileText} title="Resumo executivo" text={activeSession.summary.executiveSummary} />
                 <ResultList icon={Sparkles} title="Proximos passos" items={activeSession.summary.nextSteps} />
@@ -774,7 +788,7 @@ function AssistedMeetingsWorkspace() {
                       <p className="mt-1 truncate text-xs text-[var(--cliente-card-text-soft)]">{session.leadName || "Lead"} - {formatCrmDate(session.createdAt)}</p>
                     </div>
                     {session.summary?.qualification.temperature ? (
-                      <CrmBadge tone={temperatureTone(session.summary.qualification.temperature)}>{session.summary.qualification.temperature}</CrmBadge>
+                      <CrmBadge tone={temperatureTone(session.summary.qualification.temperature)}>{session.summary.analysisMode === "fallback" ? "Sem análise" : session.summary.qualification.temperature}</CrmBadge>
                     ) : null}
                   </div>
                 </button>
@@ -1000,10 +1014,10 @@ function LiveMeetingRoom({
 
   return (
     <CrmPanel className="overflow-hidden p-0">
-      <div className="grid gap-0 lg:grid-cols-[minmax(0,1fr)_360px]">
+      <div className="grid min-w-0 grid-cols-1 gap-0 lg:grid-cols-[minmax(0,1fr)_360px]">
         <div className="p-4 lg:p-5">
           <div className="mb-4 overflow-hidden rounded-[24px] border border-[color:color-mix(in_srgb,var(--cliente-primary)_22%,var(--cliente-border))] bg-[linear-gradient(135deg,color-mix(in_srgb,var(--cliente-primary)_12%,var(--cliente-card)),var(--cliente-card)_55%,color-mix(in_srgb,var(--cliente-success)_10%,var(--cliente-card)))] p-4 shadow-[var(--cliente-shadow-soft)]">
-            <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(260px,0.48fr)]">
+            <div className="grid min-w-0 grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(260px,0.48fr)]">
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
                   <CrmBadge tone={roomReady ? "green" : "orange"}>{roomReady ? "sala pronta" : "crie a sala"}</CrmBadge>
@@ -1024,7 +1038,7 @@ function LiveMeetingRoom({
                   </div>
                 ) : null}
               </div>
-              <div className="grid content-center gap-2 sm:grid-cols-2 xl:grid-cols-1">
+              <div className="grid min-w-0 grid-cols-1 content-center gap-2 sm:grid-cols-2 xl:grid-cols-1">
                 {roomReady ? (
                   <a
                     href={activeRoomUrl}

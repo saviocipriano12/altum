@@ -1,13 +1,55 @@
 import { adminDb } from "@/app/lib/server/firebase-admin";
+import { FieldValue } from "firebase-admin/firestore";
 import { getBusinessProfilePipelineStages } from "@/lib/business-profiles";
 import {
   getPipelineStageDefinition,
   getPipelineStageIndex,
   normalizePipelineStageId,
   normalizePipelineStages,
+  validateCustomizedPipelineStages,
   type PipelineStageDefinition,
 } from "@/lib/pipeline";
 import { getTenantSettings } from "@/lib/server/tenant";
+
+/** Only known configuration defects may become a permanent funnel denial.
+ * Transport, permission and unexpected failures retain their original identity. */
+export class TenantPipelineConfigurationError extends Error {}
+
+export class InvalidPipelineStageError extends Error {
+  constructor() { super("Esta etapa nao pertence ao funil atual da empresa. Atualize a tela e escolha uma etapa valida."); }
+}
+
+export function assertPipelineStageExists(stages: PipelineStageDefinition[], stageId: string) {
+  if (!stageId || !stages.some(stage => stage.id === stageId)) throw new InvalidPipelineStageError();
+}
+
+/** Same direct/legacy/profile precedence as the reader, but inside the effect
+ * transaction: a concurrent funnel edit must invalidate an accepted mutation. */
+export async function loadTenantPipelineInTransaction(tx: FirebaseFirestore.Transaction, tenantId: string) {
+  const direct = await tx.get(adminDb.collection("pipeline").doc(tenantId));
+  let snapshot = direct;
+  if (!direct.exists) {
+    const legacy = await tx.get(adminDb.collection("pipeline").where("tenantId", "==", tenantId).limit(2));
+    if (legacy.size > 1) throw new TenantPipelineConfigurationError("Funil ambiguo: revisar configuracao antes da mutacao.");
+    snapshot = legacy.docs[0] || direct;
+  }
+  if (snapshot.exists) {
+    if (snapshot.data()?.tenantId && snapshot.data()?.tenantId !== tenantId) throw new TenantPipelineConfigurationError("Funil de outra empresa.");
+    const invalid = validateCustomizedPipelineStages(snapshot.data()?.stages);
+    if (invalid) throw new TenantPipelineConfigurationError(`Funil invalido para mutacao: ${invalid}`);
+    return { stages: normalizePipelineStages(snapshot.data()?.stages),
+      version: `${snapshot.ref.path}:${snapshot.updateTime!.seconds}:${snapshot.updateTime!.nanoseconds}` };
+  }
+  let settings = await tx.get(adminDb.collection("tenant_settings").doc(tenantId));
+  if (!settings.exists) {
+    const legacy = await tx.get(adminDb.collection("tenant_settings").where("tenantId", "==", tenantId).limit(2));
+    if (legacy.size > 1) throw new TenantPipelineConfigurationError("Configuracao empresarial ambigua.");
+    settings = legacy.docs[0] || settings;
+  }
+  if (settings.data()?.tenantId && settings.data()?.tenantId !== tenantId) throw new TenantPipelineConfigurationError("Configuracao de outra empresa.");
+  return { stages: getBusinessProfilePipelineStages(settings.data()?.businessProfileId),
+    version: settings.exists ? `${settings.ref.path}:${settings.updateTime!.seconds}:${settings.updateTime!.nanoseconds}` : "default-business-profile" };
+}
 
 export type TenantPipelineOwner = {
   userId: string;
@@ -105,6 +147,24 @@ export async function loadTenantPipelineConfig(tenantId: string) {
     stages: getBusinessProfilePipelineStages(settings?.businessProfileId),
     owners,
   };
+}
+
+export async function saveTenantPipelineStages(input: {
+  tenantId: string; stages: PipelineStageDefinition[]; actorId: string; actorName: string;
+}) {
+  const validationError = validateCustomizedPipelineStages(input.stages);
+  if (validationError) throw new Error(validationError);
+  const ref = adminDb.collection("pipeline").doc(input.tenantId);
+  await adminDb.runTransaction(async (transaction) => {
+    const current = await transaction.get(ref);
+    if (current.exists && current.data()?.tenantId && current.data()?.tenantId !== input.tenantId) throw new Error("Funil de outra empresa.");
+    transaction.set(ref, {
+      tenantId: input.tenantId, stages: input.stages,
+      // Manual configuration must survive future starter-kit/blueprint applications.
+      blueprintManaged: false, starterKitManaged: false, customizationSource: "manual",
+      updatedAt: FieldValue.serverTimestamp(), updatedBy: input.actorId, updatedByName: input.actorName,
+    }, { merge: true });
+  });
 }
 
 export function comparePipelineStages(currentStage: string, targetStage: string, stages: PipelineStageDefinition[]) {

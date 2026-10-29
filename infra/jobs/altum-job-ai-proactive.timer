@@ -1,0 +1,11 @@
+[Unit]
+Description=Analisa riscos e oportunidades proativas da Altum a cada quinze minutos
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=15min
+AccuracySec=30s
+Unit=altum-job@ai-proactive.service
+
+[Install]
+WantedBy=timers.target

@@ -139,6 +139,20 @@ export function getDefaultPipelineStages() {
   return DEFAULT_PIPELINE_STAGES.map((stage) => ({ ...stage }));
 }
 
+export function validateCustomizedPipelineStages(value: unknown): string | null {
+  if (!Array.isArray(value) || value.length < 3 || value.length > 12) return "O funil precisa ter entre 3 e 12 etapas.";
+  const ids = new Set<string>();
+  for (const item of value) {
+    if (!item || typeof item !== "object") return "Etapa invalida.";
+    const stage = item as Record<string, unknown>;
+    const id = normalizePipelineStageId(stage.id || stage.label, "");
+    if (!id || !cleanText(stage.label, 60)) return "Toda etapa precisa de identificador e nome.";
+    if (ids.has(id)) return "As etapas precisam ter identificadores diferentes.";
+    ids.add(id);
+  }
+  return null;
+}
+
 export function normalizePipelineStages(value: unknown): PipelineStageDefinition[] {
   if (!Array.isArray(value) || value.length === 0) {
     return getDefaultPipelineStages();
@@ -151,6 +165,7 @@ export function normalizePipelineStages(value: unknown): PipelineStageDefinition
     const source = item && typeof item === "object" ? (item as Record<string, unknown>) : {};
     const defaultStage = DEFAULT_PIPELINE_STAGES[index] || DEFAULT_PIPELINE_STAGES[0];
     const id = normalizePipelineStageId(source.id || source.label, defaultStage.id);
+    const semanticDefault = DEFAULT_PIPELINE_STAGES.find((stage) => stage.id === id);
 
     if (!id || usedIds.has(id)) continue;
     usedIds.add(id);
@@ -158,19 +173,19 @@ export function normalizePipelineStages(value: unknown): PipelineStageDefinition
     items.push({
       id,
       label: cleanText(source.label, 60) || defaultStage.label,
-      description: cleanText(source.description, 180) || defaultStage.description,
+      description: cleanText(source.description, 180) || semanticDefault?.description || "",
       color: cleanText(source.color, 20) || DEFAULT_STAGE_COLORS[index] || defaultStage.color,
       position:
         typeof source.position === "number" && Number.isFinite(source.position) ? source.position : index,
-      isTerminal: Boolean(source.isTerminal ?? defaultStage.isTerminal),
+      isTerminal: Boolean(source.isTerminal ?? semanticDefault?.isTerminal ?? false),
       slaHours:
         source.slaHours === null
           ? null
-          : cleanNumber(source.slaHours, 0, 24 * 30) ?? defaultStage.slaHours ?? null,
+          : cleanNumber(source.slaHours, 0, 24 * 30) ?? semanticDefault?.slaHours ?? null,
       followUpHours:
         source.followUpHours === null
           ? null
-          : cleanNumber(source.followUpHours, 0, 24 * 30) ?? defaultStage.followUpHours ?? null,
+          : cleanNumber(source.followUpHours, 0, 24 * 30) ?? semanticDefault?.followUpHours ?? null,
       ownerUserId: cleanText(source.ownerUserId, 120) || null,
       ownerName: cleanText(source.ownerName, 120) || null,
     });

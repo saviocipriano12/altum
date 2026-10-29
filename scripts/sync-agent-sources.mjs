@@ -25,6 +25,7 @@ for (const source of registry.sources) {
       if (!normalizedTarget.startsWith(`${normalizedDestination}/`)) throw new Error("Destino de fonte inválido.");
       console.log(`${source.repo}: removendo clone incompleto...`);
       rmSync(target, { recursive: true, force: true });
+      validCheckout = false;
     }
   }
   if (!validCheckout) {

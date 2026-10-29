@@ -4,6 +4,7 @@ export type AiConversationRollout = {
   mode: AiConversationRolloutMode;
   agentVersion: string;
   rolloutPercent: number;
+  exclusiveTest?: { tenantId: string; chatIds: string[] };
 };
 
 function clean(value: unknown, max = 60) {
@@ -28,7 +29,26 @@ export function normalizeAiConversationRollout(value: unknown): AiConversationRo
     mode,
     agentVersion: clean(raw.agentVersion, 60) || "conversation-v1",
     rolloutPercent: clampPercent(raw.rolloutPercent, 100),
+    ...(Object.prototype.hasOwnProperty.call(raw, "exclusiveTest") ? {
+      exclusiveTest: normalizeExclusiveTest(raw.exclusiveTest),
+    } : {}),
   };
+}
+
+function normalizeExclusiveTest(value: unknown) {
+  const scope = value && typeof value === "object" ? value as Record<string, unknown> : {};
+  return {
+    tenantId: clean(scope.tenantId, 180),
+    chatIds: Array.isArray(scope.chatIds) ? [...new Set(scope.chatIds.filter(
+      (id): id is string => typeof id === "string" && id.length > 0 && id.length <= 440 && /^[a-zA-Z0-9_-]+$/.test(id)
+    ))].slice(0, 5) : [],
+  };
+}
+
+/** Missing/malformed scope is a hold, never a release to all conversations. */
+export function isAiConversationInTestScope(input: { rollout: AiConversationRollout; tenantId: string; chatId: string }) {
+  const scope = input.rollout.exclusiveTest;
+  return scope === undefined || (scope.tenantId === input.tenantId && scope.chatIds.includes(input.chatId));
 }
 
 /** Stable per conversation: a contact does not randomly move in and out of a canary. */
@@ -47,6 +67,9 @@ export function decideAiConversationRollout(input: {
   chatId: string;
 }) {
   const bucket = aiConversationRolloutBucket(`${input.tenantId}:${input.chatId}`);
+  if (!isAiConversationInTestScope(input)) {
+    return { shouldRespond: false, bucket, assignedVersion: input.rollout.agentVersion, reason: "outside_test_scope" as const };
+  }
   if (input.rollout.mode === "shadow") {
     return { shouldRespond: false, bucket, assignedVersion: input.rollout.agentVersion, reason: "shadow_only" as const };
   }

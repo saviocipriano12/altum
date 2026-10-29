@@ -11,21 +11,32 @@ import {
 import { normalizePhone } from "@/app/lib/server/phone";
 import { enqueueIncomingMessageJob, processAiJobAfterSettle, triggerAiQueueWorker } from "@/lib/server/ai/queue";
 import { cacheInboundMessageMedia } from "@/lib/server/ai/multimodal";
+import { captureMessageMediaSource, markMessageMediaCacheFailed, type MessageMediaSource } from "@/lib/server/message-media-source";
+import { evolutionMediaReference } from "@/lib/server/messaging/evolution-media-recovery";
+import { persistExternalWhatsAppMessage } from "@/lib/server/messaging/whatsapp-external-message";
+import { resolveWhatsAppGroupName } from "@/lib/server/messaging/whatsapp-group-name";
 import { runLeadAutomations } from "@/lib/server/automations";
 import { buildIncomingChatOperationalPatch, resolveFirstResponseSlaMinutes } from "@/lib/server/chat-operations";
-import { upsertContactProfile } from "@/lib/server/contact-profile";
-import { recordInboundLead } from "@/lib/server/lead-intake";
+import { findContactProfile, upsertContactProfile } from "@/lib/server/contact-profile";
+import { applyInboundCampaignAttribution, recordInboundLead } from "@/lib/server/lead-intake";
 import { getTenantSettings } from "@/lib/server/tenant";
 import { resolveInboundAssignment } from "@/lib/server/tenant-routing";
+import { readGatewayWhatsAppGroup } from "@/lib/server/messaging/whatsapp-group";
 import { parseEvolutionWebhook, type EvolutionInbound } from "@/lib/server/messaging/evolution-webhook";
 import { cacheEvolutionProfilePicture, downloadEvolutionInboundMedia, fetchEvolutionProfilePicture } from "@/lib/server/messaging/evolution-provider";
 import { resolveCanonicalWhatsAppChat } from "@/lib/server/whatsapp-chat-identity";
 import { isEvolutionWhatsAppProvider } from "@/lib/server/messaging/registry";
 import { getMetaEnv } from "@/app/lib/server/integration-oauth";
+import {
+  normalizeCanonicalInboundEvent,
+  shouldAdvanceConversationCursor,
+} from "@/lib/server/messaging/inbound-event";
+import { recordInboundEventMetricSafe } from "@/lib/server/messaging/inbound-observability";
+import { persistWhatsappStatusEvents } from "@/lib/server/whatsapp-delivery-status";
 
 function sanitizeId(value: string, max = 220) {
   const cleaned = value.replace(/[^a-zA-Z0-9_-]/g, "_").trim();
-  return cleaned.slice(0, max) || `evt_${Date.now()}`;
+  return cleaned.slice(0, max) || "evt_invalid_identity";
 }
 
 function toDate(value: unknown) {
@@ -196,125 +207,20 @@ function extractWhatsappStatusEvents(valueObj: Record<string, unknown> | undefin
     .filter((item): item is ParsedWhatsAppStatusEvent => Boolean(item));
 }
 
-async function persistWhatsappStatusEvents(input: {
-  tenantId: string;
-  phoneNumberId: string;
-  events: ParsedWhatsAppStatusEvent[];
-}) {
-  let matchedMessages = 0;
-  let updatedChats = 0;
-
-  for (const statusEvent of input.events) {
-    const messageSnap = await adminDb
-      .collection("messages")
-      .where("metaMessageId", "==", statusEvent.messageId)
-      .limit(20)
-      .get();
-
-    const matchingDocs = messageSnap.docs.filter((doc) => {
-      const data = doc.data() as { tenantId?: unknown; sender?: unknown };
-      return (
-        cleanString(data.tenantId, 180) === input.tenantId &&
-        cleanString(data.sender, 20).toLowerCase() !== "client"
-      );
-    });
-
-    const deliveryAtDate = statusEvent.timestampMs ? new Date(statusEvent.timestampMs) : null;
-    const batch = adminDb.batch();
-    const touchedChatIds = new Set<string>();
-
-    for (const messageDoc of matchingDocs) {
-      const data = messageDoc.data() as { chatId?: unknown };
-      const chatId = cleanString(data.chatId, 180);
-      if (chatId) touchedChatIds.add(chatId);
-
-      batch.set(
-        messageDoc.ref,
-        {
-          status: statusEvent.status,
-          deliveryStatus: statusEvent.status,
-          deliveryUpdatedAt: FieldValue.serverTimestamp(),
-          deliveryAt: deliveryAtDate || FieldValue.serverTimestamp(),
-          deliveryError: statusEvent.errorMessage || "",
-          deliveryErrorCode: statusEvent.errorCode || "",
-          deliveryRecipientId: statusEvent.recipientId || "",
-          channelPhoneNumberId: input.phoneNumberId,
-          updatedAt: FieldValue.serverTimestamp(),
-        },
-        { merge: true }
-      );
-    }
-
-    for (const chatId of touchedChatIds) {
-      batch.set(
-        adminDb.collection("chats").doc(chatId),
-        {
-          lastOutboundDeliveryStatus: statusEvent.status,
-          lastOutboundDeliveryAt: deliveryAtDate || FieldValue.serverTimestamp(),
-          lastOutboundMetaMessageId: statusEvent.messageId,
-          updatedAt: FieldValue.serverTimestamp(),
-        },
-        { merge: true }
-      );
-      updatedChats += 1;
-    }
-
-    const deliverySnap = await adminDb
-      .collection("outbound_campaign_deliveries")
-      .where("metaMessageId", "==", statusEvent.messageId)
-      .limit(20)
-      .get();
-
-    for (const deliveryDoc of deliverySnap.docs.filter(
-      (doc) => cleanString(doc.data().tenantId, 180) === input.tenantId
-    )) {
-      batch.set(
-        deliveryDoc.ref,
-        {
-          status: statusEvent.status,
-          deliveryStatus: statusEvent.status,
-          deliveryUpdatedAt: FieldValue.serverTimestamp(),
-          deliveryAt: deliveryAtDate || FieldValue.serverTimestamp(),
-          deliveryError: statusEvent.errorMessage || "",
-          deliveryErrorCode: statusEvent.errorCode || "",
-          updatedAt: FieldValue.serverTimestamp(),
-        },
-        { merge: true }
-      );
-    }
-
-    const eventDocId = sanitizeId(
-      `${input.tenantId}_${input.phoneNumberId}_${statusEvent.messageId}_${statusEvent.status}_${statusEvent.timestampMs || Date.now()}`,
-      240
-    );
-    batch.set(
-      adminDb.collection("whatsapp_delivery_events").doc(eventDocId),
-      {
-        tenantId: input.tenantId,
-        phoneNumberId: input.phoneNumberId,
-        metaMessageId: statusEvent.messageId,
-        status: statusEvent.status,
-        recipientId: statusEvent.recipientId || "",
-        errorCode: statusEvent.errorCode || "",
-        errorMessage: statusEvent.errorMessage || "",
-        deliveryAt: deliveryAtDate || null,
-        createdAt: FieldValue.serverTimestamp(),
-      },
-      { merge: true }
-    );
-
-    await batch.commit();
-    matchedMessages += matchingDocs.length;
-  }
-
-  return {
-    processedEvents: input.events.length,
-    matchedMessages,
-    updatedChats,
-  };
-}
 
 async function resolveLeadOwner(phone: string, tenantId: string) {
+  const contact = await findContactProfile({ tenantId, phone });
+  const contactLeadId = cleanString(contact?.primaryLeadId || contact?.leadId, 180);
+  if (contactLeadId) {
+    const contactLead = await adminDb.collection("leads").doc(contactLeadId).get();
+    if (contactLead.exists && cleanString(contactLead.data()?.tenantId, 180) === tenantId) {
+      return {
+        ownerId: cleanString(contactLead.data()?.ownerId, 180) || null,
+        leadId: contactLead.id,
+        tenantId,
+      };
+    }
+  }
   const scopedSnap = await adminDb
     .collection("leads")
     .where("telefone", "==", phone)
@@ -463,25 +369,73 @@ async function persistGenericWhatsAppInbound(input: {
   contactName?: string;
   messageId?: string;
   messageType?: string;
+  occurredAt?: unknown;
+  receivedAt?: unknown;
+  quotedMessage?: { providerMessageId?: string; senderExternalId?: string; text?: string } | null;
   media?: Pick<EvolutionInbound, "mediaUrl" | "mediaBase64" | "mediaMimeType" | "mediaName" | "mediaThumbnail" | "rawMessage">;
 }) {
   const tenantId = input.channel.tenantId;
   const phoneNumberId = input.channel.phoneNumberId || input.channel.id;
+  if (input.group?.isGroup && !/@g\.us$/i.test(input.group.groupJid)) return { status: "ignored_invalid_group_identity" };
   const isGroup = input.group?.isGroup === true && /@g\.us$/i.test(input.group.groupJid);
   const from = isGroup ? input.group!.groupJid : normalizePhone(input.from);
-  const text = cleanString(input.text, 4000);
-  const contactName = isGroup ? cleanString(input.group?.groupName, 180) || "Grupo do WhatsApp" : cleanString(input.contactName, 180) || from || "Contato";
-  const inboundMessageId = cleanString(input.messageId, 260) || `generic_${Date.now()}_${from}`;
-  const messageType = normalizeInboundMessageType(input.messageType || "text");
+  const rawText = cleanString(input.text, 4000);
+  let contactName = isGroup ? cleanString(input.group?.groupName, 180) || "Grupo do WhatsApp" : cleanString(input.contactName, 180) || from || "Contato";
+  const rawMessageType = normalizeInboundMessageType(input.messageType || "text");
 
   if (!from) {
     return { status: "ignored_invalid_phone" };
   }
 
+  const normalizedInbound = normalizeCanonicalInboundEvent({
+    tenantId,
+    channel: "whatsapp",
+    channelId: input.channel.id,
+    provider: input.channel.provider || "whatsapp_gateway",
+    providerEventId: input.messageId,
+    senderExternalId: from,
+    recipientExternalId: phoneNumberId,
+    occurredAt: input.occurredAt,
+    receivedAt: input.receivedAt,
+    text: rawText,
+    attachments: rawMessageType === "text"
+      ? []
+      : [{
+          type: rawMessageType,
+          url: input.media?.mediaUrl,
+          name: input.media?.mediaName,
+          mimeType: input.media?.mediaMimeType,
+          thumbnailUrl: input.media?.mediaThumbnail,
+          caption: rawText,
+        }],
+    quotedMessage: input.quotedMessage,
+  });
+  if (!normalizedInbound.accepted) {
+    await recordInboundEventMetricSafe({
+      tenantId,
+      channel: "whatsapp",
+      outcome: "invalid",
+      reason: normalizedInbound.reason,
+    });
+    return { status: "ignored_invalid_inbound", reason: normalizedInbound.reason };
+  }
+  const inbound = normalizedInbound.event;
+  const text = inbound.text;
+  const inboundMessageId = inbound.providerEventId || inbound.eventKey;
+  const messageType = inbound.messageType;
+
   const tenantSettings = await getTenantSettings(tenantId);
   const slaMinutes = resolveFirstResponseSlaMinutes(tenantSettings as Record<string, unknown> | null);
-  const claim = await claimWebhookEvent({ tenantId, phoneNumberId, metaMessageId: inboundMessageId });
+  const claim = await claimWebhookEvent({ tenantId, phoneNumberId, metaMessageId: inbound.eventKey });
   if (!claim.shouldProcess) {
+    await recordInboundEventMetricSafe({
+      tenantId,
+      channel: "whatsapp",
+      outcome: "duplicate",
+      reason: claim.reason,
+      deliveryClass: inbound.deliveryClass,
+      attachmentCount: inbound.attachments.length,
+    });
     return {
       status: "ignored_duplicate_message",
       reason: claim.reason,
@@ -540,7 +494,8 @@ async function persistGenericWhatsAppInbound(input: {
       channelScope: input.channel.channelScope,
       channelOwnerUserId: input.channel.ownerUserId || null,
       lastMessage: text,
-      lastMessageTime: FieldValue.serverTimestamp(),
+      lastMessageTime: new Date(inbound.orderingTimestampMs),
+      lastInboundOccurredAtMs: inbound.orderingTimestampMs,
       ownerId: resolvedOwnerId,
       ownerName: resolvedOwnerName,
       assignedUserName: resolvedOwnerName,
@@ -558,8 +513,17 @@ async function persistGenericWhatsAppInbound(input: {
 
   const chatDoc = await canonicalChat.chatRef.get();
   const chatId = canonicalChat.chatRef.id;
+  if (isGroup && !input.group?.groupName) {
+    const name = await resolveWhatsAppGroupName(tenantId, chatId, chatDoc.data() || {});
+    if (name && input.group) { input.group.groupName = name; contactName = name; }
+  }
+  const advancesCursor = canonicalChat.created || shouldAdvanceConversationCursor({
+    previousOccurredAtMs: chatDoc.data()?.lastInboundOccurredAtMs,
+    incomingOccurredAtMs: inbound.orderingTimestampMs,
+  });
+  const outOfOrder = !advancesCursor;
   if (!canonicalChat.created) {
-    const chatData = chatDoc.data() as { ownerId?: string; assignedTo?: string; leadId?: string };
+    const chatData = chatDoc.data() as { ownerId?: string; assignedTo?: string; leadId?: string; status?: string; lastClientMessageAt?: unknown; lastAgentMessageAt?: unknown; slaDueAt?: unknown };
     const currentOwnerId = input.channel.channelScope === "personal" && input.channel.ownerUserId
       ? input.channel.ownerUserId
       : chatData.ownerId || chatData.assignedTo || resolvedOwnerId;
@@ -567,38 +531,56 @@ async function persistGenericWhatsAppInbound(input: {
       {
         isGroup,
         conversationType: isGroup ? "group" : "direct",
-        ...(isGroup ? { groupJid: from, groupName: contactName, aiEnabled: false } : {}),
+        ...(isGroup ? { groupJid: from, groupName: input.group?.groupName || chatDoc.data()?.groupName || chatDoc.data()?.contactName || contactName, aiEnabled: false, contactId: null } : {}),
         contactName: isGroup && !input.group?.groupName ? chatDoc.data()?.contactName || contactName : contactName,
         channel: "whatsapp",
         channelId: input.channel.id,
         channelPhoneNumberId: phoneNumberId,
         channelScope: input.channel.channelScope,
         channelOwnerUserId: input.channel.ownerUserId || null,
-        lastMessage: text,
-        lastMessageTime: FieldValue.serverTimestamp(),
+        ...(advancesCursor
+          ? {
+              lastMessage: text,
+              lastMessageTime: new Date(inbound.orderingTimestampMs),
+              lastInboundOccurredAtMs: inbound.orderingTimestampMs,
+            }
+          : {}),
         updatedAt: FieldValue.serverTimestamp(),
         ownerId: currentOwnerId,
         ownerName: currentOwnerId ? await resolveOwnerName(currentOwnerId) : null,
         assignedUserName: currentOwnerId ? await resolveOwnerName(currentOwnerId) : null,
-        leadId: chatData.leadId || resolvedLeadId,
+        leadId: isGroup ? null : chatData.leadId || resolvedLeadId,
         tenantId,
-        ...buildIncomingChatOperationalPatch({
-          status: "open",
-          assignedTo: currentOwnerId,
-          slaMinutes,
-        }),
+        ...(advancesCursor
+          ? buildIncomingChatOperationalPatch({
+              ...chatData,
+              status: String(chatData.status || "open"),
+              assignedTo: currentOwnerId,
+              slaMinutes,
+            })
+          : {}),
       },
       { merge: true }
     );
   }
 
-  if (!isGroup) await upsertContactProfile({
-    tenantId,
-    phone: from,
-    leadId: resolvedLeadId,
-    channel: "whatsapp",
-    name: contactName,
-  });
+  if (!isGroup) {
+    const contactId = await upsertContactProfile({
+      tenantId,
+      phone: from,
+      leadId: resolvedLeadId,
+      channel: "whatsapp",
+      name: contactName,
+    });
+    if (contactId) {
+      await Promise.all([
+        canonicalChat.chatRef.set({ contactId, updatedAt: FieldValue.serverTimestamp() }, { merge: true }),
+        resolvedLeadId
+          ? adminDb.collection("leads").doc(resolvedLeadId).set({ contactId, updatedAt: FieldValue.serverTimestamp() }, { merge: true })
+          : Promise.resolve(),
+      ]);
+    }
+  }
 
   const existingPhotoSource = cleanString(chatDoc.data()?.contactPhotoSource, 80);
   // URLs da Evolution expiram. Enquanto a foto ainda não estiver armazenada
@@ -642,9 +624,9 @@ async function persistGenericWhatsAppInbound(input: {
 
   const incomingMessageRef = adminDb
     .collection("messages")
-    .doc(sanitizeId(`in_${tenantId}_${phoneNumberId}_${inboundMessageId}`, 240));
+    .doc(inbound.messageDocumentId);
 
-  await incomingMessageRef.set(
+  const incomingWrite = await incomingMessageRef.set(
     {
       chatId,
       text,
@@ -656,19 +638,34 @@ async function persistGenericWhatsAppInbound(input: {
       channelId: input.channel.id,
       channelPhoneNumberId: phoneNumberId,
       inboundMetaMessageId: inboundMessageId,
+      inboundEventKey: inbound.eventKey,
+      inboundCanonicalVersion: inbound.version,
+      conversationIdentityKey: inbound.conversationIdentityKey,
+      providerOccurredAtMs: inbound.occurredAtMs,
+      providerOccurredAt: new Date(inbound.occurredAtMs),
+      receivedAt: FieldValue.serverTimestamp(),
+      deliveryClass: inbound.deliveryClass,
+      normalizationNotes: inbound.normalizationNotes,
+      quotedMessage: inbound.quotedMessage,
+      attachments: inbound.attachments,
+      ...(input.media && isEvolutionWhatsAppProvider(input.channel.provider) && messageType !== "text" ? {
+        mediaRecovery: evolutionMediaReference(input.media.rawMessage), mediaProcessingStatus: "pending",
+      } : {}),
       source: "whatsapp_gateway",
       ...(input.media?.mediaName ? { mediaName: input.media.mediaName } : {}),
       ...(input.media?.mediaMimeType ? { mediaMimeType: input.media.mediaMimeType } : {}),
       ...(input.media?.mediaThumbnail
         ? { mediaThumbnail: `data:image/jpeg;base64,${input.media.mediaThumbnail}` }
         : {}),
-      createdAt: FieldValue.serverTimestamp(),
+      createdAt: new Date(inbound.orderingTimestampMs),
     },
     { merge: true }
   );
 
+  let mediaCacheSource: MessageMediaSource | undefined;
   if (["audio", "image", "video", "document"].includes(messageType) && input.media) {
     try {
+      mediaCacheSource = await captureMessageMediaSource({tenantId, chatId, messageId: incomingMessageRef.id, expectedRevision: incomingWrite.writeTime});
       let base64 = input.media.mediaBase64;
       let contentType = input.media.mediaMimeType || "application/octet-stream";
       let filename = input.media.mediaName;
@@ -677,7 +674,7 @@ async function persistGenericWhatsAppInbound(input: {
       if (isEvolutionWhatsAppProvider(input.channel.provider)) {
         const downloaded = await downloadEvolutionInboundMedia(input.channel, input.media.rawMessage);
         base64 = downloaded.base64;
-        contentType = downloaded.contentType || contentType;
+        contentType = downloaded.contentType && downloaded.contentType !== "application/octet-stream" ? downloaded.contentType : contentType;
         filename = downloaded.filename || filename;
       }
       const mediaSource = base64
@@ -688,6 +685,7 @@ async function persistGenericWhatsAppInbound(input: {
           tenantId,
           chatId,
           messageId: incomingMessageRef.id,
+          source: mediaCacheSource,
           message: {
             type: messageType,
             mediaUrl: mediaSource,
@@ -705,20 +703,23 @@ async function persistGenericWhatsAppInbound(input: {
         messageType,
         error: error instanceof Error ? cleanString(error.message, 500) : "evolution_media_failed",
       });
-      await incomingMessageRef.set(
-        {
-          mediaProcessingError: error instanceof Error ? cleanString(error.message, 500) : "evolution_media_failed",
-          mediaProcessingFailedAt: FieldValue.serverTimestamp(),
-        },
-        { merge: true }
-      );
+      if (mediaCacheSource) await markMessageMediaCacheFailed(mediaCacheSource, error instanceof Error ? cleanString(error.message, 500) : "evolution_media_failed");
+      await recordInboundEventMetricSafe({
+        tenantId,
+        channel: "whatsapp",
+        outcome: "media_failed",
+        reason: "evolution_media_processing_failed",
+        deliveryClass: inbound.deliveryClass,
+        attachmentCount: inbound.attachments.length,
+      });
     }
   }
 
-  if (resolvedLeadId) {
+  if (resolvedLeadId && !outOfOrder) {
     await runLeadAutomations({
       tenantId,
       trigger: "message_received",
+      sourceMessageId: incomingMessageRef.id,
       leadId: resolvedLeadId,
       chatId,
       channel: "whatsapp",
@@ -728,12 +729,12 @@ async function persistGenericWhatsAppInbound(input: {
     });
   }
 
-  const queue = isGroup ? null : await enqueueIncomingMessageJob({
+  const queue = isGroup || outOfOrder ? null : await enqueueIncomingMessageJob({
     tenantId,
     chatId,
     messageId: incomingMessageRef.id,
     source: "webhook_whatsapp",
-    dedupeKey: `${tenantId}_${incomingMessageRef.id}`,
+    dedupeKey: inbound.eventKey,
   });
 
   if (queue) {
@@ -743,10 +744,25 @@ async function persistGenericWhatsAppInbound(input: {
 
   if (claim.eventRef) {
     await claim.eventRef.set(
-      { status: "processed", processedAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp() },
+      {
+        status: outOfOrder ? "processed_out_of_order" : "processed",
+        inboundEventKey: inbound.eventKey,
+        messageDocId: incomingMessageRef.id,
+        processedAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
+      },
       { merge: true }
     );
   }
+
+  await recordInboundEventMetricSafe({
+    tenantId,
+    channel: "whatsapp",
+    outcome: outOfOrder ? "out_of_order" : "accepted",
+    reason: outOfOrder ? "older_than_conversation_cursor" : (isGroup ? "group_ai_disabled" : "queued_for_ai"),
+    deliveryClass: inbound.deliveryClass,
+    attachmentCount: inbound.attachments.length,
+  });
 
   if (canonicalChat.duplicateRefs.length > 0) {
     console.warn("[whatsapp-webhook] duplicate chats detected", {
@@ -764,6 +780,7 @@ async function persistGenericWhatsAppInbound(input: {
     phoneNumberId,
     queueJobId: queue?.jobId || null,
     queueCreated: queue?.created || false,
+    outOfOrder,
   };
 }
 
@@ -771,6 +788,7 @@ export async function POST(req: Request) {
   let eventRef: DocumentReference | null = null;
 
   try {
+    const webhookReceivedAtMs = Date.now();
     const rawBody = await req.text();
     const signature = req.headers.get("x-hub-signature-256");
 
@@ -826,12 +844,13 @@ export async function POST(req: Request) {
         return NextResponse.json({ status: "ok_connection_update", tenantId: channel.tenantId, connectionStatus });
       }
       const evolutionInbound = evolutionEvent?.kind === "message" ? evolutionEvent : null;
+      if (evolutionInbound?.fromMe) return NextResponse.json(await persistExternalWhatsAppMessage(channel, evolutionInbound));
       if (isEvolutionWhatsAppProvider(channel.provider) && !evolutionInbound) {
         return NextResponse.json({ status: "ignored_evolution_event" });
       }
       const result = await persistGenericWhatsAppInbound({
         channel,
-        group: evolutionInbound || undefined,
+        group: evolutionInbound || readGatewayWhatsAppGroup(body),
         from: evolutionInbound?.from ||
           cleanString(body.from, 80) ||
           cleanString(body.phone, 80) ||
@@ -850,6 +869,14 @@ export async function POST(req: Request) {
           cleanString(body.id, 260) ||
           cleanString((body.message as { id?: unknown } | undefined)?.id, 260),
         messageType: evolutionInbound?.messageType || cleanString(body.type, 40) || cleanString((body.message as { type?: unknown } | undefined)?.type, 40),
+        occurredAt: evolutionInbound?.occurredAtMs || body.messageTimestamp || body.timestamp,
+        receivedAt: webhookReceivedAtMs,
+        quotedMessage: evolutionInbound?.quotedMessageId || evolutionInbound?.quotedMessageText
+          ? {
+              providerMessageId: evolutionInbound.quotedMessageId,
+              text: evolutionInbound.quotedMessageText,
+            }
+          : null,
         media: evolutionInbound ? {
           mediaUrl: evolutionInbound.mediaUrl,
           mediaBase64: evolutionInbound.mediaBase64,
@@ -937,27 +964,14 @@ export async function POST(req: Request) {
     const tenantSettings = await getTenantSettings(tenantId);
     const slaMinutes = resolveFirstResponseSlaMinutes(tenantSettings as Record<string, unknown> | null);
     const inboundMetaMessageId = cleanString(inboundMessage.id, 260);
-
-    const claim = await claimWebhookEvent({
-      tenantId,
-      phoneNumberId: channel.phoneNumberId,
-      metaMessageId: inboundMetaMessageId,
-    });
-
-    if (!claim.shouldProcess) {
-      return NextResponse.json({
-        status: "ignored_duplicate_message",
-        reason: claim.reason,
-        tenantId,
-        phoneNumberId: channel.phoneNumberId,
-      });
-    }
-
-    eventRef = claim.eventRef;
-
     const from = normalizePhone(cleanString(inboundMessage.from, 40));
     const mediaMeta = extractWhatsappMediaMeta(inboundMessage);
-    const text = mediaMeta.text;
+    const messageContext = inboundMessage.context && typeof inboundMessage.context === "object"
+      ? (inboundMessage.context as Record<string, unknown>)
+      : {};
+    const referral = inboundMessage.referral && typeof inboundMessage.referral === "object"
+      ? (inboundMessage.referral as Record<string, unknown>)
+      : {};
     const contactName =
       String(
         (valueObj as { contacts?: Array<{ profile?: { name?: unknown } }> } | undefined)?.contacts?.[0]
@@ -970,6 +984,85 @@ export async function POST(req: Request) {
     if (!from) {
       return NextResponse.json({ status: "ignored_invalid_phone" });
     }
+
+    const normalizedInbound = normalizeCanonicalInboundEvent({
+      tenantId,
+      channel: "whatsapp",
+      channelId: channel.id,
+      provider: channel.provider || "meta_whatsapp",
+      providerEventId: inboundMetaMessageId,
+      senderExternalId: from,
+      recipientExternalId: channel.phoneNumberId,
+      occurredAt: inboundMessage.timestamp,
+      receivedAt: webhookReceivedAtMs,
+      text: mediaMeta.text,
+      attachments: mediaMeta.type === "text"
+        ? []
+        : [{
+            type: mediaMeta.type,
+            url: mediaMeta.mediaUrl,
+            providerMediaId: mediaMeta.mediaId,
+            name: mediaMeta.mediaName,
+            mimeType: mediaMeta.mediaMimeType,
+            caption: mediaMeta.text,
+            durationMs: mediaMeta.mediaDuration,
+            width: mediaMeta.mediaWidth,
+            height: mediaMeta.mediaHeight,
+            sizeBytes: mediaMeta.mediaSize,
+            thumbnailUrl: mediaMeta.mediaThumbnail,
+          }],
+      quotedMessage: Object.keys(messageContext).length
+        ? {
+            providerMessageId: cleanString(messageContext.id, 260),
+            senderExternalId: cleanString(messageContext.from, 80),
+          }
+        : null,
+      campaign: Object.keys(referral).length
+        ? {
+            id: null,
+            name: null,
+            source: "meta",
+            medium: "whatsapp_referral",
+            adId: cleanString(referral.source_id, 240),
+            clickId: cleanString(referral.ctwa_clid, 300),
+          }
+        : null,
+    });
+    if (!normalizedInbound.accepted) {
+      await recordInboundEventMetricSafe({
+        tenantId,
+        channel: "whatsapp",
+        outcome: "invalid",
+        reason: normalizedInbound.reason,
+      });
+      return NextResponse.json({ status: "ignored_invalid_inbound", reason: normalizedInbound.reason });
+    }
+    const inbound = normalizedInbound.event;
+    const text = inbound.text;
+    const claim = await claimWebhookEvent({
+      tenantId,
+      phoneNumberId: channel.phoneNumberId,
+      metaMessageId: inbound.eventKey,
+    });
+
+    if (!claim.shouldProcess) {
+      await recordInboundEventMetricSafe({
+        tenantId,
+        channel: "whatsapp",
+        outcome: "duplicate",
+        reason: claim.reason,
+        deliveryClass: inbound.deliveryClass,
+        attachmentCount: inbound.attachments.length,
+      });
+      return NextResponse.json({
+        status: "ignored_duplicate_message",
+        reason: claim.reason,
+        tenantId,
+        phoneNumberId: channel.phoneNumberId,
+      });
+    }
+
+    eventRef = claim.eventRef;
 
     const ownerFromLead = await resolveLeadOwner(from, tenantId);
     let resolvedLeadId = ownerFromLead.leadId;
@@ -984,6 +1077,13 @@ export async function POST(req: Request) {
         sourceId: `whatsapp_${from}`,
         sourceLabel: "WhatsApp",
         channel: "whatsapp",
+        attribution: inbound.campaign ? {
+          source: "meta",
+          medium: "whatsapp_referral",
+          adId: inbound.campaign.adId || "",
+          ctwaClid: inbound.campaign.clickId || "",
+          channel: "whatsapp",
+        } : undefined,
         nome: contactName,
         telefone: from,
         mensagem: text,
@@ -1014,24 +1114,31 @@ export async function POST(req: Request) {
       }
     }
 
-    const chatsRef = adminDb.collection("chats");
-    const chatQuery = await chatsRef
-      .where("contactPhone", "==", from)
-      .where("tenantId", "==", tenantId)
-      .limit(1)
-      .get();
+    if (resolvedLeadId && inbound.campaign) {
+      await applyInboundCampaignAttribution({
+        tenantId,
+        leadId: resolvedLeadId,
+        channel: "whatsapp",
+        sourceType: "whatsapp_inbound",
+        sourceLabel: "WhatsApp via anuncio Meta",
+        campaign: inbound.campaign,
+        occurredAtMs: inbound.orderingTimestampMs,
+      });
+    }
 
-    let chatId: string;
-    let currentOwnerId = resolvedOwnerId;
-
-    if (chatQuery.empty) {
-      const newChat = await chatsRef.add({
+    const canonicalChat = await resolveCanonicalWhatsAppChat({
+      tenantId,
+      channelId: channel.id,
+      phone: from,
+      createData: {
         contactName,
         contactPhone: from,
         contactPhoneNormalized: from,
         channel: "whatsapp",
+        channelId: channel.id,
         lastMessage: text,
-        lastMessageTime: FieldValue.serverTimestamp(),
+        lastMessageTime: new Date(inbound.orderingTimestampMs),
+        lastInboundOccurredAtMs: inbound.orderingTimestampMs,
         ownerId: resolvedOwnerId,
         ownerName: resolvedOwnerName,
         assignedUserName: resolvedOwnerName,
@@ -1045,25 +1152,42 @@ export async function POST(req: Request) {
         }),
         createdAt: FieldValue.serverTimestamp(),
         updatedAt: FieldValue.serverTimestamp(),
-      });
-      chatId = newChat.id;
-    } else {
-      const chatDoc = chatQuery.docs[0];
+      },
+    });
+    const chatDoc = await canonicalChat.chatRef.get();
+    const chatId = canonicalChat.chatRef.id;
+    let currentOwnerId = resolvedOwnerId;
+    const advancesCursor = canonicalChat.created || shouldAdvanceConversationCursor({
+      previousOccurredAtMs: chatDoc.data()?.lastInboundOccurredAtMs,
+      incomingOccurredAtMs: inbound.orderingTimestampMs,
+    });
+    const outOfOrder = !advancesCursor;
+
+    if (!canonicalChat.created) {
       const chatData = chatDoc.data() as {
+        status?: string;
+        lastClientMessageAt?: unknown;
+        lastAgentMessageAt?: unknown;
+        slaDueAt?: unknown;
         ownerId?: string;
         leadId?: string;
         assignedTo?: string;
       };
 
-      chatId = chatDoc.id;
       currentOwnerId = chatData.ownerId || chatData.assignedTo || resolvedOwnerId;
 
-      await chatDoc.ref.set(
+      await canonicalChat.chatRef.set(
         {
           contactName,
           channel: "whatsapp",
-          lastMessage: text,
-          lastMessageTime: FieldValue.serverTimestamp(),
+          channelId: channel.id,
+          ...(advancesCursor
+            ? {
+                lastMessage: text,
+                lastMessageTime: new Date(inbound.orderingTimestampMs),
+                lastInboundOccurredAtMs: inbound.orderingTimestampMs,
+              }
+            : {}),
           updatedAt: FieldValue.serverTimestamp(),
           ownerId: currentOwnerId,
           ownerName: currentOwnerId ? await resolveOwnerName(currentOwnerId) : null,
@@ -1071,11 +1195,14 @@ export async function POST(req: Request) {
           leadId: chatData.leadId || resolvedLeadId,
           tenantId,
           channelPhoneNumberId: channel.phoneNumberId,
-          ...buildIncomingChatOperationalPatch({
-            status: "open",
-            assignedTo: currentOwnerId,
-            slaMinutes,
-          }),
+          ...(advancesCursor
+            ? buildIncomingChatOperationalPatch({
+                ...chatData,
+                status: String(chatData.status || "open"),
+                assignedTo: currentOwnerId,
+                slaMinutes,
+              })
+            : {}),
         },
         { merge: true }
       );
@@ -1092,7 +1219,7 @@ export async function POST(req: Request) {
       }
     }
 
-    await upsertContactProfile({
+    const contactId = await upsertContactProfile({
       tenantId,
       phone: from,
       leadId: resolvedLeadId,
@@ -1102,46 +1229,39 @@ export async function POST(req: Request) {
       company: leadCompany,
       photoUrl: contactPhotoUrl,
     });
+    if (contactId) {
+      await Promise.all([
+        canonicalChat.chatRef.set({ contactId, updatedAt: FieldValue.serverTimestamp() }, { merge: true }),
+        resolvedLeadId
+          ? adminDb.collection("leads").doc(resolvedLeadId).set({ contactId, updatedAt: FieldValue.serverTimestamp() }, { merge: true })
+          : Promise.resolve(),
+      ]);
+    }
 
-    let incomingMessageRef: DocumentReference;
-
-    if (inboundMetaMessageId) {
-      const inboundDocId = sanitizeId(`in_${tenantId}_${channel.phoneNumberId}_${inboundMetaMessageId}`, 240);
-      incomingMessageRef = adminDb.collection("messages").doc(inboundDocId);
-
-      await incomingMessageRef.set(
-        {
-          chatId,
-          text,
-          sender: "client",
-          type: mediaMeta.type,
-          ownerId: currentOwnerId,
-          tenantId,
-          channelPhoneNumberId: channel.phoneNumberId,
-          inboundMetaMessageId,
-          source: "whatsapp_webhook",
-          mediaUrl: mediaMeta.mediaUrl,
-          mediaName: mediaMeta.mediaName,
-          mediaMimeType: mediaMeta.mediaMimeType,
-          mediaDuration: mediaMeta.mediaDuration,
-          mediaWidth: mediaMeta.mediaWidth,
-          mediaHeight: mediaMeta.mediaHeight,
-          mediaSize: mediaMeta.mediaSize,
-          mediaThumbnail: mediaMeta.mediaThumbnail,
-          mediaId: mediaMeta.mediaId,
-          createdAt: FieldValue.serverTimestamp(),
-        },
-        { merge: true }
-      );
-    } else {
-      incomingMessageRef = await adminDb.collection("messages").add({
+    const incomingMessageRef = adminDb.collection("messages").doc(inbound.messageDocumentId);
+    const incomingWrite = await incomingMessageRef.set(
+      {
         chatId,
         text,
         sender: "client",
-        type: mediaMeta.type,
+        type: inbound.messageType,
         ownerId: currentOwnerId,
         tenantId,
+        channel: "whatsapp",
+        channelId: channel.id,
         channelPhoneNumberId: channel.phoneNumberId,
+        inboundMetaMessageId: inbound.providerEventId,
+        inboundEventKey: inbound.eventKey,
+        inboundCanonicalVersion: inbound.version,
+        conversationIdentityKey: inbound.conversationIdentityKey,
+        providerOccurredAtMs: inbound.occurredAtMs,
+        providerOccurredAt: new Date(inbound.occurredAtMs),
+        receivedAt: FieldValue.serverTimestamp(),
+        deliveryClass: inbound.deliveryClass,
+        normalizationNotes: inbound.normalizationNotes,
+        quotedMessage: inbound.quotedMessage,
+        campaignContext: inbound.campaign,
+        attachments: inbound.attachments,
         source: "whatsapp_webhook",
         mediaUrl: mediaMeta.mediaUrl,
         mediaName: mediaMeta.mediaName,
@@ -1152,33 +1272,39 @@ export async function POST(req: Request) {
         mediaSize: mediaMeta.mediaSize,
         mediaThumbnail: mediaMeta.mediaThumbnail,
         mediaId: mediaMeta.mediaId,
-        createdAt: FieldValue.serverTimestamp(),
-      });
-    }
+        createdAt: new Date(inbound.orderingTimestampMs),
+      },
+      { merge: true }
+    );
 
-    const recentOutboundDeliveries = await adminDb
-      .collection("outbound_campaign_deliveries")
-      .where("chatId", "==", chatId)
-      .limit(20)
-      .get();
-    const unansweredDeliveries = recentOutboundDeliveries.docs
-      .filter((doc) => cleanString(doc.data().tenantId, 180) === tenantId)
-      .filter((doc) => !doc.data().respondedAt)
-      .sort((a, b) => {
-        const aSeconds = Number(a.data().sentAt?._seconds || a.data().createdAt?._seconds || 0);
-        const bSeconds = Number(b.data().sentAt?._seconds || b.data().createdAt?._seconds || 0);
-        return bSeconds - aSeconds;
-      });
-    if (unansweredDeliveries[0]) {
-      await unansweredDeliveries[0].ref.set(
-        {
-          respondedAt: FieldValue.serverTimestamp(),
-          responseMessageId: incomingMessageRef.id,
-          responseText: text.slice(0, 500),
-          updatedAt: FieldValue.serverTimestamp(),
-        },
-        { merge: true }
-      );
+    const mediaCacheSource = ["audio", "image", "video", "document"].includes(String(mediaMeta.type || "").toLowerCase())
+      ? await captureMessageMediaSource({tenantId, chatId, messageId: incomingMessageRef.id, expectedRevision: incomingWrite.writeTime}).catch(() => null) : null;
+
+    if (!outOfOrder) {
+      const recentOutboundDeliveries = await adminDb
+        .collection("outbound_campaign_deliveries")
+        .where("chatId", "==", chatId)
+        .limit(20)
+        .get();
+      const unansweredDeliveries = recentOutboundDeliveries.docs
+        .filter((doc) => cleanString(doc.data().tenantId, 180) === tenantId)
+        .filter((doc) => !doc.data().respondedAt)
+        .sort((a, b) => {
+          const aSeconds = Number(a.data().sentAt?._seconds || a.data().createdAt?._seconds || 0);
+          const bSeconds = Number(b.data().sentAt?._seconds || b.data().createdAt?._seconds || 0);
+          return bSeconds - aSeconds;
+        });
+      if (unansweredDeliveries[0]) {
+        await unansweredDeliveries[0].ref.set(
+          {
+            respondedAt: FieldValue.serverTimestamp(),
+            responseMessageId: incomingMessageRef.id,
+            responseText: text.slice(0, 500),
+            updatedAt: FieldValue.serverTimestamp(),
+          },
+          { merge: true }
+        );
+      }
     }
 
     if (isWhatsAppOptOutMessage(text)) {
@@ -1240,6 +1366,15 @@ export async function POST(req: Request) {
         );
       }
 
+      await recordInboundEventMetricSafe({
+        tenantId,
+        channel: "whatsapp",
+        outcome: "ignored_policy",
+        reason: "whatsapp_opt_out",
+        deliveryClass: inbound.deliveryClass,
+        attachmentCount: inbound.attachments.length,
+      });
+
       return NextResponse.json({
         status: "ok_opt_out",
         chatId,
@@ -1248,10 +1383,11 @@ export async function POST(req: Request) {
       });
     }
 
-    if (resolvedLeadId) {
+    if (resolvedLeadId && !outOfOrder) {
       await runLeadAutomations({
         tenantId,
         trigger: "message_received",
+        sourceMessageId: incomingMessageRef.id,
         leadId: resolvedLeadId,
         chatId,
         channel: "whatsapp",
@@ -1261,21 +1397,24 @@ export async function POST(req: Request) {
       });
     }
 
-    const queue = await enqueueIncomingMessageJob({
-      tenantId,
-      chatId,
-      messageId: incomingMessageRef.id,
-      source: "webhook_whatsapp",
-      dedupeKey: `${tenantId}_${incomingMessageRef.id}`,
-    });
+    const queue = outOfOrder
+      ? null
+      : await enqueueIncomingMessageJob({
+          tenantId,
+          chatId,
+          messageId: incomingMessageRef.id,
+          source: "webhook_whatsapp",
+          dedupeKey: inbound.eventKey,
+        });
 
-    triggerAiQueueWorker({ limit: 8, drain: true });
+    if (queue) triggerAiQueueWorker({ limit: 8, drain: true });
     after(async () => {
-      if (["audio", "image", "video", "document"].includes(String(mediaMeta.type || "").toLowerCase())) {
+      if (mediaCacheSource && ["audio", "image", "video", "document"].includes(String(mediaMeta.type || "").toLowerCase())) {
         await cacheInboundMessageMedia({
           tenantId,
           chatId,
           messageId: incomingMessageRef.id,
+          source: mediaCacheSource,
           message: {
             type: mediaMeta.type,
             mediaUrl: mediaMeta.mediaUrl,
@@ -1284,29 +1423,47 @@ export async function POST(req: Request) {
             mediaId: mediaMeta.mediaId,
             channelPhoneNumberId: channel.phoneNumberId,
           },
-        }).catch((error) => {
+        }).catch(async (error) => {
           console.error("Falha ao cachear midia inbound do WhatsApp:", error);
+          await recordInboundEventMetricSafe({
+            tenantId,
+            channel: "whatsapp",
+            outcome: "media_failed",
+            reason: "meta_media_cache_failed",
+            deliveryClass: inbound.deliveryClass,
+            attachmentCount: inbound.attachments.length,
+          });
         });
       }
-      await processAiJobAfterSettle(queue.jobId, { source: "webhook_whatsapp" });
+      if (queue) await processAiJobAfterSettle(queue.jobId, { source: "webhook_whatsapp" });
     });
 
     if (eventRef) {
       await eventRef.set(
         {
-          status: "processed",
+          status: outOfOrder ? "processed_out_of_order" : "processed",
           chatId,
           tenantId,
           messageDocId: incomingMessageRef.id,
           queueJobId: queue?.jobId || null,
           queueCreated: queue?.created || false,
-          queueStatus: queue?.status || "group_ai_disabled",
+          queueStatus: queue?.status || (outOfOrder ? "skipped_out_of_order" : "not_queued"),
+          inboundEventKey: inbound.eventKey,
           processedAt: FieldValue.serverTimestamp(),
           updatedAt: FieldValue.serverTimestamp(),
         },
         { merge: true }
       );
     }
+
+    await recordInboundEventMetricSafe({
+      tenantId,
+      channel: "whatsapp",
+      outcome: outOfOrder ? "out_of_order" : "accepted",
+      reason: outOfOrder ? "older_than_conversation_cursor" : "queued_for_ai",
+      deliveryClass: inbound.deliveryClass,
+      attachmentCount: inbound.attachments.length,
+    });
 
     return NextResponse.json({
       status: "ok",
@@ -1315,6 +1472,7 @@ export async function POST(req: Request) {
       phoneNumberId: channel.phoneNumberId,
       queueJobId: queue?.jobId || null,
       queueCreated: queue?.created || false,
+      outOfOrder,
     });
     } catch (error) {
     if (eventRef) {

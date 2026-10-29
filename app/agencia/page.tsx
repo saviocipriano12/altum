@@ -25,28 +25,37 @@ export default function AgenciaPage() {
     <SiteShell>
       <PageHero
         eyebrow="Altum Agencia"
-        title="Projetos e growth para empresas que precisam parecer mais fortes e vender com mais consistencia."
-        description="A agencia continua sendo uma parte importante do ecossistema Altum. Ela gera caixa, monta ativos, melhora percepcao de valor e pode evoluir o cliente para plataforma, implantacao ou estrutura digital."
-        primaryAction={{ href: buildCommercialContactUrl("agencia", "/agencia"), label: "Pedir proposta da agencia" }}
-        secondaryAction={{ href: "/diagnostico", label: "Fazer o quiz estrategico" }}
+        title="Sua presença digital também faz parte da venda."
+        description="Sites, landing pages, lojas e campanhas para aproximar sua marca de quem precisa dela. Com atendimento e operação comercial conectados quando fizer sentido para o seu projeto."
+        primaryAction={{
+          href: buildCommercialContactUrl("agencia", "/agencia"),
+          label: "Pedir proposta da agencia",
+        }}
+        secondaryAction={{
+          href: "/diagnostico",
+          label: "Fazer o quiz estrategico",
+        }}
       />
 
       <CardGrid
-        title="Servicos que conectam melhor com a plataforma"
-        subtitle="Aqui a ideia nao e vender coisas soltas. E vender servicos que fazem sentido para captacao, conversao e operacao futura."
+        title="Do primeiro acesso à primeira conversa."
+        subtitle="Definimos os canais, as páginas e o acompanhamento conforme o objetivo da sua empresa."
         items={agencyServices}
       />
 
       <CaseGallery
-        title="A linguagem visual da agencia reforca o valor da proposta"
-        subtitle="Cases e referencias ajudam a abrir portas de ticket mais alto e criam ponte natural para a recorrencia depois."
+        title="Projetos para conhecer de perto."
+        subtitle="Alguns exemplos de presença digital, apresentação de oferta e captação."
         items={caseStudies}
       />
 
       <CalloutPanel
-        title="Quando o cliente precisa de demanda e organizacao ao mesmo tempo, growth entra junto com o SaaS."
-        description="O caminho comercial mais forte e mostrar a agencia como acelerador, a plataforma como base continua da operacao e o quiz como filtro de entrada."
-        primaryAction={{ href: "/estrutura-digital", label: "Ver oferta combinada" }}
+        title="Presença digital e operação podem começar juntas."
+        description="Se sua empresa precisa estruturar aquisição e atendimento, podemos desenhar um projeto com páginas, campanhas e plataforma."
+        primaryAction={{
+          href: "/estrutura-digital",
+          label: "Ver oferta combinada",
+        }}
         secondaryAction={{ href: "/diagnostico", label: "Passar pelo quiz" }}
       />
     </SiteShell>

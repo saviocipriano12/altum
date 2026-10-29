@@ -1,0 +1,6 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": { "incremental": false },
+  "include": ["../next-env.d.ts", "./crm-commercial-record.test.mts", "./crm-opportunities.emulator.mts", "../app/cliente/painel/crm/page.tsx", "../app/cliente/painel/inbox/page.tsx", "../app/cliente/painel/components/cliente-global-search.tsx"],
+  "exclude": ["../node_modules", "../.next", "../.qa-artifacts", "../_benchmark"]
+}

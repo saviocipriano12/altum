@@ -194,10 +194,15 @@ test("new WhatsApp conversations preserve CRM linkage and Meta template rules", 
     "utf8"
   );
   const chatOperations = readFileSync(join(process.cwd(), "lib/server/chat-operations.ts"), "utf8");
+  const start = readFileSync(join(process.cwd(), "lib/server/whatsapp-conversation-start.ts"), "utf8");
 
-  assert.match(route, /leadId:\s*destination\.leadId/);
-  assert.match(route, /provider\.id === "meta_cloud"/);
-  assert.match(route, /requiresTemplate:\s*true/);
+  assert.match(route, /startTenantWhatsAppConversation/);
+  assert.doesNotMatch(route, /provider\.sendText|observeConversationCommercialState|collection\("chats"\)\.add/);
+  assert.match(start, /leadId:\s*body\.leadId/);
+  assert.match(start, /requiresWhatsAppTemplate/);
+  assert.match(start, /requiresTemplate:\s*true/);
+  assert.match(start, /queueTenantChatText/);
+  assert.match(start, /requireExactChannel:\s*true/);
   assert.match(chatOperations, /requiresTemplate:\s*false/);
 });
 
@@ -221,7 +226,8 @@ test("Customer 360 links identities and exposes commerce inside the CRM profile"
   );
   const crm = readFileSync(join(process.cwd(), "app/cliente/painel/crm/page.tsx"), "utf8");
   assert.equal(contactProfile.includes("canonicalContactId"), true);
-  assert.equal(contactProfile.includes("FieldValue.arrayUnion(leadId)"), true);
+  assert.equal(contactProfile.includes("contact_identity_aliases"), true);
+  assert.equal(contactProfile.includes("leadIds"), true);
   assert.equal(intake.includes("upsertContactProfile"), true);
   assert.equal(leadDetail.includes("listEcommerceOrders"), true);
   assert.equal(crm.includes("Compras e receita"), true);
@@ -315,12 +321,12 @@ test("go-live readiness accepts the canonical health status written by channel c
 test("inbox listing is bounded and does not block normal refreshes on external synchronization", () => {
   const route = readFileSync(join(process.cwd(), "app/api/tenant/[tenantId]/chats/route.ts"), "utf8");
   const page = readFileSync(join(process.cwd(), "app/cliente/painel/inbox/page.tsx"), "utf8");
-  assert.match(route, /Math\.max\(25, Math\.min\(200/);
+  assert.match(route, /Math\.max\(20, Math\.min\(100/);
   assert.match(route, /url\.searchParams\.get\("sync"\) === "recent"/);
-  assert.match(route, /const \[snap, stateSnap, enrichment, channelsSnap\] = await Promise\.all/);
-  assert.match(route, /ENRICHMENT_CACHE_TTL_MS = 30_000/);
+  assert.match(route, /const \[snap, channelsSnap\] = await Promise\.all/);
+  assert.match(route, /getChatEnrichmentForPage\(tenantId, scannedDocs\)/);
   assert.match(page, /async \(withMessages = false, syncExternal = false\)/);
-  assert.match(page, /loadChats\(\{ silent: true, syncExternal \}\)/);
+  assert.match(page, /loadChats\(\{ silent: true, syncExternal, preserveExisting: true \}\)/);
   assert.match(page, /refreshSelected\(true, true\)/);
 });
 

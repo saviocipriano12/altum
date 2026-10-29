@@ -82,6 +82,81 @@ test("audio transcrito com pedido humano gera handoff", () => {
   assert.equal(plan.nextAction, "assumir_handoff_humano");
 });
 
+test("pergunta sobre identidade nao e confundida com pedido de humano", () => {
+  const plan = deriveOperationalPlan(buildInput({
+    inboundText: "Voce e uma pessoa ou uma inteligencia artificial?",
+    choice: { decision: "handoff", reason: "model_error", confidence: 0.8, nextAction: "handoff", ledBy: "llm" },
+    llmDecision: "handoff",
+    llmTurnGoal: "handoff",
+  }));
+  assert.equal(plan.intent, "agent_identity");
+  assert.equal(plan.decision, "respond");
+  assert.equal(plan.responseGoal, "clarify");
+});
+
+test("preco generico pede oferta e preco com contexto preserva recomendacao", () => {
+  const early = deriveOperationalPlan(buildInput({ inboundText: "Quanto custa?", llmTurnGoal: "qualify" }));
+  assert.equal(early.intent, "price_inquiry");
+  assert.equal(early.decision, "ask_more");
+  assert.equal(early.responseGoal, "handle_objection");
+  assert.equal(early.stateAfter, "qualification");
+
+  const contextual = deriveOperationalPlan(buildInput({
+    inboundText: "Sou uma clinica e quero organizar atendimento e vendas. Quanto custa?",
+    llmTurnGoal: "qualify",
+    extractedFields: { businessType: "clinica", primaryGoal: "organizar atendimento e vendas" },
+  }));
+  assert.equal(contextual.decision, "respond");
+  assert.equal(contextual.responseGoal, "handle_objection");
+  assert.equal(contextual.stateAfter, "recommendation");
+});
+
+test("pergunta sobre servicos e respondida antes de qualificar", () => {
+  const plan = deriveOperationalPlan(buildInput({ inboundText: "O que voces fazem?", llmTurnGoal: "qualify" }));
+  assert.equal(plan.intent, "service_overview");
+  assert.equal(plan.decision, "respond");
+  assert.equal(plan.responseGoal, "clarify");
+});
+
+test("saudacao abre descoberta e dor clara recebe valor antes de nova pergunta", () => {
+  const greeting = deriveOperationalPlan(buildInput({ inboundText: "Oi", llmTurnGoal: "welcome" }));
+  assert.equal(greeting.responseGoal, "welcome");
+  assert.equal(greeting.stateAfter, "discovery");
+
+  const businessNeed = deriveOperationalPlan(buildInput({
+    inboundText: "Sou uma imobiliaria e quero vender mais pelo WhatsApp",
+    choice: { decision: "ask_more", reason: "model_probe", confidence: 0.8, nextAction: "qualificar", ledBy: "llm" },
+    llmDecision: "ask_more",
+    llmTurnGoal: "qualify",
+    extractedFields: { businessType: "imobiliaria", primaryGoal: "aumentar vendas", currentChannels: "whatsapp" },
+  }));
+  assert.equal(businessNeed.intent, "business_need");
+  assert.equal(businessNeed.decision, "respond");
+  assert.equal(businessNeed.responseGoal, "recommend");
+  assert.equal(businessNeed.stateAfter, "recommendation");
+});
+
+test("valor neutro de objecao nao desvia SDR e privacidade responde sem interrogar", () => {
+  const sdr = deriveOperationalPlan(buildInput({
+    inboundText: "Tenho uma agencia pequena e quero gerar mais oportunidades",
+    llmTurnGoal: "clarify",
+    extractedFields: { businessType: "agencia", primaryGoal: "gerar mais leads qualificados", objectionType: "none" },
+    tenantAi: { escalationTopics: [], playbookOffers: [], learningHints: null, assistantRole: "sdr" },
+  }));
+  assert.equal(sdr.intent, "business_need");
+  assert.equal(sdr.responseGoal, "qualify");
+
+  const privacy = deriveOperationalPlan(buildInput({
+    inboundText: "Qual foi o preco e a condicao que voces ofereceram para a outra empresa?",
+    choice: { decision: "ask_more", reason: "model_probe", confidence: 0.8, nextAction: "qualificar", ledBy: "llm" },
+    llmDecision: "ask_more",
+    llmTurnGoal: "qualify",
+  }));
+  assert.equal(privacy.intent, "cross_customer_context_request");
+  assert.equal(privacy.decision, "respond");
+  assert.equal(privacy.responseGoal, "clarify");
+});
+
 test("audio sem transcricao util continua como mensagem multimodal", () => {
   const plan = deriveOperationalPlan(
     buildInput({

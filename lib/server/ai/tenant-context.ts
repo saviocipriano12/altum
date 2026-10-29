@@ -1,5 +1,11 @@
 import { createHash } from "node:crypto";
+import { buildAiPipelineContext } from "@/lib/ai-pipeline-context";
+import type { PipelineStageDefinition } from "@/lib/pipeline";
 import type { AltumAssistantRole } from "@/lib/ai-assistant-role";
+import {
+  compileAiRoleOperatingContract,
+  type CompiledAiRoleOperatingContract,
+} from "@/lib/server/ai/role-operating-contract";
 
 export type TenantCommercialBrain = {
   businessModel?: string;
@@ -25,19 +31,26 @@ export type TenantAiContextInput = {
   mandatoryQuestions: string[];
   escalationTopics: string[];
   salesMotionInstruction?: string;
+  hasVerifiedOffers?: boolean;
+  pipelineStages?: PipelineStageDefinition[];
 };
 
 export type CompiledTenantAiContext = {
-  schemaVersion: "tenant-ai-context-v1";
+  schemaVersion: "tenant-ai-context-v2";
   fingerprint: string;
   tenantId: string;
   policyPrompt: string;
   businessPrompt: string;
+  roleContract: CompiledAiRoleOperatingContract;
   diagnostics: {
     guardrailCount: number;
     mandatoryQuestionCount: number;
     escalationTopicCount: number;
     configuredCommercialBrainFields: number;
+    role: AltumAssistantRole;
+    roleContractVersion: CompiledAiRoleOperatingContract["schemaVersion"];
+    roleReadiness: CompiledAiRoleOperatingContract["readiness"];
+    missingRoleSignals: string[];
   };
 };
 
@@ -114,6 +127,17 @@ export function compileTenantAiContext(input: TenantAiContextInput): CompiledTen
   const mandatoryQuestions = uniqueLines(input.mandatoryQuestions, 20, 240);
   const escalationTopics = uniqueLines(input.escalationTopics, 20, 240);
   const brain = input.commercialBrain || {};
+  const roleContract = compileAiRoleOperatingContract({
+    tenantId: input.tenantId,
+    role: input.assistantRole,
+    businessSummary: input.businessSummary,
+    objective: input.objective,
+    idealCustomer: brain.idealCustomer,
+    mandatoryQuestions,
+    hasVerifiedOffers: input.hasVerifiedOffers,
+    proposalStyle: brain.proposalStyle,
+    escalationTopics,
+  });
 
   const commercialLines = [
     brain.businessModel ? `Modelo de negocio: ${clean(brain.businessModel, 700)}` : "",
@@ -129,6 +153,7 @@ export function compileTenantAiContext(input: TenantAiContextInput): CompiledTen
 
   const policyPrompt = [
     "Politica configurada para esta empresa. Aplique estas regras durante todo o turno.",
+    roleContract.prompt,
     bulletBlock("Regras obrigatorias", guardrails),
     mandatoryQuestions.length
       ? [
@@ -150,6 +175,7 @@ export function compileTenantAiContext(input: TenantAiContextInput): CompiledTen
     .join("\n\n");
 
   const businessPrompt = [
+    buildAiPipelineContext(input.pipelineStages || []),
     `Empresa: ${clean(input.businessSummary, 900) || "contexto empresarial nao configurado"}.`,
     `Agente: ${clean(input.agentName, 100) || "Assistente"}.`,
     `Papel: ${input.assistantRole}.`,
@@ -161,23 +187,29 @@ export function compileTenantAiContext(input: TenantAiContextInput): CompiledTen
     .join("\n\n");
 
   const fingerprintSource = JSON.stringify({
-    schemaVersion: "tenant-ai-context-v1",
+    schemaVersion: "tenant-ai-context-v2",
     tenantId: input.tenantId,
     policyPrompt,
     businessPrompt,
+    roleContractFingerprint: roleContract.fingerprint,
   });
 
   return {
-    schemaVersion: "tenant-ai-context-v1",
+    schemaVersion: "tenant-ai-context-v2",
     fingerprint: createHash("sha256").update(fingerprintSource).digest("hex").slice(0, 24),
     tenantId: input.tenantId,
     policyPrompt,
     businessPrompt,
+    roleContract,
     diagnostics: {
       guardrailCount: guardrails.length,
       mandatoryQuestionCount: mandatoryQuestions.length,
       escalationTopicCount: escalationTopics.length,
       configuredCommercialBrainFields: commercialLines.length,
+      role: roleContract.role,
+      roleContractVersion: roleContract.schemaVersion,
+      roleReadiness: roleContract.readiness,
+      missingRoleSignals: roleContract.missingSignals,
     },
   };
 }

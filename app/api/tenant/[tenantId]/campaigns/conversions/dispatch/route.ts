@@ -37,7 +37,7 @@ export async function POST(
     const leadId = clean(body.leadId, 180);
     const reason = clean(body.reason, 80) as Body["reason"];
 
-    if (!leadId || !reason) {
+    if (!leadId || !reason || !["lead_created", "lead_qualified", "meeting_scheduled", "meeting_completed", "sale_won"].includes(reason)) {
       return NextResponse.json({ error: "Campos obrigatorios: leadId e reason." }, { status: 400 });
     }
 

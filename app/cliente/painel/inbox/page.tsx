@@ -1,21 +1,43 @@
 "use client";
 
+import { MessageImagePreview } from "./message-image-preview";
+import { commercialEvidenceFacts } from "@/lib/crm-field-evidence";
+import { CommercialReadNotice } from "@/components/client/commercial-read-notice";
+import { ReferencedConversationMessage } from "@/components/client/referenced-conversation-message";
+import { CommercialEvidenceFact, CommercialMediaInsight } from "@/components/client/commercial-evidence-fact";
+import { VoiceMessagePlayer } from "./voice-message-player";
+import { InstagramStoryPreview } from "./instagram-story-preview";
+import { ConversationChannelBadge, ConversationChannelMark } from "./conversation-channel-badge";
+import { MessageDeliveryStatus } from "./message-delivery-status";
+import channelStyles from "./conversation-channel-theme.module.css";
+import styles from "./conversations.module.css";
+import { InboxConnectDialog, isInboxChannelConnected } from "./inbox-connect-dialog";
 import { requiresWhatsAppTemplate } from "@/lib/whatsapp-service-window";
+import { fetchInboxJson } from "@/lib/inbox-request";
+import { readInboxMedia } from "@/lib/inbox-media-read";
+import { waitForInboxUpload, canFallbackInboxVideoUpload, sendInboxDirectMedia, probeInboxUploadedObject, inboxMediaContentSha256, clearAcknowledgedMediaCaption, describeInboxMediaFailure, type InboxMediaAttempt } from "@/lib/inbox-upload";
+import { InboxRecordingGate, acquireInboxRecordingStream } from "@/lib/inbox-recording";
+import { collectInboxNewMessageIds } from "@/lib/inbox-new-messages";
+import { InboxLoadGate, shouldLoadInboxIncrementally } from "@/lib/inbox-load-gate";
+import { startInboxAiTest } from "@/lib/inbox-ai-test";
+import { getMediaCaption, isMediaPlaceholder } from "@/lib/message-media-placeholder";
+import { mergeMessageRevision } from "@/lib/inbox-message-revision";
+import { type InstagramMessageContext } from "@/lib/instagram-message-context";
+import { whatsAppConversationName } from "@/lib/whatsapp-group-name";
 
 import Link from "next/link";
 import NextImage from "next/image";
 import dynamic from "next/dynamic";
-import { CSSProperties, FormEvent, type MouseEvent, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
+import { CSSProperties, FormEvent, useCallback, useDeferredValue, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { ref as storageRef, uploadBytesResumable } from "firebase/storage";
+import { ref as storageRef, uploadBytesResumable, getMetadata } from "firebase/storage";
 import {
   AlertCircle,
   ArrowLeft,
   ArrowRight,
   BadgeDollarSign,
   Bot,
-  Check,
-  CheckCheck,
+  CalendarDays,
   Download,
   ExternalLink,
   CheckCircle2,
@@ -27,6 +49,7 @@ import {
   ImagePlus,
   Loader2,
   MessageCircle,
+  MessageSquare,
   Mic,
   MoreVertical,
   NotebookPen,
@@ -35,6 +58,7 @@ import {
   PauseCircle,
   PhoneCall,
   PlayCircle,
+  Plus,
   RefreshCw,
   Receipt,
   Reply,
@@ -51,6 +75,12 @@ import { auth, storage } from "@/firebaseConfig";
 import { useClienteTenant } from "@/app/cliente/ClientePanelGuard";
 import { useClienteShell } from "@/app/cliente/painel/components/cliente-shell";
 import { useAdaptivePolling } from "@/app/cliente/painel/hooks/use-adaptive-polling";
+import { useInboxDraft } from "@/app/cliente/painel/hooks/use-inbox-draft";
+import { useInboxReadingPosition } from "@/app/cliente/painel/hooks/use-inbox-reading-position";
+import { useInboxWorkspaceHeight } from "@/app/cliente/painel/hooks/use-inbox-workspace-height";
+import { useInboxLiveMessages } from "@/app/cliente/painel/hooks/use-inbox-live-messages";
+import { useInboxVisualViewport } from "@/app/cliente/painel/hooks/use-inbox-visual-viewport";
+import { useInboxMediaDraft, type QueuedMedia } from "@/app/cliente/painel/hooks/use-inbox-media-draft";
 import {
   CardTitle,
   EmptyState,
@@ -67,12 +97,6 @@ import {
 import type { SalesJourneyRecommendation } from "@/lib/sales-journey";
 
 const EmojiPicker = dynamic(() => import("emoji-picker-react"), { ssr: false });
-
-type QueuedMedia = {
-  id: string;
-  file: File;
-  previewUrl: string;
-};
 
 type ChatAiState = {
   aiEnabled?: boolean;
@@ -107,6 +131,7 @@ type ChatItem = {
   contactPhone?: string;
   contactCompany?: string;
   contactPhotoUrl?: string;
+  instagramUsername?: string;
   lastMessage?: string;
   lastMessageTime?: unknown;
   lastClientMessageAt?: unknown;
@@ -140,6 +165,9 @@ type ChatItem = {
 };
 
 type MessageItem = {
+  revision?: string;
+  instagramContext?: InstagramMessageContext | null;
+  metaMessageId?: string | null;
   participantName?: string | null;
   participantJid?: string | null;
   id: string;
@@ -175,6 +203,7 @@ type MessageItem = {
     id?: string | null;
     filename?: string | null;
   } | null;
+  outboundJobId?: string | null;
 };
 
 type TimelineEvent = {
@@ -308,6 +337,8 @@ type LeadSummary = {
   last_touch?: Record<string, unknown>;
   attribution?: Record<string, unknown>;
   customFields?: Record<string, string | number | boolean | null>;
+  aiLatestMediaInsight?: unknown;
+  aiCommercialReadState?: unknown;
   stage?: string;
   pipelineStage?: string;
   owner?: string;
@@ -316,6 +347,9 @@ type LeadSummary = {
   priority?: string;
   heat?: string;
   potentialValue?: number | null;
+  opportunityTitle?: string;
+  recordKind?: "legacy" | "opportunity";
+  contactId?: string | null;
   tags?: string[];
   aiFieldEvidence?: Record<
     string,
@@ -384,6 +418,9 @@ type ChatDetailPayload = {
 
 type ChatListPayload = {
   items?: ChatItem[];
+  hasMore?: boolean;
+  nextCursor?: string | null;
+  coverageComplete?: boolean;
   error?: string;
 };
 
@@ -397,15 +434,23 @@ type TenantChannelItem = {
   phoneNumber?: string;
   channelScope?: string;
   ownerUserName?: string;
+  ownerUserId?: string;
+  inboundReady?: boolean;
 };
 
 type TenantChannelsPayload = {
   items?: TenantChannelItem[];
+  managedProviders?: { evolution?: boolean };
   error?: string;
 };
 
 type MessageListPayload = {
   items?: MessageItem[];
+  missingIds?: string[];
+  hasMore?: boolean;
+  nextCursor?: string | null;
+  oldestCursor?: string | null;
+  newestCursor?: string | null;
   error?: string;
 };
 
@@ -585,9 +630,19 @@ function messageTimeMs(message: MessageItem) {
 function mergeChatMessages(current: MessageItem[], incoming: MessageItem[]) {
   const byId = new Map(current.map((message) => [message.id, message]));
   for (const message of incoming) {
-    byId.set(message.id, { ...byId.get(message.id), ...message });
+    byId.set(message.id, mergeMessageRevision(byId.get(message.id), message));
   }
   return Array.from(byId.values()).sort((left, right) => messageTimeMs(left) - messageTimeMs(right));
+}
+
+function mergeChats(current: ChatItem[], incoming: ChatItem[]) {
+  const byId = new Map(current.map((chat) => [chat.id, chat]));
+  for (const chat of incoming) {
+    byId.set(chat.id, { ...byId.get(chat.id), ...chat });
+  }
+  return Array.from(byId.values()).sort(
+    (left, right) => (toDate(right.lastMessageTime)?.getTime() || 0) - (toDate(left.lastMessageTime)?.getTime() || 0)
+  );
 }
 
 function formatLeadDocumentType(value?: string) {
@@ -659,21 +714,7 @@ function resolveInboxAttribution(lead?: LeadSummary | null) {
 }
 
 function resolveAiEvidence(lead?: LeadSummary | null) {
-  const evidence = lead?.aiFieldEvidence || {};
-  const getValue = (keys: string[]) => {
-    for (const key of keys) {
-      const value = cleanInboxText(evidence[key]?.value, 160);
-      if (value) return value;
-    }
-    return "Nao capturado";
-  };
-
-  return [
-    { label: "Interesse", value: getValue(["serviceInterest", "activeTopic", "primaryGoal"]) },
-    { label: "Urgencia", value: getValue(["urgency"]) },
-    { label: "Orcamento", value: getValue(["budgetBand"]) },
-    { label: "Decisor", value: getValue(["decisionMaker"]) },
-  ];
+  return commercialEvidenceFacts(lead);
 }
 
 function formatAiAction(value?: string | null) {
@@ -707,13 +748,6 @@ function formatTemperature(value?: string | null) {
   return "em leitura";
 }
 
-function formatDuration(seconds?: number | null) {
-  if (typeof seconds !== "number" || !Number.isFinite(seconds) || seconds <= 0) return "--:--";
-  const safeSeconds = Math.max(0, Math.round(seconds));
-  const minutes = Math.floor(safeSeconds / 60);
-  const remainingSeconds = safeSeconds % 60;
-  return `${minutes}:${String(remainingSeconds).padStart(2, "0")}`;
-}
 
 function formatFileSize(bytes?: number | null) {
   if (typeof bytes !== "number" || !Number.isFinite(bytes) || bytes <= 0) return null;
@@ -733,22 +767,8 @@ function formatMimeType(mimeType?: string | null) {
   return value.toUpperCase();
 }
 
-function normalizePlainText(value?: string | null) {
-  return String(value || "")
-    .toLowerCase()
-    .replace(/[\[\]]/g, "")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
 function isGeneratedMediaPlaceholder(type: string, text?: string | null) {
-  const normalized = normalizePlainText(text);
-  if (!normalized) return true;
-  if (type === "image") return normalized === "imagem recebida" || normalized === "imagem enviada";
-  if (type === "audio") return normalized === "audio recebido" || normalized === "audio enviado";
-  if (type === "document") return normalized === "arquivo recebido" || normalized.startsWith("documento enviado");
-  if (type === "video") return normalized === "video recebido" || normalized === "video enviado";
-  return false;
+  return isMediaPlaceholder(type, text);
 }
 
 function normalizeTags(value: string) {
@@ -1312,15 +1332,12 @@ function ConversationListItem({
   onSelect: () => void;
 }) {
   const sla = getSlaState(chat);
-  const aiPaused = isAiPaused(chat);
   const responseState = getConversationResponseState(chat);
   const mobileLeadTags = getMobileLeadTags(chat, responseState, sla);
   const unreadCount =
     typeof chat.unreadCount === "number" && chat.unreadCount > 0
       ? chat.unreadCount
-      : responseState.label === "Precisa de resposta"
-        ? 1
-        : 0;
+      : 0;
 
   return (
     <button
@@ -1330,23 +1347,23 @@ function ConversationListItem({
         "inbox-conversation-card inbox-whatsapp-row w-full min-w-0 border px-3.5 py-3.5 text-left transition",
         active
           ? "inbox-whatsapp-row-active"
-          : ""
+          : "",
+        chat.channel === "instagram" && channelStyles.instagramRow,
+        chat.channel === "instagram" && active && channelStyles.instagramActive
       )}
     >
       <div className="flex items-start gap-3">
-        <ContactAvatar
-          name={chat.contactName}
-          phone={chat.contactPhone}
-          photoUrl={chat.contactPhotoUrl}
-          size="sm"
-        />
+        <div className="relative shrink-0">
+          <ContactAvatar name={chat.contactName} phone={chat.contactPhone} photoUrl={chat.contactPhotoUrl} size="sm" />
+          <ConversationChannelMark channel={chat.channel} />
+        </div>
 
         <div className="min-w-0 flex-1">
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
               <div className="flex items-center gap-2">
                 <p className="truncate text-sm font-semibold text-[var(--cliente-card-text)]">
-                  {chat.isGroup ? "Grupo · " : ""}{chat.contactName || chat.contactPhone || "Contato sem nome"}
+                  {whatsAppConversationName(chat)}
                 </p>
                 {chat.priority === "high" ? (
                   <span className="h-2 w-2 rounded-full bg-[var(--cliente-accent)]" />
@@ -1358,6 +1375,9 @@ function ConversationListItem({
                     <MobileLeadTagPill key={`${tag.tone}-${tag.label}`} tag={tag} />
                   ))}
                 </div>
+              ) : null}
+              {chat.channel === "instagram" && chat.instagramUsername ? (
+                <p className="truncate text-xs text-[var(--cliente-card-text-soft)]">@{chat.instagramUsername.replace(/^@/, "")}</p>
               ) : null}
               <div className="inbox-conversation-owner mt-1 flex items-center gap-2 text-[11px] text-[var(--cliente-card-text-soft)]">
                 <span>{chat.assignedUserName || chat.ownerName || "Sem responsavel"}</span>
@@ -1390,12 +1410,11 @@ function ConversationListItem({
           <div className="inbox-conversation-badges mt-2 flex flex-wrap items-center gap-2">
             <StateBadge label={responseState.label} tone={responseState.tone} />
             {sla.breached ? <StateBadge label={sla.label} tone="danger" /> : null}
-            {aiPaused ? <StateBadge label="Assistente pausado" tone="warning" /> : null}
           </div>
 
           <div className="inbox-conversation-footer mt-3 flex items-center justify-between gap-3 text-[11px] text-[var(--cliente-card-text-soft)]">
             <span className="inline-flex min-w-0 items-center gap-1.5">
-              <StateBadge {...getChannelAccessBadge(chat)} />
+              <ConversationChannelBadge channel={chat.channel} label={getChannelAccessBadge(chat).label !== formatChannelLabel(chat.channel) ? `${formatChannelLabel(chat.channel)} · ${getChannelAccessBadge(chat).label}` : undefined} />
               {chat.channelPhoneNumber ? <span className="truncate">{chat.channelPhoneNumber}</span> : null}
             </span>
             <span className="truncate text-right">{chat.tags?.slice(0, 1).join(" / ") || formatStatusLabel(chat.status)}</span>
@@ -1412,97 +1431,39 @@ function buildMessageMediaUrl(message: MessageItem) {
 
 function useProtectedMessageMedia(message: MessageItem) {
   const protectedUrl = buildMessageMediaUrl(message);
-  const [resolvedUrl, setResolvedUrl] = useState("");
-  const [resolvedContentType, setResolvedContentType] = useState("");
-  const [failed, setFailed] = useState(false);
-
+  const [resolved, setResolved] = useState({ source: "", url: "", contentType: "", failed: false });
+  const [attempt, setAttempt] = useState(0);
   useEffect(() => {
-    let active = true;
-    let retryTimer: ReturnType<typeof setTimeout> | null = null;
+    const controller = new AbortController();
     let blobUrl = "";
-    setResolvedUrl("");
-    setResolvedContentType("");
-    setFailed(false);
-    if (!protectedUrl) return;
-
-    const separator = protectedUrl.includes("?") ? "&" : "?";
-    const resolveMedia = async (attempt = 0): Promise<void> => {
-      // A conversa pode renderizar antes da restauracao do Firebase Auth. Sem
-      // espera, o primeiro GET iria sem Bearer token e a midia ficaria marcada
-      // como indisponivel ate a pessoa recarregar a pagina.
-      if (!auth.currentUser) {
-        if (attempt < 8) {
-          retryTimer = setTimeout(() => void resolveMedia(attempt + 1), 350);
-          return;
-        }
-        if (active) setFailed(true);
+    let authTimer: ReturnType<typeof setTimeout> | undefined;
+    const load = async (authAttempt = 0): Promise<void> => {
+      if (!protectedUrl || controller.signal.aborted) return;
+      if (!auth.currentUser && authAttempt < 8) {
+        authTimer = setTimeout(() => void load(authAttempt + 1), 350);
         return;
       }
-
       try {
-        // Audio nao pode depender de uma URL assinada temporaria. Se ela
-        // expirar ou for negada depois da montagem do player, o navegador
-        // apenas dispara onError e deixa uma bolha impossivel de ouvir. Para
-        // voz, sempre trazemos os bytes pelo endpoint autenticado e mantemos
-        // o Blob valido enquanto esta conversa estiver aberta.
-        if (String(message.type || "").toLowerCase() === "audio") {
-          const audio = await authedFetch(protectedUrl);
-          if (!audio.ok) throw new Error(`audio_stream_http_${audio.status}`);
-          const blob = await audio.blob();
-          if (!blob.size) throw new Error("audio_stream_empty");
-          blobUrl = URL.createObjectURL(blob);
-          if (active) {
-            setResolvedUrl(blobUrl);
-            setResolvedContentType(blob.type || "audio/mpeg");
-          }
-          return;
-        }
-
-        const response = await authedFetch(`${protectedUrl}${separator}resolve=1`);
-        if (!response.ok) throw new Error(`media_resolve_http_${response.status}`);
-        const payload = await response.json() as { url?: unknown; contentType?: unknown };
-        const url = typeof payload.url === "string" ? payload.url.trim() : "";
-        if (!url) throw new Error("media_resolve_empty");
-        if (active) {
-          setResolvedUrl(url);
-          setResolvedContentType(typeof payload.contentType === "string" ? payload.contentType.trim() : "");
-        }
+        const blob = await readInboxMedia((signal) => authedFetch(protectedUrl, { signal }), controller.signal);
+        if (controller.signal.aborted) return;
+        blobUrl = URL.createObjectURL(blob);
+        setResolved({ source: protectedUrl, url: blobUrl, contentType: blob.type, failed: false });
       } catch {
-        // URL assinada pode falhar por uma permissao momentanea do Storage ou
-        // por midia legada. O endpoint protegido ainda consegue entregar os
-        // bytes com o token Firebase do usuario; tocar o Blob evita marcar um
-        // audio valido como indisponivel apenas por essa etapa auxiliar.
-        try {
-          const fallback = await authedFetch(protectedUrl);
-          if (!fallback.ok) throw new Error(`media_fallback_http_${fallback.status}`);
-          const blob = await fallback.blob();
-          if (!blob.size) throw new Error("media_fallback_empty");
-          blobUrl = URL.createObjectURL(blob);
-          if (active) {
-            setResolvedUrl(blobUrl);
-            setResolvedContentType(blob.type || "");
-          }
-        } catch {
-          if (active) setFailed(true);
-        }
+        if (!controller.signal.aborted) setResolved({ source: protectedUrl, url: "", contentType: "", failed: true });
       }
     };
-    void resolveMedia();
-
+    setResolved({ source: protectedUrl, url: "", contentType: "", failed: false });
+    void load();
     return () => {
-      active = false;
-      if (retryTimer) clearTimeout(retryTimer);
+      controller.abort();
+      clearTimeout(authTimer);
       if (blobUrl) URL.revokeObjectURL(blobUrl);
     };
-  }, [protectedUrl, message.type]);
-
-  return {
-    protectedUrl,
-    mediaUrl: resolvedUrl,
-    mediaContentType: resolvedContentType,
-    isLoading: Boolean(protectedUrl) && !resolvedUrl && !failed,
-    failed,
-  };
+  }, [protectedUrl, attempt]);
+  const current = resolved.source === protectedUrl ? resolved : { url: "", contentType: "", failed: false };
+  return { protectedUrl, mediaUrl: current.url, mediaContentType: current.contentType,
+    isLoading: Boolean(protectedUrl) && !current.url && !current.failed, failed: current.failed,
+    retry: () => setAttempt((value) => value + 1) };
 }
 
 function getMessageMediaUnavailableReason(message: MessageItem) {
@@ -1572,8 +1533,7 @@ function getClientMediaLimit(file: File) {
 }
 
 function getAudioTranscript(message: MessageItem) {
-  const preview = getMessagePreview(message);
-  return isGeneratedMediaPlaceholder("audio", preview) ? "" : preview;
+  return getMediaCaption("audio", getMessagePreview(message));
 }
 
 function ImageAttachment({ message }: { message: MessageItem }) {
@@ -1588,10 +1548,10 @@ function ImageAttachment({ message }: { message: MessageItem }) {
 
   if (message.mediaStatus === "missing" || imageFailed || resolved.failed) {
     return (
-      <MessageMediaFallback
+      <div><MessageMediaFallback
         type="image"
         reason={imageFailed || resolved.failed ? "Nao foi possivel carregar a imagem protegida." : unavailableReason}
-      />
+      />{message.mediaUrl ? <button type="button" onClick={() => { setImageFailed(false); resolved.retry(); }} className="mt-2 text-xs font-semibold text-[var(--cliente-primary)]">Tentar abrir imagem novamente</button> : null}</div>
     );
   }
 
@@ -1601,21 +1561,12 @@ function ImageAttachment({ message }: { message: MessageItem }) {
 
   return (
     <div className="mt-3 overflow-hidden rounded-[22px] border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)]">
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img
-        src={mediaUrl}
-        alt={message.mediaName || "Imagem recebida"}
-        className="max-h-[360px] w-full object-cover"
-        loading="lazy"
-        referrerPolicy="no-referrer"
-        onError={() => setImageFailed(true)}
-      />
+      <MessageImagePreview src={mediaUrl} name={message.mediaName} onError={() => setImageFailed(true)} />
     </div>
   );
 }
 
 function AudioAttachment({ message }: { message: MessageItem }) {
-  const [duration, setDuration] = useState<number | null>(message.mediaDuration ?? null);
   const [audioFailed, setAudioFailed] = useState(false);
   const resolved = useProtectedMessageMedia(message);
   const mediaUrl = resolved.mediaUrl;
@@ -1623,7 +1574,6 @@ function AudioAttachment({ message }: { message: MessageItem }) {
   const transcript = getAudioTranscript(message);
 
   useEffect(() => {
-    setDuration(message.mediaDuration ?? null);
     setAudioFailed(false);
   }, [message.id, message.mediaDuration, mediaUrl]);
 
@@ -1648,6 +1598,7 @@ function AudioAttachment({ message }: { message: MessageItem }) {
                 {audioFailed || resolved.failed ? "Nao foi possivel carregar o audio protegido." : unavailableReason}
               </p>
             )}
+            {message.mediaUrl ? <button type="button" onClick={() => { setAudioFailed(false); resolved.retry(); }} className="mt-2 text-xs font-semibold text-[var(--cliente-primary)]">Tentar carregar áudio novamente</button> : null}
           </div>
         </div>
       </div>
@@ -1655,35 +1606,14 @@ function AudioAttachment({ message }: { message: MessageItem }) {
   }
 
   if (!mediaUrl) {
-    return <div className="mt-3 flex items-center gap-2 rounded-[22px] border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-4 text-xs text-[var(--cliente-card-text-soft)]"><Loader2 className="h-4 w-4 animate-spin" />Preparando audio seguro...</div>;
+    return <div className="flex min-h-16 items-center gap-2 py-2 text-xs text-current opacity-70"><Loader2 className="h-4 w-4 animate-spin" />Carregando áudio...</div>;
   }
 
   return (
-    <div className="mt-3 rounded-[22px] border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-3">
-      <div className="mb-2 flex items-center justify-between gap-3 text-xs text-[var(--cliente-card-text-soft)]">
-        <span className="inline-flex items-center gap-2">
-          <Mic className="h-4 w-4" />
-          {message.mediaName || "Audio protegido"}
-        </span>
-        <span>{formatDuration(duration)}</span>
-      </div>
-      <audio
-        src={mediaUrl}
-        controls
-        preload="metadata"
-        className="w-full"
-        onLoadedMetadata={(event) => {
-          const nextDuration = event.currentTarget.duration;
-          if (Number.isFinite(nextDuration) && nextDuration > 0) {
-            setDuration(Math.round(nextDuration));
-          }
-        }}
-        onError={() => setAudioFailed(true)}
-      />
+    <div className="py-0.5">
+      <VoiceMessagePlayer src={mediaUrl} initialDuration={message.mediaDuration} onError={() => setAudioFailed(true)} />
       {transcript ? (
-        <p className="mt-3 whitespace-pre-wrap break-words rounded-2xl bg-white/70 px-3 py-2 text-sm leading-6 text-[#3b4a54]">
-          {transcript}
-        </p>
+        <details className="mt-1 text-xs text-[#54656f]"><summary className="cursor-pointer">Ver transcrição</summary><p className="mt-2 whitespace-pre-wrap break-words text-sm leading-6">{transcript}</p></details>
       ) : null}
     </div>
   );
@@ -1729,19 +1659,6 @@ function DocumentAttachment({ message }: { message: MessageItem }) {
   const resolved = useProtectedMessageMedia(message);
   const mediaUrl = resolved.mediaUrl;
 
-  const downloadDocument = async (event: MouseEvent<HTMLAnchorElement>) => {
-    event.preventDefault();
-    if (!resolved.protectedUrl) return;
-    const separator = resolved.protectedUrl.includes("?") ? "&" : "?";
-    try {
-      const response = await authedFetch(`${resolved.protectedUrl}${separator}resolve=1&download=1`);
-      const payload = await response.json() as { url?: unknown };
-      const downloadUrl = typeof payload.url === "string" ? payload.url.trim() : "";
-      if (response.ok && downloadUrl) window.location.assign(downloadUrl);
-    } catch {
-      // A abertura segura continua disponivel mesmo se o navegador bloquear o download.
-    }
-  };
 
   if (message.mediaStatus === "missing" || resolved.failed) {
     return <MessageMediaFallback type="document" reason={getMessageMediaUnavailableReason(message)} />;
@@ -1775,8 +1692,7 @@ function DocumentAttachment({ message }: { message: MessageItem }) {
         <a
           href={mediaUrl || undefined}
           className="inline-flex items-center gap-2 rounded-xl border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-3 py-2 text-xs font-semibold text-[var(--cliente-card-text)] transition hover:bg-[var(--cliente-surface-muted)]"
-          download
-          onClick={downloadDocument}
+          download={message.mediaName || "documento"}
         >
           <Download className="h-4 w-4" />
           Baixar
@@ -1828,17 +1744,27 @@ function TemplateHeaderPreview({ message }: { message: MessageItem }) {
 
 function MessageBubble({
   message,
+  chatId,
+  channel,
+  latestOutgoing,
   replied,
   onReply,
   onCopy,
   onReact,
+  onRetryOutbound,
+  retrying,
   canOperate,
 }: {
   message: MessageItem;
+  chatId: string;
+  channel?: string;
+  latestOutgoing?: boolean;
   replied?: MessageItem | null;
   onReply?: () => void;
   onCopy?: () => void;
   onReact?: (emoji: string) => void;
+  onRetryOutbound?: (confirmedNotDelivered: boolean) => void;
+  retrying?: boolean;
   canOperate?: boolean;
 }) {
   const [reactionPickerOpen, setReactionPickerOpen] = useState(false);
@@ -1869,12 +1795,12 @@ function MessageBubble({
 
   return (
     <div className={cn("group flex items-end gap-2", isAgent ? "justify-end" : "justify-start")}>
-      <div className={cn("relative flex max-w-[92%] flex-col sm:max-w-[84%] xl:max-w-[74%] 2xl:max-w-[70%]", isAgent ? "items-end" : "items-start")}>
+      <div className={cn("relative flex min-w-0 max-w-[92%] flex-col sm:max-w-[84%] xl:max-w-[74%] 2xl:max-w-[70%]", type === "audio" && "w-[320px]", type === "image" && "w-[360px]", isAgent ? "items-end" : "items-start")}>
         {canOperate ? (
           <div
             className={cn(
-              "absolute top-0 z-20 flex items-center gap-1 opacity-100 transition sm:opacity-0 sm:group-hover:opacity-100",
-              isAgent ? "right-full mr-1.5" : "left-full ml-1.5"
+              "relative z-20 flex items-center gap-1 self-end opacity-100 transition sm:absolute sm:top-0 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100",
+              isAgent ? "sm:right-full sm:mr-1.5" : "sm:left-full sm:ml-1.5"
             )}
           >
             <div className="relative">
@@ -1930,19 +1856,22 @@ function MessageBubble({
         ) : null}
 
         <div
+          data-message-type={type}
           className={cn(
-            "min-w-0 border px-3.5 py-2.5 text-sm shadow-[0_1px_0.5px_rgba(11,20,26,0.13)]",
+            "min-w-0 max-w-full border px-3.5 py-2.5 text-sm shadow-[0_1px_0.5px_rgba(11,20,26,0.13)]",
+            ["audio", "image"].includes(type) && "w-full",
             isAgent
               ? "inbox-message-out rounded-[18px] rounded-br-[5px]"
               : "inbox-message-in rounded-[18px] rounded-bl-[5px]"
           )}
         >
-          {message.participantName || message.participantJid ? <p className="mb-1 text-xs font-bold text-[#128C7E]">{getMessageActorLabel(message)}</p> : null}
+          {message.participantName || message.participantJid ? <p className="inbox-message-actor mb-1 text-xs font-bold text-[#128C7E]">{getMessageActorLabel(message)}</p> : null}
+          {message.instagramContext ? <InstagramStoryPreview key={message.id} context={message.instagramContext} chatId={chatId} messageId={message.id} repliedText={replied ? getReplyPreviewLabel(replied) : undefined} /> : null}
           {(mediaLabel && MediaIcon) || replied ? (
             <div className="mb-2 space-y-2">
-              {replied ? (
-                <div className="rounded-xl border-l-4 border-[#25D366] bg-black/5 px-3 py-2">
-                  <p className="text-[11px] font-bold text-[#128C7E]">{getMessageActorLabel(replied)}</p>
+              {replied && !message.instagramContext ? (
+                <div className="inbox-quoted-message rounded-xl border-l-4 border-[#25D366] bg-black/5 px-3 py-2">
+                  <p className="inbox-message-actor text-[11px] font-bold text-[#128C7E]">{getMessageActorLabel(replied)}</p>
                   <p className="mt-0.5 line-clamp-2 text-xs leading-4 text-current opacity-65">{getReplyPreviewLabel(replied)}</p>
                 </div>
               ) : null}
@@ -1979,27 +1908,29 @@ function MessageBubble({
           ) : null}
           {shouldRenderText ? (
             <p className="whitespace-pre-wrap break-words text-sm leading-6 text-current">
-              {preview}
+              {getMediaCaption(type, preview)}
             </p>
           ) : null}
           {isAgent && outboundStatus === "failed" && message.deliveryError ? (
-            <p className="mt-2 text-xs text-[var(--cliente-danger)]">Falha de entrega: {humanizeDeliveryError(message.deliveryError)}</p>
+            <p className="inbox-delivery-failure mt-2 text-xs text-[var(--cliente-danger)]">Falha de entrega: {humanizeDeliveryError(message.deliveryError)}</p>
           ) : null}
-          <div className="mt-1.5 flex items-center justify-end gap-1.5 text-[10px] text-current opacity-55">
+          {isAgent && outboundStatus === "confirmation_pending" ? (
+            <p className="inbox-delivery-notice mt-2 text-xs text-amber-700">Confirmando entrega. A Altum nao reenviara automaticamente para evitar duplicidade.</p>
+          ) : null}
+          {canOperate && onRetryOutbound && isAgent && message.outboundJobId && ["failed", "confirmation_pending"].includes(outboundStatus) ? (
+            <button
+              type="button"
+              disabled={retrying}
+              onClick={() => onRetryOutbound?.(outboundStatus === "confirmation_pending")}
+              className="mt-2 inline-flex items-center gap-1.5 rounded-lg border border-current/20 px-2 py-1 text-xs font-semibold disabled:opacity-50"
+            >
+              {retrying ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
+              {outboundStatus === "confirmation_pending" ? "Confirmar e reenviar" : "Tentar novamente"}
+            </button>
+          ) : null}
+          <div className="inbox-message-meta mt-1.5 flex items-center justify-end gap-1.5 text-[10px] text-current opacity-55">
             <span>{formatTime(message.createdAt)}</span>
-            {isAgent ? (
-              outboundStatus === "failed" ? (
-                <AlertCircle className="h-3.5 w-3.5 text-[var(--cliente-danger)]" />
-              ) : outboundStatus === "read" ? (
-                <CheckCheck className="h-3.5 w-3.5 text-[#53bdeb]" />
-              ) : outboundStatus === "delivered" ? (
-                <CheckCheck className="h-3.5 w-3.5" />
-              ) : outboundStatus === "sent" ? (
-                <Check className="h-3.5 w-3.5" />
-              ) : (
-                <Clock3 className="h-3.5 w-3.5" />
-              )
-            ) : null}
+            {isAgent ? <MessageDeliveryStatus channel={channel} status={outboundStatus} latest={latestOutgoing} /> : null}
           </div>
         </div>
         {reactionEntries.length ? (
@@ -2092,19 +2023,38 @@ export default function ClienteInboxPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const messagesScrollRef = useRef<HTMLDivElement | null>(null);
+  const conversationWorkspaceRef = useRef<HTMLElement | null>(null);
+  const workspaceHeight = useInboxWorkspaceHeight(conversationWorkspaceRef);
+  useInboxVisualViewport(conversationWorkspaceRef);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const messageInputRef = useRef<HTMLTextAreaElement | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const recordingGateRef = useRef(new InboxRecordingGate());
   const audioChunksRef = useRef<BlobPart[]>([]);
   const messagesRef = useRef<MessageItem[]>([]);
+  const liveMessageVersionRef = useRef(0);
+  const removedMessageIdsRef = useRef(new Set<string>());
   const selectedChatContextRef = useRef<{ tenantId?: string; chatId: string | null }>({ chatId: null });
   const selectedChatRequestRef = useRef(0);
+  const selectedChatLoadGateRef = useRef(new InboxLoadGate());
+  const messageOldestCursorRef = useRef<string | null>(null);
+  const messageNewestCursorRef = useRef<string | null>(null);
+  const messageHasOlderRef = useRef(false);
+  const shouldAutoScrollRef = useRef(true);
+  const [newMessageNotice, setNewMessageNotice] = useState<{ scope: string; ids: string[] }>({ scope: "", ids: [] });
   const [loadingChats, setLoadingChats] = useState(true);
+  const [loadingMoreChats, setLoadingMoreChats] = useState(false);
+  const [chatNextCursor, setChatNextCursor] = useState<string | null>(null);
+  const [chatHasMore, setChatHasMore] = useState(false);
   const [loadingMessages, setLoadingMessages] = useState(false);
+  const [loadingOlderMessages, setLoadingOlderMessages] = useState(false);
+  const [hasOlderMessages, setHasOlderMessages] = useState(false);
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [sending, setSending] = useState(false);
   const [sendingTemplate, setSendingTemplate] = useState(false);
   const [sendingMedia, setSendingMedia] = useState(false);
+  const [retryingOutboundJobId, setRetryingOutboundJobId] = useState<string | null>(null);
   const [mediaUploadProgress, setMediaUploadProgress] = useState(0);
   const [recordingAudio, setRecordingAudio] = useState(false);
   const [updatingAi, setUpdatingAi] = useState(false);
@@ -2123,21 +2073,40 @@ export default function ClienteInboxPage() {
   const [selectedChatIds, setSelectedChatIds] = useState<string[]>([]);
   const [deletingChats, setDeletingChats] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [conversationLoadError, setConversationLoadError] = useState<string | null>(null);
+  const [requestingMicrophone, setRequestingMicrophone] = useState(false);
+  const [isOffline, setIsOffline] = useState(false);
 
   const [chats, setChats] = useState<ChatItem[]>([]);
   const [tenantChannels, setTenantChannels] = useState<TenantChannelItem[]>([]);
+  const [channelsState, setChannelsState] = useState<"loading" | "ready" | "error">("loading");
+  const [channelsScope, setChannelsScope] = useState("");
+  const channelsRequestRef = useRef<AbortController | null>(null);
+  const [managedQrAvailable, setManagedQrAvailable] = useState(false);
+  const [connectScope, setConnectScope] = useState("");
+  const openConnectDialog = () => setConnectScope(tenant?.tenantId && tenant?.userId ? `${tenant.tenantId}:${tenant.userId}` : "");
+  const promptedChannelScope = useRef("");
+  const [composerMode, setComposerMode] = useState<"message" | "note">("message");
   const [outboundChannelId, setOutboundChannelId] = useState("");
-  const [selectedChatId, setSelectedChatId] = useState<string | null>(null);
+  const [selectedChatId, setSelectedChatId] = useState<string | null>(() => searchParams.get("chatId"));
+  const arrivalScope = JSON.stringify([tenant?.tenantId, tenant?.userId, selectedChatId]);
   const [messages, setMessages] = useState<MessageItem[]>([]);
   const [detail, setDetail] = useState<ChatDetailPayload | null>(null);
-  const [messageText, setMessageText] = useState("");
+  const { text: messageText, setText: setMessageText, beginAttempt: beginTextAttempt,
+    acknowledge: acknowledgeTextAttempt, completeLeadStart, isActive: isActiveDraft,
+    persistenceFailed: draftPersistenceFailed } = useInboxDraft(
+    tenant?.tenantId, tenant?.userId, selectedChatId ? `chat:${selectedChatId}` : searchParams.get("leadId") ? `lead:${searchParams.get("leadId")}` : null
+  );
   const [replyTo, setReplyTo] = useState<MessageItem | null>(null);
   const [emojiOpen, setEmojiOpen] = useState(false);
-  const [mediaFiles, setMediaFiles] = useState<QueuedMedia[]>([]);
-  const mediaFilesRef = useRef<QueuedMedia[]>([]);
+  const { files: mediaFiles, setFiles: setMediaFiles, beginAttempt: beginMediaAttempt } = useInboxMediaDraft(tenant?.tenantId, tenant?.userId, selectedChatId);
+  const mediaContextChanged = mediaFiles.some((media) => media.attempt && (
+    (media.attempt.composerText ?? "") !== messageText || media.attempt.replyToId !== (replyTo?.id || null)
+  ));
   const [templateName, setTemplateName] = useState("follow_up_geral");
   const [templateLanguage, setTemplateLanguage] = useState("pt_BR");
   const [templateParamsText, setTemplateParamsText] = useState("");
+  const templateAttempts = useRef(new Map<string, { id: string; payloadKey: string }>());
   const [internalNoteText, setInternalNoteText] = useState("");
   const [leadNoteText, setLeadNoteText] = useState("");
   const [search, setSearch] = useState("");
@@ -2145,6 +2114,8 @@ export default function ClienteInboxPage() {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [priorityFilter, setPriorityFilter] = useState<PriorityFilter>("all");
   const [queueFilter, setQueueFilter] = useState<QueueFilter>("all");
+  const [waitingCustomerOnly, setWaitingCustomerOnly] = useState(false);
+  const [unreadOnly, setUnreadOnly] = useState(false);
   const [aiFilter, setAiFilter] = useState<AiFilter>("all");
   const [conversationTypeFilter, setConversationTypeFilter] = useState("all");
   const [channelFilter, setChannelFilter] = useState("all");
@@ -2169,6 +2140,8 @@ export default function ClienteInboxPage() {
   const [showDetailsDrawer, setShowDetailsDrawer] = useState(false);
   const [isWideContextViewport, setIsWideContextViewport] = useState(false);
   const [globalAiResponsePaused, setGlobalAiResponsePaused] = useState(false);
+  const [aiTestChatIds, setAiTestChatIds] = useState<string[] | null>(null);
+  const [tenantAiEnabled, setTenantAiEnabled] = useState(false);
 
   const initialChatId = searchParams.get("chatId");
   const leadIdFromQuery = searchParams.get("leadId");
@@ -2189,23 +2162,22 @@ export default function ClienteInboxPage() {
   const showDesktopContextPanel = Boolean(selectedChatId);
 
   useEffect(() => {
-    const media = window.matchMedia("(min-width: 1536px)");
+    const syncNetwork = () => setIsOffline(navigator.onLine === false);
+    syncNetwork();
+    window.addEventListener("online", syncNetwork);
+    window.addEventListener("offline", syncNetwork);
+    return () => {
+      window.removeEventListener("online", syncNetwork);
+      window.removeEventListener("offline", syncNetwork);
+    };
+  }, []);
+
+  useEffect(() => {
+    const media = window.matchMedia("(min-width: 1440px)");
     const sync = () => setIsWideContextViewport(media.matches);
     sync();
     media.addEventListener("change", sync);
     return () => media.removeEventListener("change", sync);
-  }, []);
-
-  useEffect(() => {
-    mediaFilesRef.current = mediaFiles;
-  }, [mediaFiles]);
-
-  useEffect(() => {
-    return () => {
-      mediaFilesRef.current.forEach((media) => {
-        if (media.previewUrl) URL.revokeObjectURL(media.previewUrl);
-      });
-    };
   }, []);
 
   useEffect(() => {
@@ -2229,7 +2201,7 @@ export default function ClienteInboxPage() {
       if (typeof saved.channelInstance === "string") setChannelInstanceFilter(saved.channelInstance);
       if (typeof saved.assignedUser === "string") setAssignedUserFilter(saved.assignedUser);
       if (["all", "hot", "warm", "cold"].includes(String(saved.temperature))) setTemperatureFilter(String(saved.temperature));
-      if (allowAdvanced && typeof saved.expanded === "boolean") setShowAdvancedFilters(saved.expanded);
+      setShowAdvancedFilters(false);
     } catch {
       window.localStorage.removeItem(`altum:inbox-filters:${tenant.tenantId}`);
     } finally {
@@ -2258,7 +2230,27 @@ export default function ClienteInboxPage() {
       setShowDetailsDrawer(false);
     }
     setReplyTo(null);
-  }, [selectedChatId]);
+    recordingGateRef.current.invalidate();
+    setRequestingMicrophone(false);
+    const recorder = mediaRecorderRef.current;
+    if (recorder) {
+      recorder.onstop = null;
+      if (recorder.state !== "inactive") recorder.stop();
+      recorder.stream.getTracks().forEach((track) => track.stop());
+      mediaRecorderRef.current = null;
+      audioChunksRef.current = [];
+      setRecordingAudio(false);
+    }
+  }, [selectedChatId, tenant?.tenantId, tenant?.userId]);
+
+  useEffect(() => () => {
+    recordingGateRef.current.invalidate();
+    const recorder = mediaRecorderRef.current;
+    if (!recorder) return;
+    recorder.onstop = null;
+    if (recorder.state !== "inactive") recorder.stop();
+    recorder.stream.getTracks().forEach((track) => track.stop());
+  }, []);
 
   function toggleChatSelection(chatId: string) {
     setSelectedChatIds((current) =>
@@ -2268,7 +2260,7 @@ export default function ClienteInboxPage() {
 
   async function deleteChats(ids: string[]) {
     if (!tenant?.tenantId || !ids.length || !canOperate) return;
-    if (!window.confirm(`Apagar definitivamente ${ids.length} conversa(s) e todas as mensagens?`)) return;
+    if (!window.confirm(`Mover ${ids.length} conversa(s) e todas as mensagens para a lixeira? Elas poderao ser restauradas durante o prazo de retencao.`)) return;
     setDeletingChats(true);
     setError(null);
     try {
@@ -2278,7 +2270,7 @@ export default function ClienteInboxPage() {
         body: JSON.stringify({ ids }),
       });
       const payload = (await res.json().catch(() => ({}))) as { deleted?: number; error?: string };
-      if (!res.ok) throw new Error(payload.error || "Falha ao apagar conversas.");
+      if (!res.ok) throw new Error(payload.error || "Falha ao mover conversas para a lixeira.");
       setSelectedChatIds([]);
       setSelectionMode(false);
       if (selectedChatId && ids.includes(selectedChatId)) {
@@ -2288,7 +2280,7 @@ export default function ClienteInboxPage() {
       }
       await loadChats();
     } catch (deleteError) {
-      setError(deleteError instanceof Error ? deleteError.message : "Falha ao apagar conversas.");
+      setError(deleteError instanceof Error ? deleteError.message : "Falha ao mover conversas para a lixeira.");
     } finally {
       setDeletingChats(false);
     }
@@ -2298,22 +2290,38 @@ export default function ClienteInboxPage() {
     messagesRef.current = messages;
   }, [messages]);
 
-  const loadChats = useCallback(async (options?: { silent?: boolean; syncExternal?: boolean }) => {
+  const loadChats = useCallback(async (options?: { silent?: boolean; syncExternal?: boolean; append?: boolean; cursor?: string | null; preserveExisting?: boolean }) => {
     if (!tenant?.tenantId) return [] as ChatItem[];
     const silent = options?.silent ?? false;
+    const append = options?.append ?? false;
 
     if (!silent) {
-      setLoadingChats(true);
+      if (append) setLoadingMoreChats(true);
+      else setLoadingChats(true);
       setError(null);
     }
     try {
       // A lista inicial precisa abrir a operacao, nao montar todos os sinais
       // de IA e perfis de centenas de contatos antes de mostrar a primeira
       // conversa. Detalhes completos continuam sendo buscados ao abrir o chat.
-      const params = new URLSearchParams({ limit: "100", view: "compact" });
+      const params = new URLSearchParams({ limit: "50", view: "compact" });
       if (options?.syncExternal) params.set("sync", "recent");
-      const res = await authedFetch(`/api/tenant/${tenant.tenantId}/chats?${params.toString()}`);
-      const payload = (await res.json()) as ChatListPayload;
+      if (options?.cursor) params.set("cursor", options.cursor);
+      if (deferredSearch.trim()) params.set("q", deferredSearch.trim());
+      if (statusFilter !== "all") params.set("status", statusFilter);
+      if (priorityFilter !== "all") params.set("priority", priorityFilter);
+      if (queueFilter !== "all") params.set("queue", queueFilter);
+      if (aiFilter !== "all") params.set("ai", aiFilter);
+      if (conversationTypeFilter !== "all") params.set("conversationType", conversationTypeFilter);
+      if (channelFilter !== "all") params.set("channel", channelFilter);
+      if (channelInstanceFilter !== "all") params.set("channelId", channelInstanceFilter);
+      if (assignedUserFilter !== "all") params.set("assignedUserId", assignedUserFilter);
+      if (temperatureFilter !== "all") params.set("temperature", temperatureFilter);
+      if (leadIdFromQuery) params.set("leadId", leadIdFromQuery);
+      const initialPage = await fetchInboxJson<ChatListPayload>((signal) =>
+        authedFetch(`/api/tenant/${tenant.tenantId}/chats?${params.toString()}`, { signal }));
+      const res = initialPage.response;
+      let payload = initialPage.payload;
 
       if (!res.ok) {
         setError(payload.error || "Falha ao carregar inbox.");
@@ -2327,8 +2335,31 @@ export default function ClienteInboxPage() {
         return [];
       }
 
-      const nextChats = payload.items || [];
-      setChats(nextChats);
+      let nextChats = payload.items || [];
+      const filteredRequest = Boolean(
+        deferredSearch.trim() || leadIdFromQuery || statusFilter !== "all" || priorityFilter !== "all" ||
+        queueFilter !== "all" || aiFilter !== "all" || conversationTypeFilter !== "all" ||
+        channelFilter !== "all" || channelInstanceFilter !== "all" || assignedUserFilter !== "all" ||
+        temperatureFilter !== "all"
+      );
+      let scanPages = 0;
+      // A search/filter action must traverse the ordered tenant dataset instead
+      // of pretending that the first scanned window is the complete result.
+      while (!append && filteredRequest && payload.hasMore && payload.nextCursor && nextChats.length < 50 && scanPages < 50) {
+        params.set("cursor", payload.nextCursor);
+        params.delete("sync");
+        const { response: continuationRes, payload: continuationPayload } = await fetchInboxJson<ChatListPayload>((signal) =>
+          authedFetch(`/api/tenant/${tenant.tenantId}/chats?${params.toString()}`, { signal }));
+        if (!continuationRes.ok) throw new Error(continuationPayload.error || "Falha ao completar busca de conversas.");
+        nextChats = mergeChats(nextChats, continuationPayload.items || []);
+        payload = continuationPayload;
+        scanPages += 1;
+      }
+      if (!options?.preserveExisting) {
+        setChatNextCursor(payload.nextCursor || null);
+        setChatHasMore(payload.hasMore === true && Boolean(payload.nextCursor));
+      }
+      setChats((current) => append || options?.preserveExisting ? mergeChats(current, nextChats) : nextChats);
       setSelectedChatId((current) => {
         // A selected chat may be older than the newest limited page.
         // Its detail endpoint remains responsible for access verification.
@@ -2341,28 +2372,51 @@ export default function ClienteInboxPage() {
         return null;
       });
       return nextChats;
-    } catch {
+    } catch (loadError) {
       if (!silent) {
-        setError("Falha ao carregar conversas.");
+        setError(loadError instanceof Error ? loadError.message : "Falha ao carregar conversas.");
       }
       return [];
     } finally {
-      if (!silent) setLoadingChats(false);
+      if (!silent) {
+        if (append) setLoadingMoreChats(false);
+        else setLoadingChats(false);
+      }
     }
-  }, [tenant?.tenantId, initialChatId, leadIdFromQuery]);
+  }, [aiFilter, assignedUserFilter, channelFilter, channelInstanceFilter, conversationTypeFilter, deferredSearch, initialChatId, leadIdFromQuery, priorityFilter, queueFilter, statusFilter, temperatureFilter, tenant?.tenantId]);
 
   const loadTenantChannels = useCallback(async () => {
     if (!tenant?.tenantId) return;
-
+    channelsRequestRef.current?.abort();
+    const controller = new AbortController();
+    channelsRequestRef.current = controller;
+    setChannelsState("loading");
     try {
-      const res = await authedFetch(`/api/tenant/${tenant.tenantId}/channels`);
+      const res = await authedFetch(`/api/tenant/${tenant.tenantId}/channels`, { signal: controller.signal });
       const payload = (await res.json()) as TenantChannelsPayload;
-      if (!res.ok) return;
+      if (controller.signal.aborted) return;
+      if (!res.ok || payload.error) { setChannelsState("error"); return; }
       setTenantChannels(payload.items || []);
+      setManagedQrAvailable(payload.managedProviders?.evolution === true);
+      setChannelsScope(`${tenant.tenantId}:${tenant.userId}`);
+      setChannelsState("ready");
     } catch {
-      setTenantChannels([]);
+      if (!controller.signal.aborted) setChannelsState("error");
     }
-  }, [tenant?.tenantId]);
+  }, [tenant?.tenantId, tenant?.userId]);
+
+  useEffect(() => () => { channelsRequestRef.current?.abort(); }, [tenant?.tenantId, tenant?.userId]);
+
+  const connectedInboxChannels = tenantChannels.filter(isInboxChannelConnected);
+  useEffect(() => {
+    if (channelsState !== "ready" || !tenant?.tenantId || !tenant.userId || connectedInboxChannels.length || channelsScope !== `${tenant.tenantId}:${tenant.userId}`) return;
+    const scope = `${tenant.tenantId}:${tenant.userId}`;
+    if (promptedChannelScope.current === scope) return;
+    promptedChannelScope.current = scope;
+    setConnectScope(scope);
+  }, [channelsState, channelsScope, connectedInboxChannels.length, tenant?.tenantId, tenant?.userId]);
+
+  useEffect(() => { setComposerMode("message"); }, [selectedChatId]);
 
   const loadTenantAiSettings = useCallback(async () => {
     if (!tenant?.tenantId) return;
@@ -2370,16 +2424,36 @@ export default function ClienteInboxPage() {
     try {
       const res = await authedFetch(`/api/tenant/${tenant.tenantId}/settings/ai`);
       const payload = (await res.json().catch(() => ({}))) as {
-        ai?: { responsePaused?: boolean };
+        ai?: { enabled?: boolean; responsePaused?: boolean; testOnly?: boolean; testChatIds?: string[] };
       };
       if (!res.ok) return;
       setGlobalAiResponsePaused(payload.ai?.responsePaused === true);
+      setAiTestChatIds(payload.ai?.testOnly ? payload.ai.testChatIds || [] : null);
+      setTenantAiEnabled(payload.ai?.enabled === true);
     } catch {
-      setGlobalAiResponsePaused(false);
+      // A failed read does not prove that the tenant has resumed responses.
     } finally {
       setLoadingAiSettings(false);
     }
   }, [tenant?.tenantId]);
+
+  async function handleStartAiTest() {
+    if (!tenant?.tenantId || !selectedChatId || activeChat?.isGroup || !canManageAi || !canOperate || updatingGlobalAi) return;
+    if (!window.confirm("A IA enviara respostas REAIS somente nesta conversa, inclusive a ultima mensagem pendente. As demais conversas desta empresa ficarao sem respostas automaticas. A pausa humana desta conversa sera removida. Iniciar teste?")) return;
+    const tenantId = tenant.tenantId;
+    const chatId = selectedChatId;
+    setUpdatingGlobalAi(true);
+    setError(null);
+    try {
+      await startInboxAiTest({ tenantId, chatId, request: authedFetch });
+    } catch (testError) {
+      setError(testError instanceof Error ? testError.message : "Nao foi possivel confirmar o teste. Confira o estado da IA antes de tentar novamente.");
+    } finally {
+      await loadTenantAiSettings();
+      await refreshSelected(true);
+      setUpdatingGlobalAi(false);
+    }
+  }
 
   async function handleToggleGlobalAiResponses() {
     if (!tenant?.tenantId || !canManageAi) return;
@@ -2414,28 +2488,41 @@ export default function ClienteInboxPage() {
     async (chatId: string, options?: { withMessages?: boolean; silent?: boolean; incrementalMessages?: boolean }) => {
       if (!tenant?.tenantId) return;
       if (selectedChatContextRef.current.chatId !== chatId || selectedChatContextRef.current.tenantId !== tenant.tenantId) return;
+      const loadToken = selectedChatLoadGateRef.current.begin(tenant.tenantId, chatId);
+      const liveVersionAtStart = liveMessageVersionRef.current;
+      if (loadToken === null) return;
       const requestId = ++selectedChatRequestRef.current;
       const isCurrentRequest = () => selectedChatRequestRef.current === requestId && selectedChatContextRef.current.chatId === chatId && selectedChatContextRef.current.tenantId === tenant.tenantId;
       const withMessages = options?.withMessages ?? true;
+      const incrementalMessages = shouldLoadInboxIncrementally(
+        messagesRef.current.length, messageNewestCursorRef.current, options?.incrementalMessages
+      );
       const silent = options?.silent ?? false;
+      const scrollContainer = messagesScrollRef.current;
+      const wasNearBottom = !scrollContainer ||
+        scrollContainer.scrollHeight - scrollContainer.scrollTop - scrollContainer.clientHeight < 140;
 
       if (!silent) {
         setLoadingDetail(true);
-        if (withMessages) setLoadingMessages(true);
+        // Keep the existing wall mounted during recovery, preserving its anchor.
+        if (withMessages && !incrementalMessages) setLoadingMessages(true);
       }
 
       try {
-        const requests: Promise<Response>[] = [authedFetch(`/api/tenant/${tenant.tenantId}/chats/${chatId}`)];
+        const detailRequest = fetchInboxJson<ChatDetailPayload>((signal) => authedFetch(`/api/tenant/${tenant.tenantId}/chats/${chatId}`, { signal }));
+        let messagesRequest: ReturnType<typeof fetchInboxJson<MessageListPayload>> | null = null;
         if (withMessages) {
-          const latestMessageAt = options?.incrementalMessages
-            ? Math.max(0, ...messagesRef.current.map(messageTimeMs))
-            : 0;
-          const params = latestMessageAt ? `?since=${encodeURIComponent(String(latestMessageAt))}` : "";
-          requests.push(authedFetch(`/api/tenant/${tenant.tenantId}/chats/${chatId}/messages${params}`));
+          const messageParams = new URLSearchParams({ limit: "100" });
+          if (incrementalMessages && messageNewestCursorRef.current) {
+            messageParams.set("direction", "newer");
+            messageParams.set("cursor", messageNewestCursorRef.current);
+          }
+          messagesRequest = fetchInboxJson<MessageListPayload>((signal) =>
+            authedFetch(`/api/tenant/${tenant.tenantId}/chats/${chatId}/messages?${messageParams.toString()}`, { signal }));
         }
 
-        const [detailRes, messagesRes] = await Promise.all(requests);
-        const detailPayload = (await detailRes.json()) as ChatDetailPayload;
+        const [detailResult, messagesResult] = await Promise.all([detailRequest, messagesRequest]);
+        const { response: detailRes, payload: detailPayload } = detailResult;
         if (!isCurrentRequest()) return;
 
         if (!detailRes.ok) {
@@ -2448,7 +2535,7 @@ export default function ClienteInboxPage() {
             return;
           }
           if (!silent) {
-            setError(detailPayload.error || "Falha ao carregar detalhe da conversa.");
+            setConversationLoadError(detailPayload.error || "Falha ao carregar detalhe da conversa.");
             setDetail(null);
           }
           return;
@@ -2474,8 +2561,8 @@ export default function ClienteInboxPage() {
           )
         );
 
-        if (withMessages && messagesRes) {
-          const messagesPayload = (await messagesRes.json()) as MessageListPayload;
+        if (withMessages && messagesResult) {
+          const { response: messagesRes, payload: messagesPayload } = messagesResult;
           if (!isCurrentRequest()) return;
           if (!messagesRes.ok) {
             if (messagesRes.status === 403 || messagesRes.status === 404) {
@@ -2487,32 +2574,140 @@ export default function ClienteInboxPage() {
               return;
             }
             if (!silent) {
-              setError(messagesPayload.error || "Falha ao carregar mensagens.");
+              setConversationLoadError(messagesPayload.error || "Falha ao carregar mensagens.");
             }
             return;
           }
-          const nextMessages = messagesPayload.items || [];
-          setMessages((current) => options?.incrementalMessages ? mergeChatMessages(current, nextMessages) : nextMessages);
+          let nextMessages = messagesPayload.items || [];
+          if (incrementalMessages) {
+            // Backstop for unavailable realtime and updates to existing bubbles.
+            const recent = await fetchInboxJson<MessageListPayload>((signal) => authedFetch(
+              `/api/tenant/${tenant.tenantId}/chats/${chatId}/messages?limit=100`, { signal }));
+            if (!isCurrentRequest()) return;
+            if (!recent.response.ok) throw new Error("Falha ao reconciliar mensagens.");
+            nextMessages = mergeChatMessages(nextMessages, recent.payload.items || []);
+          }
+          let newestCursor = messagesPayload.newestCursor || messageNewestCursorRef.current;
+          let hasMoreNewer = incrementalMessages && messagesPayload.hasMore === true;
+          let continuationCursor = messagesPayload.nextCursor || newestCursor;
+          let drainedPages = 0;
+
+          // Drain every incremental page before advancing the polling cursor.
+          // This prevents bursts larger than one API page from creating gaps.
+          while (hasMoreNewer && continuationCursor && drainedPages < 50) {
+            const continuationParams = new URLSearchParams({
+              limit: "200",
+              direction: "newer",
+              cursor: continuationCursor,
+            });
+            const { response: continuationRes, payload: continuationPayload } = await fetchInboxJson<MessageListPayload>((signal) => authedFetch(
+              `/api/tenant/${tenant.tenantId}/chats/${chatId}/messages?${continuationParams.toString()}`, { signal }
+            ));
+            if (!isCurrentRequest()) return;
+            if (!continuationRes.ok) {
+              throw new Error(continuationPayload.error || "Falha ao completar atualizacao de mensagens.");
+            }
+            nextMessages = mergeChatMessages(nextMessages, continuationPayload.items || []);
+            newestCursor = continuationPayload.newestCursor || newestCursor;
+            continuationCursor = continuationPayload.nextCursor || newestCursor;
+            hasMoreNewer = continuationPayload.hasMore === true;
+            drainedPages += 1;
+          }
+
+          if (newestCursor) messageNewestCursorRef.current = newestCursor;
+          if (!incrementalMessages) {
+            messageOldestCursorRef.current = messagesPayload.oldestCursor || null;
+            messageHasOlderRef.current = messagesPayload.hasMore === true;
+            setHasOlderMessages(messagesPayload.hasMore === true);
+            shouldAutoScrollRef.current = true;
+          } else {
+            const currentContainer = messagesScrollRef.current;
+            shouldAutoScrollRef.current = wasNearBottom && (!currentContainer ||
+              currentContainer.scrollHeight - currentContainer.scrollTop - currentContainer.clientHeight < 140);
+          }
+          const scope = JSON.stringify([tenant.tenantId, tenant.userId, chatId]);
+          const existingIds = messagesRef.current.map((message) => message.id);
+          const incomingIds = nextMessages.map((message) => message.id);
+          const followingLatest = !incrementalMessages || shouldAutoScrollRef.current;
+          setNewMessageNotice((current) => ({ scope, ids: collectInboxNewMessageIds(
+            existingIds, incrementalMessages ? incomingIds : [], current.scope === scope ? current.ids : [], followingLatest
+          ) }));
+          setMessages((current) => {
+            const visible = nextMessages.filter((message) => !removedMessageIdsRef.current.has(message.id));
+            return current.length || incrementalMessages || liveVersionAtStart !== liveMessageVersionRef.current ? mergeChatMessages(current, visible) : visible;
+          });
         }
+        if (isCurrentRequest()) setConversationLoadError(null);
       } catch {
-        if (isCurrentRequest()) setError("Não foi possível atualizar a conversa. Tente novamente.");
+        if (isCurrentRequest()) setConversationLoadError("Não foi possível atualizar a conversa. Tente novamente.");
       } finally {
+        selectedChatLoadGateRef.current.finish(loadToken);
         if (isCurrentRequest()) {
           setLoadingDetail(false);
           if (withMessages) setLoadingMessages(false);
         }
       }
     },
-    [tenant?.tenantId]
+    [tenant?.tenantId, tenant?.userId]
   );
+
+  const loadOlderMessages = useCallback(async () => {
+    if (!tenant?.tenantId || !selectedChatId || !messageOldestCursorRef.current || loadingOlderMessages) return;
+    const chatId = selectedChatId;
+    const tenantId = tenant.tenantId;
+    const container = messagesScrollRef.current;
+    const previousHeight = container?.scrollHeight || 0;
+    const previousTop = container?.scrollTop || 0;
+    setLoadingOlderMessages(true);
+    setError(null);
+    try {
+      const params = new URLSearchParams({
+        limit: "100",
+        direction: "older",
+        cursor: messageOldestCursorRef.current,
+      });
+      const { response: res, payload } = await fetchInboxJson<MessageListPayload>((signal) =>
+        authedFetch(`/api/tenant/${tenantId}/chats/${chatId}/messages?${params.toString()}`, { signal }));
+      if (!res.ok) throw new Error(payload.error || "Falha ao carregar mensagens anteriores.");
+      if (selectedChatContextRef.current.chatId !== chatId || selectedChatContextRef.current.tenantId !== tenantId) return;
+      shouldAutoScrollRef.current = false;
+      messageOldestCursorRef.current = payload.oldestCursor || messageOldestCursorRef.current;
+      messageHasOlderRef.current = payload.hasMore === true;
+      setHasOlderMessages(payload.hasMore === true);
+      setMessages((current) => mergeChatMessages(current, (payload.items || []).filter((message) => !removedMessageIdsRef.current.has(message.id))));
+      window.requestAnimationFrame(() => {
+        if (selectedChatContextRef.current.chatId !== chatId || selectedChatContextRef.current.tenantId !== tenantId) return;
+        const nextContainer = messagesScrollRef.current;
+        if (!nextContainer) return;
+        nextContainer.scrollTop = previousTop + Math.max(0, nextContainer.scrollHeight - previousHeight);
+      });
+    } catch (loadError) {
+      setError(loadError instanceof Error ? loadError.message : "Falha ao carregar mensagens anteriores.");
+    } finally {
+      setLoadingOlderMessages(false);
+    }
+  }, [loadingOlderMessages, selectedChatId, tenant?.tenantId]);
+  const onReadingScroll = useCallback((nearBottom: boolean) => {
+    shouldAutoScrollRef.current = nearBottom;
+    if (nearBottom) setNewMessageNotice((current) => current.ids.length ? { ...current, ids: [] } : current);
+  }, []);
+  const readingPosition = useInboxReadingPosition({
+    tenantId: tenant?.tenantId, userId: tenant?.userId, chatId: selectedChatId,
+    containerRef: messagesScrollRef, loading: loadingMessages || detail?.chat?.id !== selectedChatId, messageCount: messages.length,
+    hasOlder: hasOlderMessages, loadingOlder: loadingOlderMessages, loadOlder: loadOlderMessages,
+    onUserScroll: onReadingScroll,
+  });
   const refreshSelected = useCallback(
     async (withMessages = false, syncExternal = false) => {
       // Atualizacoes da propria tela nao precisam consultar o provider externo.
       // Isso deixava o envio de texto/midia e alteracoes simples mais lentos.
-      const nextChats = await loadChats({ silent: true, syncExternal });
-      const targetId = selectedChatId || nextChats[0]?.id;
-      if (targetId) {
-        await loadSelectedChat(targetId, { withMessages });
+      if (selectedChatId) {
+        await Promise.all([
+          loadChats({ silent: true, syncExternal, preserveExisting: true }),
+          loadSelectedChat(selectedChatId, { withMessages, silent: true, incrementalMessages: true }),
+        ]);
+      } else {
+        await loadChats({ silent: true, syncExternal, preserveExisting: true });
       }
     },
     [loadChats, loadSelectedChat, selectedChatId]
@@ -2589,9 +2784,17 @@ export default function ClienteInboxPage() {
   }, [loadChats, loadTenantChannels, loadTenantAiSettings]);
 
   useEffect(() => {
+    selectedChatLoadGateRef.current.invalidate();
+    setConversationLoadError(null);
     selectedChatContextRef.current = { tenantId: tenant?.tenantId, chatId: selectedChatId };
     selectedChatRequestRef.current += 1;
     messagesRef.current = [];
+    removedMessageIdsRef.current.clear();
+    messageOldestCursorRef.current = null;
+    messageNewestCursorRef.current = null;
+    messageHasOlderRef.current = false;
+    setHasOlderMessages(false);
+    shouldAutoScrollRef.current = true;
     if (!selectedChatId) {
       setDetail(null);
       setMessages([]);
@@ -2604,20 +2807,65 @@ export default function ClienteInboxPage() {
     return () => { selectedChatRequestRef.current += 1; };
   }, [selectedChatId, loadSelectedChat, tenant?.tenantId]);
 
+  const liveMessagesConnected = useInboxLiveMessages({
+    tenantId: tenant?.tenantId, chatId: selectedChatId,
+    oldestMs: messages.length ? toDate(messages[0].createdAt)?.getTime() || 0 : 0,
+    onChatsChange: async () => { await loadChats({ silent: true, preserveExisting: true }); },
+    onChange: async (ids) => {
+      const chatId = selectedChatId;
+      const tenantId = tenant?.tenantId;
+      if (!chatId || !tenantId) return;
+      const params = new URLSearchParams();
+      ids.forEach((id) => params.append("id", id));
+      const { response, payload } = await fetchInboxJson<MessageListPayload>((signal) => authedFetch(
+        `/api/tenant/${tenantId}/chats/${chatId}/messages?${params}`, { signal }));
+      if (selectedChatContextRef.current.chatId !== chatId || selectedChatContextRef.current.tenantId !== tenantId) return;
+      if (!response.ok) throw new Error(payload.error || "Falha ao atualizar mensagens.");
+      const container = messagesScrollRef.current;
+      shouldAutoScrollRef.current = !container || container.scrollHeight - container.scrollTop - container.clientHeight < 140;
+      const incoming = payload.items || [];
+      liveMessageVersionRef.current += 1;
+      payload.missingIds?.forEach((id) => removedMessageIdsRef.current.add(id));
+      setNewMessageNotice((current) => ({ scope: JSON.stringify([tenantId, tenant?.userId, chatId]),
+        ids: collectInboxNewMessageIds(messagesRef.current.map((message) => message.id), incoming.map((message) => message.id), current.ids, shouldAutoScrollRef.current) }));
+      setMessages((current) => mergeChatMessages(current.filter((message) => !payload.missingIds?.includes(message.id)), incoming));
+      void loadSelectedChat(chatId, { withMessages: false, silent: true });
+    },
+  });
+
+  useAdaptivePolling({
+    enabled: Boolean(tenant?.tenantId && selectedChatId && ["whatsapp", "instagram", "messenger"].includes(detail?.chat?.channel || "")),
+    onTick: async () => {
+      const tenantId = tenant?.tenantId, chatId = selectedChatId;
+      if (!tenantId || !chatId) return;
+      const { response, payload } = await fetchInboxJson<{ imported?: number }>(signal => authedFetch(`/api/tenant/${tenantId}/chats/${chatId}/sync-external`, { method: "POST", signal }), 120000);
+      if (response.ok) {
+        if (payload.imported && selectedChatContextRef.current.chatId === chatId && selectedChatContextRef.current.tenantId === tenantId) {
+          await loadSelectedChat(chatId, { withMessages: true, silent: true, incrementalMessages: true });
+        }
+      }
+    },
+    fastIntervalMs: 10000, slowIntervalMs: 60000, runOnMount: true,
+    source: `inbox-device-recovery:${selectedChatId}`, refreshOnResume: true,
+  });
+
   useAdaptivePolling({
     enabled: Boolean(tenant?.tenantId && selectedChatId),
     onTick: () => {
       if (!selectedChatId) return;
       return loadSelectedChat(selectedChatId, { withMessages: true, silent: true, incrementalMessages: true });
     },
-    fastIntervalMs: 10000,
+    fastIntervalMs: liveMessagesConnected ? 30000 : 3000,
     slowIntervalMs: 60000,
     runOnMount: false,
     source: "inbox-chat",
+    refreshOnResume: true,
   });
 
   const scrollMessagesToBottom = useCallback((behavior: ScrollBehavior = "auto") => {
+    const context = selectedChatContextRef.current;
     window.requestAnimationFrame(() => {
+      if (selectedChatContextRef.current !== context) return;
       const container = messagesScrollRef.current;
       if (container) {
         container.scrollTo({ top: container.scrollHeight, behavior });
@@ -2628,25 +2876,47 @@ export default function ClienteInboxPage() {
   }, []);
 
   useEffect(() => {
-    if (!selectedChatId || loadingMessages) return;
+    if (!selectedChatId || loadingMessages || readingPosition.restoring) return;
+    if (!shouldAutoScrollRef.current) return;
+    shouldAutoScrollRef.current = false;
     scrollMessagesToBottom("auto");
-  }, [loadingMessages, messages.length, scrollMessagesToBottom, selectedChatId]);
+  }, [loadingMessages, messages.length, readingPosition.restoring, scrollMessagesToBottom, selectedChatId]);
 
   useAdaptivePolling({
     enabled: Boolean(tenant?.tenantId),
     onTick: async () => {
-      await loadChats({ silent: true });
+      await loadChats({ silent: true, preserveExisting: true });
     },
-    fastIntervalMs: 30000,
+    fastIntervalMs: liveMessagesConnected ? 30000 : 5000,
     slowIntervalMs: 120000,
     runOnMount: false,
     source: "inbox-list",
+    refreshOnResume: true,
+  });
+
+  useAdaptivePolling({
+    enabled: Boolean(tenant?.tenantId && tenantChannels.some(channel => channel.type === "instagram" || channel.type === "messenger")),
+    onTick: async () => {
+      if (!tenant?.tenantId) return;
+      const { response, payload } = await fetchInboxJson<{ synced?: number; profilesUpdated?: number }>((signal) => authedFetch(
+        `/api/tenant/${tenant.tenantId}/chats/sync-meta`, { method: "POST", signal }), 120000);
+      if (response.ok && (Number(payload.synced || 0) > 0 || Number(payload.profilesUpdated || 0) > 0)) await loadChats({ silent: true, preserveExisting: true });
+    },
+    fastIntervalMs: 60000,
+    slowIntervalMs: 180000,
+    source: "inbox-meta-recovery",
+    refreshOnResume: true,
   });
 
   const selectedChat = useMemo(
     () => chats.find((item) => item.id === selectedChatId) || detail?.chat || null,
     [chats, selectedChatId, detail]
   );
+
+  const latestOutgoingMessageId = useMemo(() => {
+    for (let index = messages.length - 1; index >= 0; index--) if (messages[index].sender === "agent") return messages[index].id;
+    return null;
+  }, [messages]);
 
   const activeChat = detail?.chat?.id === selectedChat?.id ? (detail?.chat ?? null) : selectedChat;
   const aiPaused = useMemo(() => isAiPaused(activeChat), [activeChat]);
@@ -2667,12 +2937,13 @@ export default function ClienteInboxPage() {
     [activeChat?.aiState?.lastHandoffNotifyStatus]
   );
 
-  const filteredChats = useMemo(() => {
+  const matchingChats = useMemo(() => {
     const normalizedSearch = deferredSearch.trim().toLowerCase();
     return chats.filter((chat) => {
       if (conversationTypeFilter === "groups" && !chat.isGroup) return false;
       if (conversationTypeFilter === "contacts" && chat.isGroup) return false;
       if (statusFilter !== "all" && (chat.status || "open") !== statusFilter) return false;
+      if (waitingCustomerOnly && getConversationResponseState(chat).label !== "Aguardando cliente") return false;
       if (priorityFilter !== "all" && (chat.priority || "low") !== priorityFilter) return false;
       if (channelFilter !== "all" && (chat.channel || "whatsapp").toLowerCase() !== channelFilter.toLowerCase()) return false;
       if (channelInstanceFilter !== "all" && String(chat.channelId || "") !== channelInstanceFilter) return false;
@@ -2713,7 +2984,12 @@ export default function ClienteInboxPage() {
 
       return haystack.includes(normalizedSearch);
     });
-  }, [conversationTypeFilter, aiFilter, assignedUserFilter, channelFilter, channelInstanceFilter, chats, deferredSearch, leadIdFromQuery, priorityFilter, queueFilter, statusFilter, temperatureFilter]);
+  }, [conversationTypeFilter, aiFilter, assignedUserFilter, channelFilter, channelInstanceFilter, chats, deferredSearch, leadIdFromQuery, priorityFilter, queueFilter, statusFilter, temperatureFilter, waitingCustomerOnly]);
+
+  const unreadConversationCount = matchingChats.filter(chat => (chat.unreadCount || 0) > 0).length;
+  const filteredChats = useMemo(() => unreadOnly
+    ? matchingChats.filter(chat => (chat.unreadCount || 0) > 0)
+    : matchingChats, [matchingChats, unreadOnly]);
 
   const availableChannelInstances = useMemo(() => {
     const usedIds = new Set(chats.map((chat) => String(chat.channelId || "")).filter(Boolean));
@@ -2816,40 +3092,72 @@ export default function ClienteInboxPage() {
   }
 
   async function startAudioRecording() {
-    if (!canOperate || !selectedChatId || recordingAudio || !canSendMediaInChat) return;
+    if (!canOperate || !selectedChatId || recordingAudio || requestingMicrophone || !canSendMediaInChat || mediaFiles.length >= 10) return;
     if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
       setError("Gravacao de audio nao esta disponivel neste navegador.");
       return;
     }
 
+    const recordingContext = selectedChatContextRef.current;
+    const gate = recordingGateRef.current;
+    const recordingToken = gate.begin();
+    if (recordingToken === null) return;
+    setRequestingMicrophone(true);
+    let acquiredStream: MediaStream | null = null;
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const stream = await acquireInboxRecordingStream(gate, recordingToken, () => navigator.mediaDevices.getUserMedia({ audio: true }));
+      if (!stream) return;
+      acquiredStream = stream;
+      if (selectedChatContextRef.current !== recordingContext) {
+        stream.getTracks().forEach((track) => track.stop());
+        gate.finish(recordingToken);
+        return;
+      }
       const mimeType = getSupportedAudioMimeType();
       const recorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
       audioChunksRef.current = [];
       mediaRecorderRef.current = recorder;
 
       recorder.ondataavailable = (event) => {
-        if (event.data.size > 0) audioChunksRef.current.push(event.data);
+        if (gate.isCurrent(recordingToken) && event.data.size > 0) audioChunksRef.current.push(event.data);
       };
       recorder.onstop = () => {
         stream.getTracks().forEach((track) => track.stop());
+        if (!gate.isCurrent(recordingToken)) return;
+        gate.finish(recordingToken);
         const blob = new Blob(audioChunksRef.current, { type: recorder.mimeType || "audio/webm" });
         audioChunksRef.current = [];
         mediaRecorderRef.current = null;
         setRecordingAudio(false);
-        if (blob.size <= 0) return;
+        if (blob.size <= 0 || selectedChatContextRef.current !== recordingContext) return;
         const extension = audioExtensionForMime(blob.type || recorder.mimeType);
         const file = new File([blob], `audio-${Date.now()}.${extension}`, { type: blob.type || "audio/webm" });
-        void sendMediaFile(file, "");
+        const requestId = typeof crypto.randomUUID === "function" ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+        if (file.size > getClientMediaLimit(file)) {
+          setError("O audio ultrapassou o tamanho permitido. Grave uma mensagem mais curta.");
+          return;
+        }
+        // Keep bytes and the same request ID until the server acknowledges.
+        // A failed request must leave the recording available for a manual retry.
+        setMediaFiles((current) => [...current, { id: requestId, file, previewUrl: "", caption: "" }]);
+        const attempt = beginMediaAttempt(requestId, { caption: "", replyToId: replyTo?.id || null });
+        if (!attempt) return;
+        void sendMediaFile(file, attempt, requestId).then((delivered) => {
+          if (delivered) removeMediaSelection(requestId);
+        });
       };
 
       recorder.start();
       setRecordingAudio(true);
       setError(null);
     } catch {
+      acquiredStream?.getTracks().forEach((track) => track.stop());
+      if (!gate.isCurrent(recordingToken)) return;
+      gate.finish(recordingToken);
       setRecordingAudio(false);
       setError("Nao foi possivel acessar o microfone.");
+    } finally {
+      if (gate.isLatest(recordingToken)) setRequestingMicrophone(false);
     }
   }
 
@@ -2860,12 +3168,14 @@ export default function ClienteInboxPage() {
   }
 
   function cancelAudioRecording() {
+    recordingGateRef.current.invalidate();
+    setRequestingMicrophone(false);
     const recorder = mediaRecorderRef.current;
     audioChunksRef.current = [];
-    if (recorder && recorder.state !== "inactive") {
-      recorder.stream.getTracks().forEach((track) => track.stop());
+    if (recorder) {
       recorder.onstop = null;
-      recorder.stop();
+      recorder.stream.getTracks().forEach((track) => track.stop());
+      if (recorder.state !== "inactive") recorder.stop();
     }
     mediaRecorderRef.current = null;
     setRecordingAudio(false);
@@ -2913,7 +3223,11 @@ export default function ClienteInboxPage() {
 
   async function handleSend(event: FormEvent) {
     event.preventDefault();
-    if (!tenant?.tenantId || !selectedChatId || !messageText.trim() || !canOperate) return;
+    if (!tenant?.tenantId || !selectedChatId || !messageText.trim() || !canOperate || sending) return;
+    if (navigator.onLine === false) {
+      setError("Sem conexao. Seu texto foi mantido; envie quando a rede voltar.");
+      return;
+    }
     if (whatsappWindowClosed) {
       setError("A janela de 24h do WhatsApp encerrou. Use o envio de follow-up aprovado logo abaixo.");
       return;
@@ -2921,62 +3235,113 @@ export default function ClienteInboxPage() {
 
     setSending(true);
     setError(null);
+    const normalizedText = messageText.trim();
+    const sendChatId = selectedChatId;
+    const sendTenantId = tenant.tenantId;
+    const attempt = beginTextAttempt(normalizedText, replyTo?.id || null);
     try {
-      const res = await authedFetch(`/api/tenant/${tenant.tenantId}/chats/${selectedChatId}/send`, {
+      const { response: res, payload } = await fetchInboxJson<{ error?: string }>((signal) => authedFetch(`/api/tenant/${tenant.tenantId}/chats/${selectedChatId}/send`, {
         method: "POST",
+        signal,
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: messageText.trim(), replyToId: replyTo?.id || null }),
-      });
-      const payload = (await res.json()) as { error?: string };
+        body: JSON.stringify({
+          text: normalizedText,
+          replyToId: attempt.replyToId,
+          clientRequestId: attempt.id,
+        }),
+      }));
       if (!res.ok) {
         setError(payload.error || "Falha ao enviar mensagem.");
         return;
       }
 
-      setMessageText("");
-      setReplyTo(null);
-      await refreshSelected(true);
-      scrollMessagesToBottom("smooth");
+      acknowledgeTextAttempt(attempt.draftKey, attempt.id);
+      if (selectedChatContextRef.current.chatId === sendChatId && selectedChatContextRef.current.tenantId === sendTenantId) {
+        setReplyTo(null);
+        await refreshSelected(true);
+        scrollMessagesToBottom("smooth");
+      }
     } catch {
-      setError("Falha ao enviar mensagem.");
+      setError("Nao foi possivel confirmar o envio. O texto foi mantido; tente novamente com seguranca.");
     } finally {
       setSending(false);
+    }
+  }
+
+  async function handleRetryOutbound(message: MessageItem, confirmedNotDelivered: boolean) {
+    if (!tenant?.tenantId || !message.outboundJobId || !canOperate) return;
+    if (confirmedNotDelivered && !window.confirm("Confirme somente se a mensagem realmente nao chegou ao cliente. Reenviar pode gerar duplicidade se ela ja tiver sido entregue.")) return;
+    setRetryingOutboundJobId(message.outboundJobId);
+    setError(null);
+    try {
+      const res = await authedFetch(`/api/tenant/${tenant.tenantId}/chats/outbound-queue`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ jobId: message.outboundJobId, confirmedNotDelivered }),
+      });
+      const payload = await res.json() as { error?: string };
+      if (!res.ok) {
+        setError(payload.error || "Nao foi possivel reprocessar o envio.");
+        return;
+      }
+      await refreshSelected(true);
+    } catch {
+      setError("Nao foi possivel reprocessar o envio.");
+    } finally {
+      setRetryingOutboundJobId(null);
     }
   }
 
   async function handleStartLeadConversation(event: FormEvent) {
     event.preventDefault();
-    if (!tenant?.tenantId || !leadIdFromQuery || !messageText.trim() || !canOperate) return;
+    if (!tenant?.tenantId || !leadIdFromQuery || !messageText.trim() || !canOperate || sending) return;
+    if (!outboundChannelId) { setError("Selecione um WhatsApp ativo antes de iniciar a conversa."); return; }
+    if (navigator.onLine === false) { setError("Sem conexao. Seu texto foi mantido; tente novamente quando a rede voltar."); return; }
 
+    const attempt = beginTextAttempt(messageText.trim(), null, { channelId: outboundChannelId || null });
+    if (attempt.channelId !== outboundChannelId) {
+      setError("Esta tentativa pertence ao WhatsApp selecionado anteriormente. Selecione o canal original para verificar o envio sem duplicar.");
+      return;
+    }
     setSending(true);
     setError(null);
     try {
-      const res = await authedFetch(`/api/tenant/${tenant.tenantId}/whatsapp/send`, {
+      const { response: res, payload } = await fetchInboxJson<{ chatId?: string | null; requiresTemplate?: boolean; error?: string }>((signal) => authedFetch(`/api/tenant/${tenant.tenantId}/whatsapp/send`, {
         method: "POST",
+        signal,
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ leadId: leadIdFromQuery, text: messageText.trim(), channelId: outboundChannelId || undefined }),
-      });
-      const payload = (await res.json()) as { chatId?: string | null; requiresTemplate?: boolean; error?: string };
+        body: JSON.stringify({ leadId: leadIdFromQuery, text: attempt.text, channelId: attempt.channelId || undefined, clientRequestId: attempt.id }),
+      }));
       if (!res.ok || !payload.chatId) {
-        setError(payload.error || "Falha ao iniciar a conversa. Confira se o WhatsApp esta conectado.");
+        if (isActiveDraft(attempt.draftKey)) setError(payload.error || "Falha ao iniciar a conversa. Confira se o WhatsApp esta conectado.");
         return;
       }
 
-      setMessageText("");
+      const completed = completeLeadStart(attempt.draftKey, attempt.id, payload.chatId, payload.requiresTemplate !== true);
+      if (!completed.applied || !isActiveDraft(attempt.draftKey)) return;
       await loadChats({ silent: true });
+      if (!isActiveDraft(attempt.draftKey)) return;
       setSelectedChatId(payload.chatId);
       if (payload.requiresTemplate) {
         setError("A API oficial exige um template aprovado para iniciar a conversa. Selecione o template abaixo e envie.");
       }
+      if (!completed.moved) setError("O rascunho existente da conversa foi mantido. O texto de origem continua salvo no lead.");
     } catch {
-      setError("Falha ao iniciar a conversa. Confira se o WhatsApp esta conectado.");
+      if (isActiveDraft(attempt.draftKey)) setError("Nao foi possivel confirmar o inicio da conversa. Seu texto foi mantido; tente novamente com seguranca.");
     } finally {
       setSending(false);
     }
   }
 
-  async function sendMediaFile(file: File, caption: string) {
+  async function sendMediaFile(file: File, attempt: InboxMediaAttempt, clientRequestId: string) {
     if (!tenant?.tenantId || !selectedChatId || !file || !canOperate) return false;
+    if (navigator.onLine === false) {
+      setError("Sem conexao. O arquivo foi mantido nesta pagina; tente novamente quando a rede voltar.");
+      return false;
+    }
+    const mediaChatId = selectedChatId;
+    const mediaTenantId = tenant.tenantId;
+    const { caption, replyToId } = attempt;
     if (whatsappWindowClosed) {
       setError("A janela de 24h do WhatsApp encerrou. Para retomar, use um template aprovado.");
       return false;
@@ -2988,83 +3353,75 @@ export default function ClienteInboxPage() {
     try {
       const mediaType = getClientMediaType(file);
       const shouldUploadDirectly = mediaType === "video" || file.size >= 3 * 1024 * 1024;
-      let res: Response;
+      let result: { response: Response; payload: { error?: string } };
 
       const sendThroughPanel = () => {
         const form = new FormData();
         form.append("file", file);
+        form.append("clientRequestId", clientRequestId);
         if (caption.trim()) form.append("caption", caption.trim());
-        if (replyTo?.id) form.append("replyToId", replyTo.id);
-        return authedFetch(`/api/tenant/${tenant.tenantId}/chats/${selectedChatId}/send-media`, {
+        if (replyToId) form.append("replyToId", replyToId);
+        return fetchInboxJson<{ error?: string }>((signal) => authedFetch(`/api/tenant/${tenant.tenantId}/chats/${selectedChatId}/send-media`, {
           method: "POST",
+          signal,
           body: form,
-        });
+        }), 60000);
       };
 
       if (shouldUploadDirectly) {
-        try {
-          const currentUser = auth.currentUser;
-          if (!currentUser) throw new Error("Sessao expirada. Entre novamente para enviar o arquivo.");
-          const uniqueId = typeof crypto.randomUUID === "function" ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-          const storagePath = `chat-media/${tenant.tenantId}/${selectedChatId}/${currentUser.uid}/${uniqueId}.${safeUploadExtension(file.name)}`;
-          const uploadTask = uploadBytesResumable(storageRef(storage, storagePath), file, {
-            contentType: file.type || "application/octet-stream",
-            customMetadata: {
-              tenantId: tenant.tenantId,
-              chatId: selectedChatId,
-              uploadedBy: currentUser.uid,
-            },
-          });
-
-          await new Promise<void>((resolve, reject) => {
-            uploadTask.on(
-              "state_changed",
-              (snapshot) => setMediaUploadProgress(Math.round((snapshot.bytesTransferred / snapshot.totalBytes) * 100)),
-              reject,
-              resolve
-            );
-          });
-
-          res = await authedFetch(`/api/tenant/${tenant.tenantId}/chats/${selectedChatId}/send-stored-media`, {
+        const currentUser = auth.currentUser;
+        if (!currentUser) throw new Error("Sessao expirada. Entre novamente para enviar o arquivo.");
+        const storagePath = `chat-media/${tenant.tenantId}/${selectedChatId}/${currentUser.uid}/${clientRequestId}.${safeUploadExtension(file.name)}`;
+        result = await sendInboxDirectMedia({
+          attempt, file, storagePath,
+          probeUploaded: () => probeInboxUploadedObject(() => getMetadata(storageRef(storage, storagePath))),
+          allowPanelFallback: canFallbackInboxVideoUpload(mediaType, file.size, false),
+          upload: async () => {
+            const uploadTask = uploadBytesResumable(storageRef(storage, storagePath), file, {
+              contentType: file.type || "application/octet-stream",
+              customMetadata: {
+                tenantId: tenant.tenantId,
+                chatId: selectedChatId,
+                uploadedBy: currentUser.uid,
+              },
+            });
+            await waitForInboxUpload(uploadTask, setMediaUploadProgress);
+          },
+          sendStored: async () => {
+            const contentSha256 = await inboxMediaContentSha256(file);
+            return fetchInboxJson<{ error?: string }>((signal) => authedFetch(`/api/tenant/${tenant.tenantId}/chats/${selectedChatId}/send-stored-media`, {
             method: "POST",
+            signal,
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               storagePath,
+              contentSha256,
               mediaType,
               filename: file.name,
               caption: caption.trim(),
-              replyToId: replyTo?.id || null,
+              replyToId,
+              clientRequestId,
             }),
-          });
-        } catch (storageError) {
-          // No ambiente local ou durante uma troca de regras do Storage, um
-          // video pequeno ainda pode seguir pelo painel sem desaparecer. Em
-          // producao, o caminho preferido continua sendo o upload resumable.
-          if (mediaType !== "video" || file.size > 32 * 1024 * 1024) throw storageError;
-          console.warn("Upload direto de video bloqueado; usando envio pelo painel.", storageError);
-          setMediaUploadProgress(0);
-          res = await sendThroughPanel();
-        }
+            }), 60000);
+          },
+          sendPanel: () => { setMediaUploadProgress(0); return sendThroughPanel(); },
+        });
       } else {
-        res = await sendThroughPanel();
+        result = await sendThroughPanel();
       }
 
-      const payload = (await res.json()) as { error?: string };
-      if (!res.ok) {
-        setError(payload.error || "Falha ao enviar midia.");
+      if (!result.response.ok) {
+        setError(result.payload.error || "Falha ao enviar midia.");
         return false;
       }
 
-      await refreshSelected(true);
-      scrollMessagesToBottom("smooth");
+      if (selectedChatContextRef.current.chatId === mediaChatId && selectedChatContextRef.current.tenantId === mediaTenantId) {
+        await refreshSelected(true);
+        scrollMessagesToBottom("smooth");
+      }
       return true;
     } catch (uploadError) {
-      const message = uploadError instanceof Error ? uploadError.message : "";
-      setError(
-        /storage\/unauthorized|permission/i.test(message)
-          ? "O armazenamento bloqueou o upload. Um administrador precisa liberar arquivos de conversa."
-          : message || "Falha ao enviar midia. Confira o formato e tente novamente."
-      );
+      setError(describeInboxMediaFailure(uploadError));
       return false;
     } finally {
       setSendingMedia(false);
@@ -3074,18 +3431,31 @@ export default function ClienteInboxPage() {
 
   async function handleSendMedia(event: FormEvent) {
     event.preventDefault();
-    if (!mediaFiles.length) return;
+    if (!mediaFiles.length || sendingMedia || !canOperate || !tenant?.tenantId || !selectedChatId) return;
+    if (navigator.onLine === false) {
+      setError("Sem conexao. O arquivo foi mantido nesta pagina; tente novamente quando a rede voltar.");
+      return;
+    }
     const queued = [...mediaFiles];
-    let sent = 0;
+    let acknowledgedCaption: InboxMediaAttempt | null = null;
+    const mediaContext = { tenantId: tenant?.tenantId, chatId: selectedChatId };
     for (const [index, media] of queued.entries()) {
-      const delivered = await sendMediaFile(media.file, index === 0 ? messageText : "");
+      const attempt = beginMediaAttempt(media.id, { caption: media.caption ?? (index === 0 ? messageText : ""),
+        replyToId: replyTo?.id || null, composerText: index === 0 && media.caption === undefined ? messageText : null });
+      if (!attempt) break;
+      const delivered = await sendMediaFile(media.file, attempt, media.id);
       if (!delivered) break;
-      sent += 1;
+      if (index === 0 && attempt.composerText !== null) acknowledgedCaption = attempt;
       removeMediaSelection(media.id);
     }
-    if (sent) {
-      setMessageText("");
-      setReplyTo(null);
+    if (acknowledgedCaption) {
+      const sentText = acknowledgedCaption.composerText!;
+      const sentReplyId = acknowledgedCaption.replyToId;
+      setMessageText((current) => clearAcknowledgedMediaCaption(current, sentText));
+      if (selectedChatContextRef.current.tenantId === mediaContext.tenantId
+        && selectedChatContextRef.current.chatId === mediaContext.chatId) {
+        setReplyTo((current) => (current?.id || null) === sentReplyId ? null : current);
+      }
     }
   }
 
@@ -3099,7 +3469,8 @@ export default function ClienteInboxPage() {
 
   async function handleSendTemplate(event: FormEvent) {
     event.preventDefault();
-    if (!tenant?.tenantId || !selectedChatId || !canOperate) return;
+    if (!tenant?.tenantId || !selectedChatId || !canOperate || sendingTemplate) return;
+    if (navigator.onLine === false) { setError("Sem conexao. O template foi mantido; tente novamente quando a rede voltar."); return; }
 
     const normalizedTemplateName = templateName.trim();
     if (!normalizedTemplateName) {
@@ -3110,26 +3481,30 @@ export default function ClienteInboxPage() {
     setSendingTemplate(true);
     setError(null);
     try {
-      const res = await authedFetch(`/api/tenant/${tenant.tenantId}/chats/${selectedChatId}/send-template`, {
+      const paramsText = templateParamsText;
+      const template = { templateName: normalizedTemplateName, languageCode: templateLanguage.trim() || "pt_BR", bodyParams: parseTemplateParams(paramsText) };
+      const payloadKey = JSON.stringify(template);
+      const scope = JSON.stringify([tenant.tenantId, auth.currentUser?.uid, selectedChatId, payloadKey]);
+      const previous = templateAttempts.current.get(scope);
+      const attempt = previous?.payloadKey === payloadKey ? previous : { id: crypto.randomUUID(), payloadKey };
+      templateAttempts.current.set(scope, attempt);
+      const { response: res, payload } = await fetchInboxJson<{ error?: string }>((signal) => authedFetch(`/api/tenant/${tenant.tenantId}/chats/${selectedChatId}/send-template`, {
         method: "POST",
+        signal,
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          templateName: normalizedTemplateName,
-          languageCode: templateLanguage.trim() || "pt_BR",
-          bodyParams: parseTemplateParams(templateParamsText),
-        }),
-      });
-      const payload = (await res.json()) as { error?: string };
+        body: JSON.stringify({ ...template, clientRequestId: attempt.id }),
+      }), 60000);
       if (!res.ok) {
         setError(payload.error || "Falha ao enviar template. Confira se ele esta aprovado na Meta e se o idioma/variaveis batem.");
         return;
       }
 
-      setTemplateParamsText("");
+      if (templateAttempts.current.get(scope)?.id === attempt.id) templateAttempts.current.delete(scope);
+      setTemplateParamsText((current) => current === paramsText ? "" : current);
       await refreshSelected(true);
       scrollMessagesToBottom("smooth");
     } catch {
-      setError("Falha ao enviar template. Confira o canal WhatsApp e tente novamente.");
+      setError("Nao foi possivel confirmar o envio. O template foi mantido; repita com os mesmos dados para evitar duplicidade.");
     } finally {
       setSendingTemplate(false);
     }
@@ -3162,6 +3537,27 @@ export default function ClienteInboxPage() {
     } finally {
       setUpdatingAi(false);
     }
+  }
+
+  async function handleReturnToQueue() {
+    if (!tenant?.tenantId || !selectedChatId || !canOperate || updatingAi) return;
+    setUpdatingAi(true);
+    setError(null);
+    try {
+      const { response, payload } = await fetchInboxJson<{ error?: string }>((signal) => authedFetch(
+        `/api/tenant/${tenant.tenantId}/chats/${selectedChatId}`, {
+          method: "PATCH", signal, headers: { "Content-Type": "application/json" }, body: JSON.stringify({ assignedUserId: null }),
+        }));
+      if (!response.ok) { setError(payload.error || "Não foi possível devolver à fila."); return; }
+      if (!canManageQueue) {
+        // Returning ownership also removes this attendant's access to the thread.
+        // Close it before refreshing instead of presenting the expected 403 as a failure.
+        setSelectedChatId(null);
+        setShowDetailsDrawer(false);
+        await loadChats({ silent: true, preserveExisting: false });
+      } else await refreshSelected(true);
+    } catch { setError("Não foi possível confirmar a devolução. Atualize a conversa."); }
+    finally { setUpdatingAi(false); }
   }
 
   async function handleTakeover() {
@@ -3539,6 +3935,27 @@ export default function ClienteInboxPage() {
   }).length;
   const aiPausedConversations = chats.filter((chat) => isAiPaused(chat)).length;
   const linkedLeadConversations = chats.filter((chat) => chat.leadId).length;
+  // Resize on typing, restored drafts, tab changes and width changes, without an inner scroll area.
+  useLayoutEffect(() => {
+    const input = messageInputRef.current;
+    if (!input) return;
+    const resize = () => {
+      input.style.height = "auto";
+      const borderHeight = input.offsetHeight - input.clientHeight;
+      input.style.height = `${input.scrollHeight + borderHeight}px`;
+    };
+    resize();
+    let width = input.clientWidth;
+    const observer = new ResizeObserver(() => {
+      if (input.clientWidth !== width) {
+        width = input.clientWidth;
+        resize();
+      }
+    });
+    observer.observe(input);
+    return () => observer.disconnect();
+  }, [messageText, composerMode, selectedChatId, whatsappWindowClosed]);
+
   const activeFilterCount = [
     statusFilter !== "all",
     priorityFilter !== "all",
@@ -3549,6 +3966,7 @@ export default function ClienteInboxPage() {
     channelInstanceFilter !== "all",
     assignedUserFilter !== "all",
     temperatureFilter !== "all",
+    waitingCustomerOnly,
   ].filter(Boolean).length;
 
   function clearConversationFilters() {
@@ -3561,10 +3979,12 @@ export default function ClienteInboxPage() {
     setChannelInstanceFilter("all");
     setAssignedUserFilter("all");
     setTemperatureFilter("all");
+    setWaitingCustomerOnly(false);
+    setUnreadOnly(false);
   }
 
   const shouldRenderContextPanel = showDetailsDrawer || (showDesktopContextPanel && isWideContextViewport);
-  const contextPanelContent = shouldRenderContextPanel ? (
+  const extendedContextPanelContent = shouldRenderContextPanel ? (
     <div className="space-y-4">
       <PanelCard className="p-4">
         <div className="flex items-start justify-between gap-3">
@@ -3597,10 +4017,10 @@ export default function ClienteInboxPage() {
                     {activeLead.nome || activeChat?.contactName || "Contato"}
                   </p>
                   <p className="mt-1 text-sm text-[var(--cliente-card-text-soft)]">
-                    {activeLead.empresa || activeLead.origem || "Sem empresa informada"}
+                    {[activeLead.opportunityTitle, activeLead.empresa || activeLead.origem || "Sem empresa informada"].filter(Boolean).join(" · ")}
                   </p>
                   <div className="mt-3 flex flex-wrap gap-2">
-                    <StateBadge label={formatChannelLabel(activeLead.channel || activeChat?.channel)} tone="neutral" />
+                    <ConversationChannelBadge channel={activeLead.channel || activeChat?.channel} label={formatChannelLabel(activeLead.channel || activeChat?.channel)} />
                     <StateBadge
                       label={getPipelineStageLabel(
                         normalizePipelineStageId(activeLead.pipelineStage || activeLead.stage || "captado")
@@ -3646,6 +4066,18 @@ export default function ClienteInboxPage() {
                   <div className="mt-3 rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-card)] p-3">
                     <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--cliente-ai)]">Mensagem sugerida</p>
                     <p className="mt-2 text-xs leading-5 text-[var(--cliente-card-text)]">{detail.salesJourney.suggestedMessage}</p>
+                    <button
+                      type="button"
+                      disabled={!canOperate || sending || Boolean(messageText.trim()) || !detail.salesJourney.suggestedMessage?.trim()}
+                      className="mr-4 mt-2 inline-flex items-center gap-2 text-xs font-black text-[var(--cliente-primary)] hover:underline disabled:cursor-not-allowed disabled:opacity-50"
+                      title={messageText.trim() ? "Conclua ou limpe o rascunho atual para inserir a sugestão." : "Revise e edite a sugestão antes de enviar."}
+                      onClick={() => {
+                        const suggestion = detail.salesJourney?.suggestedMessage?.trim();
+                        if (suggestion) setMessageText((current) => current.trim() ? current : suggestion);
+                      }}
+                    >
+                      Usar como rascunho
+                    </button>
                     <button
                       type="button"
                       className="mt-2 inline-flex items-center gap-2 text-xs font-black text-[var(--cliente-primary)] hover:underline"
@@ -3706,12 +4138,11 @@ export default function ClienteInboxPage() {
 
                 <div className="mt-4 grid grid-cols-2 gap-2">
                   {activeAiEvidence.map((item) => (
-                    <div key={item.label} className="rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-card)] px-3 py-3">
-                      <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--cliente-card-text-soft)]">{item.label}</p>
-                      <p className="mt-1 truncate text-xs font-bold text-[var(--cliente-card-text)]">{item.value}</p>
-                    </div>
+                    <CommercialEvidenceFact key={item.label} fact={item} />
                   ))}
                 </div>
+                <CommercialMediaInsight insight={activeLead?.aiLatestMediaInsight} />
+                <CommercialReadNotice state={activeLead?.aiCommercialReadState} />
               </div>
 
               {commercialDossier ? (
@@ -3956,7 +4387,37 @@ export default function ClienteInboxPage() {
               Reprocessar assistente
             </button>
           ) : null}
+          {canOperate && (canManageQueue || (activeChat?.assignedTo || activeChat?.ownerId) === tenant?.userId) && (activeChat?.assignedTo || activeChat?.ownerId) ? (
+            <button type="button" onClick={() => void handleReturnToQueue()} disabled={updatingAi}
+              className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-[var(--cliente-border)] px-3 py-2 text-sm font-semibold disabled:opacity-50">
+              <Reply className="h-4 w-4" />Devolver à fila
+            </button>
+          ) : null}
+          {canManageAi && canOperate && !activeChat?.isGroup ? (
+            <button type="button" onClick={() => void handleStartAiTest()}
+              disabled={!selectedChat || updatingGlobalAi || updatingAi || loadingAiSettings}
+              className="inbox-thread-action inline-flex items-center gap-2 rounded-full border border-violet-300/30 bg-violet-500/10 px-3 py-2 text-xs font-semibold text-violet-700 disabled:opacity-50">
+              {updatingGlobalAi ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Bot className="h-3.5 w-3.5" />}
+              Testar IA so nesta conversa
+            </button>
+          ) : null}
         </div>
+
+        {aiTestChatIds !== null ? (
+          <div role="status" className="mt-3 rounded-2xl border border-violet-300/30 bg-violet-500/10 p-3 text-xs text-violet-700">
+            {globalAiResponsePaused || !tenantAiEnabled ? "Teste restrito pausado. Nenhuma conversa recebe respostas automaticas."
+              : selectedChatId && aiTestChatIds.includes(selectedChatId)
+                ? aiPaused ? "Esta conversa esta no teste, mas o assistente esta pausado nela. Retome para receber respostas."
+                  : "Esta conversa esta no teste restrito da IA. Conversas fora do teste nao recebem respostas automaticas."
+                : "Esta conversa esta fora do teste. A IA responde somente nas conversas selecionadas para teste."}
+            {!globalAiResponsePaused && canManageAi ? (
+              <button type="button" disabled={updatingGlobalAi || loadingAiSettings}
+                onClick={() => void handleToggleGlobalAiResponses()} className="ml-2 font-semibold underline disabled:opacity-50">
+                Encerrar teste e pausar IA
+              </button>
+            ) : null}
+          </div>
+        ) : null}
 
         <div className="mt-4 rounded-[22px] border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] p-4">
           <div className="flex items-start justify-between gap-3">
@@ -4018,7 +4479,7 @@ export default function ClienteInboxPage() {
               <select
                 value={metaForm.assignedUserId}
                 onChange={(event) => setMetaForm((current) => ({ ...current, assignedUserId: event.target.value }))}
-                disabled={!canOperate}
+                disabled={!canOperate || !canManageQueue}
                 className="client-input w-full rounded-xl border px-3 py-2 text-sm outline-none"
               >
                 <option value="">Sem atribuicao</option>
@@ -4383,39 +4844,70 @@ export default function ClienteInboxPage() {
                 </div>
               ))
             )}
+            {!loadingChats && chatHasMore && chatNextCursor ? (
+              <div className="p-3 text-center">
+                <button
+                  type="button"
+                  onClick={() => void loadChats({ append: true, cursor: chatNextCursor })}
+                  disabled={loadingMoreChats}
+                  className="inline-flex min-h-10 items-center gap-2 rounded-full border border-[var(--cliente-border)] bg-[var(--cliente-card)] px-4 text-xs font-bold text-[var(--cliente-card-text-muted)] transition hover:bg-[var(--cliente-panel-soft)] disabled:opacity-60"
+                >
+                  {loadingMoreChats ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+                  {loadingMoreChats
+                    ? "Buscando mais conversas"
+                    : deferredSearch.trim() || activeFilterCount
+                      ? "Buscar em mais conversas"
+                      : "Carregar mais conversas"}
+                </button>
+              </div>
+            ) : null}
           </div>
         </details>
       </PanelCard>
     </div>
   ) : null;
 
-  if (!selectedChat && !loadingChats && chats.length === 0) {
-    return (
-      <div className="inbox-refined client-daily-page min-h-[100dvh] bg-white xl:min-h-0 xl:space-y-5 xl:bg-transparent">
-        <div className="hidden xl:block">
-          <InboxHero
-            title="Atender para converter"
-            subtitle="WhatsApp, Instagram e site entram na mesma mesa. A IA cuida do volume, o humano entra onde a venda precisa de criterio."
-          />
-        </div>
-        <div className="flex min-h-[100dvh] flex-col xl:min-h-0">
-          <div className="border-b border-[var(--cliente-border)] px-4 py-4 xl:hidden">
-            <h1 className="text-[22px] font-bold tracking-normal text-[#111b21]">Conversas</h1>
-            <p className="mt-1 text-sm text-[#667781]">Nenhuma conversa ainda</p>
-          </div>
-          <div className="flex flex-1 items-center justify-center p-6">
-            <EmptyState
-              title="Nenhuma conversa encontrada"
-              description="Quando novas mensagens chegarem no WhatsApp ou nos canais conectados, elas aparecerao aqui."
-            />
-          </div>
-        </div>
-      </div>
-    );
-  }
+  const registeredTasks = leadTasks.filter(task => task.status !== "done").slice(0, 2);
+  const suggestedMessage = detail?.salesJourney?.suggestedMessage?.trim() || "";
+  const contextPanelContent = shouldRenderContextPanel ? <div className={styles.context}>
+    <section className={styles.contextCard}>
+      <h2>Cliente</h2>
+      {loadingDetail ? <p role="status" className="mt-3 text-sm">Carregando cliente…</p> : <>
+        <p className={styles.contactName}>{activeLead?.nome || activeChat?.contactName || activeChat?.contactPhone || "Contato"}</p>
+        {activeLead?.empresa ? <p className={styles.hint}>{activeLead.empresa}</p> : null}
+        {(activeLead?.telefone || activeChat?.contactPhone) ? <p className="mt-2">{activeLead?.telefone || activeChat?.contactPhone}</p> : null}
+        {activeLead?.email ? <p>{activeLead.email}</p> : null}
+        {activeLead ? <Link className={`${styles.secondaryButton} mt-3 w-full`} href={`/cliente/painel/crm?leadId=${encodeURIComponent(activeLead.id)}`}>Abrir ficha do cliente <ExternalLink size={14} /></Link> : <p className="mt-3 text-xs text-[var(--cliente-card-text-soft)]">Esta conversa ainda não está vinculada a uma ficha.</p>}
+      </>}
+    </section>
+    {activeLead && !loadingDetail ? <>
+      <section className={styles.contextCard}>
+        <h2>Oportunidade</h2><p className="mt-3 font-semibold">{activeLead.opportunityTitle || "Negociação deste cliente"}</p>
+        <dl><div><dt>Etapa</dt><dd>{getPipelineStageLabel(normalizePipelineStageId(activeLead.pipelineStage || activeLead.stage || "captado"))}</dd></div><div><dt>Valor</dt><dd>{activeLead.potentialValue == null ? "Não informado" : formatMoney(activeLead.potentialValue)}</dd></div></dl>
+        <Link className={styles.secondaryButton} href={`/cliente/painel/comercial?leadId=${encodeURIComponent(activeLead.id)}`}>Ver propostas <ArrowRight size={14} /></Link>
+      </section>
+      <section className={styles.contextCard}>
+        <h2>Próxima ação registrada</h2>
+        {registeredTasks.length ? registeredTasks.map(task => <div key={task.id} className={styles.task}><strong>{task.title || "Retorno com o cliente"}</strong><p className={styles.hint}>{task.dueAt ? formatDateTime(task.dueAt) : "Sem prazo definido"}</p><div className={styles.contextActions}><button type="button" className={styles.secondaryButton} disabled={!canOperate || updatingTaskId === task.id} onClick={() => void handleToggleLeadTask(task)}>{updatingTaskId === task.id ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />} Concluir</button></div></div>) : <p className="mt-3 text-[var(--cliente-card-text-soft)]">Nenhuma próxima ação registrada.</p>}
+        <Link className={`${styles.secondaryButton} mt-3`} href={`/cliente/painel/agenda?leadId=${encodeURIComponent(activeLead.id)}`}>Agendar retorno <CalendarDays size={14} /></Link>
+      </section>
+      {activeLead.aiLeadSummary || commercialDossier?.sellerBrief ? <details className={styles.contextCard}><summary>Resumo da Altum</summary><p className="mt-3">{activeLead.aiLeadSummary || commercialDossier?.sellerBrief}</p><p className={`${styles.hint} mt-2`}>Resumo gerado pela IA. Confira os detalhes na conversa.</p></details> : null}
+    </> : null}
+    <section className={styles.contextCard}>
+      <h2>Atendimento</h2>
+      <p className="mt-2 text-[var(--cliente-card-text-soft)]">{activeChat?.aiState?.humanOwnerUserId ? "Atendimento humano" : aiPaused ? "Assistente pausado" : "Assistente habilitado nesta conversa"}</p>
+      <label>Responsável<select aria-label="Responsável pelo atendimento" value={metaForm.assignedUserId} disabled={!canOperate || !canManageQueue || savingMeta} onChange={event => setMetaForm(current => ({ ...current, assignedUserId: event.target.value }))}><option value="">Sem responsável</option>{teamMembers.map(member => <option key={member.userId} value={member.userId}>{member.name}</option>)}</select></label>
+      {canOperate && canManageQueue ? <button type="button" className={`${styles.secondaryButton} mt-2`} disabled={savingMeta} onClick={() => void handleSaveMeta()}>{savingMeta ? "Salvando…" : "Salvar responsável"}</button> : null}
+      <div className={styles.contextActions}><button type="button" className={styles.secondaryButton} disabled={!canOperate || savingMeta} onClick={() => void handleQuickStatus(["resolved", "archived"].includes(activeChat?.status || "") ? "pending" : "resolved")}>{["resolved", "archived"].includes(activeChat?.status || "") ? "Reabrir atendimento" : "Resolver atendimento"}</button></div>
+    </section>
+    <details className={styles.contextCard}><summary>Notas internas · {chatNotes.length}</summary><div className="mt-3 space-y-3">{chatNotes.length ? chatNotes.slice(0, 3).map(note => <div key={note.id}><p>{note.text}</p><span className={styles.hint}>{note.authorName || "Equipe"}</span></div>) : <p>Nenhuma nota interna registrada.</p>}<button type="button" className={styles.textButton} onClick={() => { setComposerMode("note"); setShowDetailsDrawer(false); }}>Adicionar nota</button></div></details>
+    <details className={styles.contextCard}><summary>Mais detalhes e controles</summary><p className={`${styles.hint} mt-3`}>Propostas, documentos, histórico e opções desta conversa.</p><div className="mt-3">{extendedContextPanelContent}</div></details>
+  </div> : null;
 
   return (
-    <div className="inbox-refined client-daily-page space-y-4">
+    <div className={`inbox-refined client-daily-page space-y-3 ${styles.surface}`}>
+      {connectScope === `${tenant?.tenantId}:${tenant?.userId}` && tenant?.tenantId && tenant?.userId ? <InboxConnectDialog key={`${tenant.tenantId}:${tenant.userId}`} tenantId={tenant.tenantId} userId={tenant.userId} channels={channelsScope === connectScope ? tenantChannels : []} managedQrAvailable={channelsScope === connectScope && managedQrAvailable} canManageChannels={hasCapability("manage_channels")} canManagePersonalChannel={hasCapability("manage_personal_channel")} onClose={() => setConnectScope("")} onConnected={loadTenantChannels} /> : null}
+      <details className={styles.tools}><summary>Opções da operação</summary>
       <div className="hidden xl:block">
         <InboxHero
           title={canViewTeamRecords ? "Operação de conversas" : "Minha carteira de conversas"}
@@ -4477,6 +4969,7 @@ export default function ClienteInboxPage() {
           }
         />
       </div>
+      </details>
 
       <div className={cn("hidden gap-3 md:grid-cols-2 xl:grid-cols-5", showQueueOverview && "xl:grid")}>
         <InboxMetricCard
@@ -4516,7 +5009,7 @@ export default function ClienteInboxPage() {
         />
       </div>
 
-      {error ? (
+      {error && !selectedChatId ? (
         <div role="alert" aria-live="assertive" className="inbox-notice inbox-notice-danger flex items-start gap-3 rounded-2xl border px-4 py-3 text-sm">
           <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
           <p>{error}</p>
@@ -4524,18 +5017,22 @@ export default function ClienteInboxPage() {
       ) : null}
 
       <section
+        ref={conversationWorkspaceRef}
+        data-has-context={showDesktopContextPanel && isWideContextViewport}
+        data-chat-open={Boolean(selectedChatId)}
+        style={workspaceHeight ? { height: workspaceHeight, maxHeight: workspaceHeight, minHeight: 0, gridTemplateRows: "minmax(0, 1fr)" } : undefined}
         className={cn(
-          "grid min-w-0 grid-cols-1 gap-0 xl:h-[calc(100vh-7rem)] xl:min-h-0 xl:grid-cols-[minmax(320px,370px)_minmax(0,1.7fr)] xl:gap-3",
+          "inbox-workspace grid min-w-0 grid-cols-1 gap-0 xl:h-[calc(100dvh-14rem)] xl:min-h-0 xl:grid-cols-[minmax(280px,330px)_minmax(0,1.7fr)] xl:gap-3",
           selectedChatId
             ? "min-h-0 max-xl:fixed max-xl:inset-0 max-xl:z-[60] max-xl:block max-xl:bg-white"
-            : "min-h-[82vh]",
+            : "max-xl:min-h-[82vh]",
           showDesktopContextPanel && isWideContextViewport
-            ? "2xl:grid-cols-[minmax(320px,370px)_minmax(0,1.7fr)_minmax(320px,360px)]"
-            : "2xl:grid-cols-[minmax(320px,370px)_minmax(0,1.8fr)]"
+            ? "2xl:grid-cols-[minmax(280px,330px)_minmax(0,1.7fr)_minmax(280px,320px)]"
+            : "2xl:grid-cols-[minmax(280px,330px)_minmax(0,1.8fr)]"
         )}
       >
         <PanelCard className={cn(
-          "inbox-rail inbox-whatsapp-list min-h-0 min-w-0 flex-col overflow-hidden max-xl:min-h-[100dvh] max-xl:rounded-none max-xl:border-0 max-xl:shadow-none xl:sticky xl:top-4 xl:flex xl:max-h-[calc(100vh-8rem)]",
+          "inbox-rail inbox-whatsapp-list min-h-0 min-w-0 flex-col overflow-hidden max-xl:min-h-[100dvh] max-xl:rounded-none max-xl:border-0 max-xl:shadow-none xl:flex xl:h-full",
           selectedChatId ? "hidden" : "flex"
         )}>
           <div className="inbox-mobile-list-header border-b border-[var(--cliente-border)] p-3.5 sm:p-4">
@@ -4559,6 +5056,7 @@ export default function ClienteInboxPage() {
                 </div>
               </div>
               <div className="flex shrink-0 items-center gap-2">
+                <button type="button" className={styles.iconButton} aria-label="Conectar canais" title="Conectar canais" onClick={openConnectDialog}><Plus className="h-4 w-4" /></button>
                 {selectionMode && selectedChatIds.length ? (
                   <button
                     type="button"
@@ -4578,12 +5076,12 @@ export default function ClienteInboxPage() {
                       setSelectionMode((current) => !current);
                       setSelectedChatIds([]);
                     }}
-                    className="hidden h-10 items-center justify-center rounded-full px-3 text-xs font-bold text-[#54656f] transition hover:bg-[#f0f2f5] sm:inline-flex"
+                    className={cn("h-10 items-center justify-center rounded-full px-3 text-xs font-bold text-[var(--cliente-card-text-soft)]", showAdvancedFilters || selectionMode ? "inline-flex" : "hidden")}
                   >
                     {selectionMode ? "Cancelar" : "Selecionar"}
                   </button>
                 ) : null}
-                {canManageAi ? (
+                {canManageAi && allowAdvanced && showAdvancedFilters ? (
                   <button
                     type="button"
                     onClick={() => void handleToggleGlobalAiResponses()}
@@ -4594,7 +5092,7 @@ export default function ClienteInboxPage() {
                         ? "bg-[#d9fdd3] text-[#147d45] hover:brightness-95"
                         : "bg-[#ede9fe] text-[#6d28d9] hover:brightness-95"
                     )}
-                    aria-label={globalAiResponsePaused ? "Retomar IA em todas as conversas" : "Pausar IA em todas as conversas"}
+                    aria-label={globalAiResponsePaused ? (aiTestChatIds !== null ? "Retomar IA somente no teste restrito" : "Retomar IA em todas as conversas") : "Pausar IA em todas as conversas"}
                     title={globalAiResponsePaused ? "Retomar respostas automaticas. A auditoria continua ativa." : "Pausar respostas automaticas em todas as conversas. A auditoria continua ativa."}
                   >
                     {updatingGlobalAi || loadingAiSettings ? (
@@ -4611,7 +5109,7 @@ export default function ClienteInboxPage() {
                 <button
                   type="button"
                   onClick={() => setShowAdvancedFilters((current) => !current)}
-                  className="relative inline-flex h-10 w-10 items-center justify-center rounded-full border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] text-[var(--cliente-card-text-muted)] transition hover:bg-[var(--cliente-panel-soft)] sm:hidden"
+                  className={styles.iconButton}
                   aria-label={showAdvancedFilters ? "Ocultar filtros" : "Mostrar filtros"}
                   aria-expanded={showAdvancedFilters}
                 >
@@ -4623,84 +5121,41 @@ export default function ClienteInboxPage() {
                   ) : null}
                 </button>
               </div>
-              <div className="hidden sm:block">
-                <CardTitle title="Conversas" subtitle={`${filteredChats.length} conversas visiveis`} />
-              </div>
+
             </div>
 
             <div className="mt-3 space-y-3 sm:mt-4">
-              <div className="hidden items-center justify-between gap-3 rounded-2xl border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2.5 sm:flex">
-                <div className="min-w-0">
-                  <p className="truncate text-xs font-bold text-[var(--cliente-card-text)]">{canViewTeamRecords ? "Visão da empresa" : "Visão pessoal"}</p>
-                  <p className="truncate text-[11px] text-[var(--cliente-card-text-soft)]">{canViewTeamRecords ? "Todos os canais e responsáveis liberados" : "Somente conversas sob sua responsabilidade"}</p>
-                </div>
-                <StateBadge label={canViewTeamRecords ? "Gestão" : "Minha fila"} tone={canViewTeamRecords ? "info" : "success"} />
-              </div>
               <label className="client-input inbox-mobile-search flex items-center gap-2 rounded-full border px-3.5 py-3 text-sm text-[var(--cliente-card-text-muted)] sm:rounded-[20px]">
                 <Search className="h-4 w-4 text-[var(--cliente-card-text-soft)]" />
                 <input
                   value={search}
                   onChange={(event) => setSearch(event.target.value)}
-                  placeholder="Buscar"
+                  placeholder="Buscar conversa"
                   className="w-full bg-transparent outline-none placeholder:text-[var(--cliente-card-text-soft)]"
                 />
               </label>
 
-              <div className="flex gap-2 overflow-x-auto pb-0.5 sm:hidden" aria-label="Filtros rapidos da fila">
-                <button
-                  type="button"
-                  onClick={() => setQueueFilter(queueFilter === "assigned_waiting" ? "all" : "assigned_waiting")}
-                  aria-pressed={queueFilter === "assigned_waiting"}
-                  className={cn(
-                    "inline-flex min-h-10 shrink-0 items-center gap-1.5 rounded-full border px-3 text-xs font-bold transition",
-                    queueFilter === "assigned_waiting"
-                      ? "border-[color:color-mix(in_srgb,var(--cliente-success)_32%,transparent)] bg-[var(--cliente-whatsapp-soft)] text-[var(--cliente-success)]"
-                      : "border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] text-[var(--cliente-card-text-muted)]"
-                  )}
-                >
-                  Responder
-                  {conversationsNeedingReply ? <span className="rounded-full bg-current/10 px-1.5 py-0.5 text-[10px]">{conversationsNeedingReply}</span> : null}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setPriorityFilter(priorityFilter === "high" ? "all" : "high")}
-                  aria-pressed={priorityFilter === "high"}
-                  className={cn(
-                    "inline-flex min-h-10 shrink-0 items-center gap-1.5 rounded-full border px-3 text-xs font-bold transition",
-                    priorityFilter === "high"
-                      ? "border-[color:color-mix(in_srgb,var(--cliente-warning)_32%,transparent)] bg-[var(--cliente-warning-soft)] text-[var(--cliente-warning)]"
-                      : "border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] text-[var(--cliente-card-text-muted)]"
-                  )}
-                >
-                  Urgentes
-                </button>
-                {canViewTeamRecords ? (
-                  <button
-                    type="button"
-                    onClick={() => setQueueFilter(queueFilter === "unassigned" ? "all" : "unassigned")}
-                    aria-pressed={queueFilter === "unassigned"}
-                    className={cn(
-                      "inline-flex min-h-10 shrink-0 items-center gap-1.5 rounded-full border px-3 text-xs font-bold transition",
-                      queueFilter === "unassigned"
-                        ? "border-[color:color-mix(in_srgb,var(--cliente-primary)_32%,transparent)] bg-[var(--cliente-primary-soft)] text-[var(--cliente-primary)]"
-                        : "border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] text-[var(--cliente-card-text-muted)]"
-                    )}
-                  >
-                    Sem dono
-                    {unassignedConversations ? <span className="rounded-full bg-current/10 px-1.5 py-0.5 text-[10px]">{unassignedConversations}</span> : null}
-                  </button>
-                ) : null}
-                {activeFilterCount ? (
-                  <button
-                    type="button"
-                    onClick={clearConversationFilters}
-                    className="inline-flex min-h-10 shrink-0 items-center gap-1.5 rounded-full border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-3 text-xs font-bold text-[var(--cliente-accent)] transition hover:bg-[var(--cliente-accent-soft)]"
-                  >
-                    <X className="h-3.5 w-3.5" />
-                    Limpar
-                  </button>
-                ) : null}
+              <nav className={styles.queueNav} aria-label="Conversas na lista">
+                <button type="button" aria-pressed={!unreadOnly && conversationTypeFilter !== "groups"} onClick={() => { setUnreadOnly(false); setConversationTypeFilter("all"); }}>Todas</button>
+                <button type="button" aria-pressed={unreadOnly} onClick={() => { setUnreadOnly(true); setConversationTypeFilter("all"); }}>Não lidas <span className={styles.unreadCount}>{unreadConversationCount}</span></button>
+                <button type="button" aria-pressed={!unreadOnly && conversationTypeFilter === "groups"} onClick={() => { setUnreadOnly(false); setConversationTypeFilter("groups"); }}>Grupos</button>
+              </nav>
+              {showAdvancedFilters ? <div className={styles.filtersPanel}>
+              <nav className={styles.queueNav} aria-label="Filas de atendimento">
+                <button type="button" aria-pressed={assignedUserFilter === tenant?.userId} onClick={() => { clearConversationFilters(); setAssignedUserFilter(tenant?.userId || "all"); }}>Minhas</button>
+                <button type="button" aria-pressed={queueFilter === "assigned_waiting"} onClick={() => { clearConversationFilters(); setQueueFilter("assigned_waiting"); }}>Para responder</button>
+                {canViewTeamRecords ? <button type="button" aria-pressed={queueFilter === "unassigned"} onClick={() => { clearConversationFilters(); setQueueFilter("unassigned"); }}>Sem responsável</button> : null}
+                <button type="button" aria-pressed={waitingCustomerOnly} onClick={() => { clearConversationFilters(); setWaitingCustomerOnly(true); }}>Aguardando cliente</button>
+                <button type="button" aria-pressed={statusFilter === "resolved"} onClick={() => { clearConversationFilters(); setStatusFilter("resolved"); }}>Resolvidas</button>
+              </nav>
+              <div className={styles.channelBar}>
+                <select aria-label="Canal de atendimento" value={channelFilter} onChange={event => setChannelFilter(event.target.value)}><option value="all">Todos os canais</option>{availableChannels.map(channel => <option key={channel} value={channel}>{formatChannelLabel(channel)}</option>)}</select>
+                <button type="button" aria-pressed={queueFilter === "sla_breached"} onClick={() => { clearConversationFilters(); setQueueFilter("sla_breached"); }}>Atrasadas</button>
+                {activeFilterCount ? <button type="button" onClick={clearConversationFilters} aria-label="Limpar filtros">Limpar</button> : null}
               </div>
+              </div> : null}
+              {channelsState === "error" ? <p role="status" className="text-xs">Não foi possível verificar os canais. <button type="button" className="underline" onClick={() => void loadTenantChannels()}>Tentar novamente</button></p> : null}
+              {channelsState === "ready" && !connectedInboxChannels.length ? <button type="button" className={styles.secondaryButton} onClick={openConnectDialog}>Conectar canal de atendimento</button> : null}
 
               <div className={showAdvancedFilters ? "block" : "hidden"}>
                 <ClientTabs
@@ -4820,27 +5275,7 @@ export default function ClienteInboxPage() {
                 </label>
               </div>
 
-              <div className="hidden flex-wrap items-center gap-2 sm:flex">
-                <button
-                  type="button"
-                  onClick={() => setShowAdvancedFilters((current) => !current)}
-                  className="inline-flex items-center gap-2 rounded-[18px] border border-[var(--cliente-border)] bg-[var(--cliente-surface-muted)] px-3 py-2.5 text-xs font-semibold text-[var(--cliente-card-text-muted)] transition hover:bg-[var(--cliente-panel-soft)]"
-                  aria-expanded={showAdvancedFilters}
-                >
-                  <SlidersHorizontal className="h-3.5 w-3.5" />
-                  {showAdvancedFilters ? "Recolher filtros" : `Filtros${activeFilterCount ? ` (${activeFilterCount})` : ""}`}
-                </button>
-                {activeFilterCount ? (
-                  <button
-                    type="button"
-                    onClick={clearConversationFilters}
-                    className="inline-flex items-center gap-1.5 rounded-[18px] px-3 py-2.5 text-xs font-semibold text-[var(--cliente-accent)] transition hover:bg-[var(--cliente-accent-soft)]"
-                  >
-                    <X className="h-3.5 w-3.5" />
-                    Limpar filtros
-                  </button>
-                ) : null}
-              </div>
+
 
               {allowAdvanced && showAdvancedFilters ? (
                 <>
@@ -4967,13 +5402,26 @@ export default function ClienteInboxPage() {
           </div>
         </PanelCard>
 
+        {!selectedChatId ? <div className={`${styles.emptyThread} ${styles.desktopEmpty}`}><MessageSquare className="h-10 w-10 text-[var(--cliente-primary)]" /><h2>Seu atendimento começa aqui</h2><p>Selecione uma conversa para responder e acompanhar o cliente.</p><div className={styles.contextActions}><button type="button" className={styles.primaryButton} onClick={openConnectDialog}>Conectar canal</button><Link href="/cliente/painel/crm" className={styles.secondaryButton}>Buscar cliente</Link></div></div> : null}
         <PanelCard className={cn(
           "inbox-thread-shell min-h-0 min-w-0 flex-col overflow-hidden max-xl:rounded-none max-xl:border-0 max-xl:shadow-none xl:flex",
+          activeChat?.channel === "instagram" && channelStyles.instagramThread,
           selectedChatId ? "flex h-[100dvh] max-h-[100dvh] xl:h-full xl:max-h-none" : "hidden"
         )}>
-          <div className="inbox-thread-header inbox-chat-header border-b border-[var(--cliente-border)] p-2.5 pt-[calc(env(safe-area-inset-top)+0.625rem)] sm:p-5">
-            <div className="flex items-center justify-between gap-2 sm:items-start sm:gap-4">
-              <div className="flex min-w-0 flex-1 items-center gap-2 sm:items-start sm:gap-3">
+          {(error || conversationLoadError) && selectedChatId ? (
+            <div role="alert" className="inbox-notice inbox-notice-danger flex shrink-0 items-center gap-2 border-b px-3 py-2 text-xs">
+              <AlertCircle className="h-4 w-4 shrink-0" />
+              <p className="min-w-0 flex-1">{error || conversationLoadError}</p>
+              <button type="button" disabled={loadingDetail || loadingMessages} onClick={() => {
+                setError(null);
+                setConversationLoadError(null);
+                void loadSelectedChat(selectedChatId);
+              }} className="min-h-10 shrink-0 rounded-lg border px-2 font-semibold disabled:opacity-50">Atualizar conversa</button>
+            </div>
+          ) : null}
+          <div className="inbox-thread-header inbox-chat-header max-h-[45%] shrink-0 overflow-y-auto border-b border-[var(--cliente-border)] p-2.5 pt-[calc(env(safe-area-inset-top)+0.625rem)] sm:p-3">
+            <div className="flex flex-wrap items-center justify-between gap-2 sm:gap-3">
+              <div className="flex min-w-0 flex-1 items-center gap-2 sm:basis-56 sm:gap-3">
                 <button
                   type="button"
                   onClick={() => setSelectedChatId(null)}
@@ -4991,14 +5439,14 @@ export default function ClienteInboxPage() {
                 <div className="min-w-0 flex-1">
                   <div className="flex min-w-0 items-center gap-2 sm:flex-wrap">
                     <h3 className="truncate text-[15px] font-semibold tracking-normal text-[var(--cliente-card-text)] sm:text-lg">
-                      {activeChat?.isGroup ? "Grupo · " : ""}{activeChat?.contactName || activeChat?.contactPhone || "Contato sem nome"}
+                      {whatsAppConversationName(activeChat || {})}
                     </h3>
                     <span className="hidden sm:inline-flex">
-                      <StateBadge label={activeChat?.channelDisplayName || formatChannelLabel(activeChat?.channel)} tone="neutral" />
+                      <ConversationChannelBadge channel={activeChat?.channel} label={activeChat?.channelDisplayName || formatChannelLabel(activeChat?.channel)} />
                     </span>
-                    <span className="hidden sm:inline-flex">
+                    {getChannelAccessBadge(activeChat).label !== formatChannelLabel(activeChat?.channel) ? <span className="hidden sm:inline-flex">
                       <StateBadge {...getChannelAccessBadge(activeChat)} />
-                    </span>
+                    </span> : null}
                     {activeChat?.channelPhoneNumber ? <span className="hidden text-xs font-semibold text-[var(--cliente-card-text-soft)] sm:inline">{activeChat.channelPhoneNumber}</span> : null}
                     <span className="hidden sm:inline-flex">
                       <StateBadge label={activeResponseState.label} tone={activeResponseState.tone} />
@@ -5013,27 +5461,7 @@ export default function ClienteInboxPage() {
                       </span>
                     ) : null}
                   </div>
-                  {activeLead ? (
-                  <div className="mt-3 hidden flex-wrap items-center gap-3 sm:flex">
-                    <div className="inline-flex min-w-0 items-center gap-2 rounded-full border border-[var(--cliente-border)] bg-[var(--cliente-panel-soft)] px-2.5 py-1.5 shadow-[0_10px_24px_-18px_rgba(15,23,42,0.45)]">
-                      <ContactAvatar
-                        name={detail?.company?.name || tenant?.tenantName || "Cliente"}
-                        photoUrl={detail?.company?.photoUrl || null}
-                        size="sm"
-                      />
-                      <div className="min-w-0">
-                        <p className="truncate text-xs font-semibold uppercase tracking-[0.14em] text-[var(--cliente-card-text-soft)]">
-                          Empresa
-                        </p>
-                        <p className="truncate text-sm text-[var(--cliente-card-text-muted)]">
-                          {detail?.company?.name || tenant?.tenantName || "Cliente"}
-                          {detail?.company?.niche ? ` / ${detail.company.niche}` : ""}
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                  ) : null}
-                  <div className="mt-0.5 flex min-w-0 items-center gap-1 text-xs text-[#667781] sm:mt-3 sm:flex-wrap sm:gap-2 sm:text-[var(--cliente-card-text-soft)]">
+                  <div className="mt-0.5 flex min-w-0 items-center gap-1 overflow-hidden whitespace-nowrap text-xs text-[#667781] sm:mt-1 sm:gap-2 sm:text-[var(--cliente-card-text-soft)]">
                     <span className="hidden sm:inline">
                       <span className="hidden sm:inline">Responsavel: </span>{activeChat?.assignedUserName || activeChat?.ownerName || "Sem atribuicao"}
                     </span>
@@ -5042,13 +5470,15 @@ export default function ClienteInboxPage() {
                     <span className="hidden sm:inline">|</span>
                     <span className="hidden sm:inline">{activeSla.label}</span>
                     <span className="hidden sm:inline">|</span>
-                    <span className="truncate sm:hidden">{formatChannelLabel(activeChat?.channel)}</span>
+                    <span className="min-w-0 sm:hidden"><ConversationChannelBadge channel={activeChat?.channel} /></span>
                     <span className="hidden truncate sm:inline">Ultima atividade {formatRelative(activeChat?.lastMessageTime)}</span>
                   </div>
                 </div>
               </div>
 
-              <div className="flex shrink-0 items-center gap-1.5 sm:flex-wrap sm:gap-2">
+              <div className={`${styles.headerActions} flex shrink-0 items-center gap-1.5 sm:flex-wrap sm:gap-2`}>
+                {selectedChatId ? <button type="button" className={`${styles.primaryButton} hidden sm:inline-flex`} disabled={!canOperate || savingMeta} onClick={() => void handleQuickStatus(["resolved", "archived"].includes(activeChat?.status || "") ? "pending" : "resolved")}>{["resolved", "archived"].includes(activeChat?.status || "") ? "Reabrir" : "Resolver"}</button> : null}
+                {canManageQueue && selectedChatId ? <button type="button" className={`${styles.secondaryButton} hidden sm:inline-flex`} onClick={() => setShowDetailsDrawer(true)}>Transferir</button> : null}
                 {canOperate && !activeChat?.aiState?.humanOwnerUserId ? (
                   <button
                     type="button"
@@ -5061,10 +5491,6 @@ export default function ClienteInboxPage() {
                     {updatingAi ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <UserRound className="h-3.5 w-3.5" />}
                     <span>Assumir</span>
                   </button>
-                ) : activeChat?.aiState?.humanOwnerUserId ? (
-                  <span className="hidden h-10 items-center rounded-full bg-[#d9fdd3] px-3 text-xs font-bold text-[#147d45] sm:inline-flex">
-                    Humano
-                  </span>
                 ) : null}
                 {activeCallHref && hasModule("calls") ? (
                   <button
@@ -5097,7 +5523,7 @@ export default function ClienteInboxPage() {
                   <RefreshCw className="h-3.5 w-3.5" />
                   Atualizar
                 </button>
-                {canOperate && selectedChatId ? (
+                {canOperate && selectedChatId && allowAdvanced ? (
                   <button
                     type="button"
                     onClick={() => void deleteChats([selectedChatId])}
@@ -5132,7 +5558,14 @@ export default function ClienteInboxPage() {
             ) : null}
 
             {activeLead ? (
-              <div className="mt-4 hidden gap-2 sm:grid lg:grid-cols-3">
+              <details className="mt-2 hidden">
+                <summary className="cursor-pointer py-1 text-xs font-semibold text-[var(--cliente-card-text-muted)]">Contexto comercial</summary>
+                <div className="max-h-[30vh] overflow-y-auto py-2">
+                  <p className="mb-2 truncate text-xs text-[var(--cliente-card-text-soft)]">
+                    Empresa: {detail?.company?.name || tenant?.tenantName || "Cliente"}
+                    {detail?.company?.niche ? ` / ${detail.company.niche}` : ""}
+                  </p>
+              <div className="grid min-w-0 grid-cols-1 gap-2 lg:grid-cols-3">
                 <div className="rounded-2xl border border-[color:color-mix(in_srgb,var(--cliente-primary)_16%,var(--cliente-border))] bg-[var(--cliente-panel-soft)] px-3 py-3">
                   <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--cliente-primary)]">Origem</p>
                   <p className="mt-1 truncate text-sm font-black text-[var(--cliente-card-text)]">{activeAttribution.campaign}</p>
@@ -5152,20 +5585,44 @@ export default function ClienteInboxPage() {
                   <p className="mt-1 truncate text-xs text-[var(--cliente-card-text-soft)]">Use para responder sem perder o contexto comercial.</p>
                 </div>
               </div>
+                </div>
+              </details>
             ) : null}
 
           </div>
 
+          {tenant?.tenantId && selectedChatId && selectedChatId === searchParams.get("chatId") && searchParams.get("messageId") ?
+            <ReferencedConversationMessage<MessageItem> key={`source:${tenant.tenantId}:${tenant.userId}:${selectedChatId}:${searchParams.get("messageId")}:${searchParams.get("messageGeneration")}:${searchParams.get("messageRevision")}`}
+              tenantId={tenant.tenantId} chatId={selectedChatId} messageId={searchParams.get("messageId")!} generation={searchParams.get("messageGeneration")} expectedRevision={searchParams.get("messageRevision")}
+              renderMessage={message => <><p className="mb-2 text-xs">{formatDateTime(message.createdAt)}</p><MessageBubble message={message} chatId={selectedChatId} canOperate={false} /></>} /> : null}
           <div
             ref={messagesScrollRef}
+            style={{ overflowAnchor: "none" }}
+            onScroll={readingPosition.onScroll}
+            onWheel={readingPosition.cancelRestore}
+            onTouchStart={readingPosition.cancelRestore}
             className="inbox-thread-wall inbox-chat-wall min-h-0 flex-1 space-y-3 overflow-x-hidden overflow-y-auto overscroll-contain px-3 py-4 scroll-smooth sm:px-4 lg:px-5"
           >
+            {readingPosition.restoring ? <button type="button" onClick={readingPosition.cancelRestore} className="mx-auto block rounded-full bg-white px-3 py-2 text-xs text-[#667781]">Retomando ponto de leitura · cancelar</button> : null}
+            {selectedChatId && !loadingMessages && hasOlderMessages ? (
+              <div className="flex justify-center pb-1">
+                <button
+                  type="button"
+                  onClick={() => void loadOlderMessages()}
+                  disabled={loadingOlderMessages}
+                  className="inline-flex min-h-9 items-center gap-2 rounded-full border border-[var(--cliente-border)] bg-white/90 px-4 text-xs font-bold text-[var(--cliente-card-text-muted)] shadow-sm transition hover:bg-white disabled:opacity-60"
+                >
+                  {loadingOlderMessages ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+                  {loadingOlderMessages ? "Carregando historico" : "Carregar mensagens anteriores"}
+                </button>
+              </div>
+            ) : null}
             {!selectedChatId ? (
               <EmptyState
                 title="Selecione uma conversa"
                 description="Escolha um contato na lista para abrir o atendimento."
               />
-            ) : loadingMessages ? (
+            ) : loadingMessages && !messages.length ? (
               <div className="py-10 text-center text-[#667781]">
                 <Loader2 className="mx-auto h-5 w-5 animate-spin" />
               </div>
@@ -5177,27 +5634,47 @@ export default function ClienteInboxPage() {
               </div>
             ) : (
               messages.map((message) => {
-                const replied = message.replyToId ? messages.find((item) => item.id === message.replyToId) || null : null;
+                const replied = message.replyToId ? messages.find((item) => item.id === message.replyToId) || null : message.instagramContext?.messageId ? messages.find((item) => item.metaMessageId === message.instagramContext?.messageId) || null : null;
                 return (
+                  <div key={message.id} data-message-id={message.id}>
                   <MessageBubble
-                    key={message.id}
                     message={message}
+                    chatId={selectedChatId || ""}
+                    channel={activeChat?.channel}
+                    latestOutgoing={message.id === latestOutgoingMessageId}
                     replied={replied}
                     canOperate={canOperate}
                     onReply={() => setReplyTo(message)}
                     onCopy={() => void handleCopyMessage(message)}
                     onReact={(emoji) => void handleReactToMessage(message.id, emoji)}
+                    onRetryOutbound={(confirmed) => void handleRetryOutbound(message, confirmed)}
+                    retrying={retryingOutboundJobId === message.outboundJobId}
                   />
+                  </div>
                 );
               })
             )}
             <div ref={messagesEndRef} className="h-1" />
           </div>
 
-          <form
+          {suggestedMessage && selectedChatId && composerMode === "message" ? <aside className={styles.suggestion} aria-label="Sugestão da Altum"><div><strong><Bot size={15} /> Sugestão da Altum</strong><button type="button" className={styles.secondaryButton} disabled={!canOperate || sending || sendingMedia || Boolean(messageText.trim()) || Boolean(mediaFiles.length)} onClick={() => setMessageText(current => current.trim() ? current : suggestedMessage)}>Usar rascunho</button></div><p>{suggestedMessage}</p><span className={styles.hint}>Revise antes de enviar.</span></aside> : null}
+          {selectedChatId ? <div className={styles.composerTabs} role="group" aria-label="Tipo de composição"><button type="button" aria-pressed={composerMode === "message"} onClick={() => setComposerMode("message")}>Mensagem</button><button type="button" aria-pressed={composerMode === "note"} onClick={() => setComposerMode("note")}>Nota interna</button></div> : null}
+          {composerMode === "note" ? <form onSubmit={event => void handleCreateInternalNote(event)} className={styles.noteComposer}><p className={`${styles.hint} mb-2`}>Visível apenas para sua equipe. Não será enviada ao cliente.</p><textarea aria-label="Nota interna" value={internalNoteText} onChange={event => setInternalNoteText(event.target.value)} placeholder="Registrar contexto para a equipe…" disabled={!canOperate || savingNote} /><button type="submit" className={`${styles.primaryButton} mt-2`} disabled={!canOperate || savingNote || !internalNoteText.trim()}>{savingNote ? "Salvando…" : "Salvar nota interna"}</button></form> : <form
             onSubmit={(event) => (whatsappWindowClosed ? void handleSendTemplate(event) : handleComposerSubmit(event))}
             className="inbox-thread-composer inbox-chat-composer shrink-0 border-t border-[var(--cliente-border)] p-2.5 pb-[calc(env(safe-area-inset-bottom)+0.85rem)] sm:p-4"
           >
+            {newMessageNotice.scope === arrivalScope && newMessageNotice.ids.length > 0 ? (
+              <div className="mb-2 flex justify-center" aria-live="polite">
+                <button type="button" onClick={() => {
+                  readingPosition.followLatest();
+                  setNewMessageNotice({ scope: arrivalScope, ids: [] });
+                }} className="min-h-9 rounded-full border border-[var(--cliente-border)] bg-[var(--cliente-card)] px-4 text-xs font-semibold text-[var(--cliente-primary)] shadow-sm">
+                  {newMessageNotice.ids.length === 1 ? "1 nova mensagem" : `${newMessageNotice.ids.length} novas mensagens`} · Ir para o fim
+                </button>
+              </div>
+            ) : null}
+            {isOffline ? <p role="status" className="mb-2 text-xs text-[var(--cliente-warning)]">Sem conexao. As conversas serao atualizadas quando a rede voltar. Nenhuma mensagem sera enviada automaticamente.</p> : null}
+            {draftPersistenceFailed ? <p role="status" className="mb-2 text-xs text-[var(--cliente-warning)]">O navegador nao conseguiu salvar o rascunho. Nao feche esta pagina antes de enviar.</p> : null}
             {whatsappWindowClosed ? (
               <>
               <div className="flex items-center gap-2 sm:hidden">
@@ -5337,11 +5814,17 @@ export default function ClienteInboxPage() {
                   </div>
                 ) : null}
 
-                {recordingAudio ? (
+                {mediaContextChanged && !sendingMedia ? (
+                  <p role="status" className="mb-2 text-xs text-[var(--cliente-card-text-muted)]">
+                    Ao repetir o arquivo, manteremos a legenda e a mensagem respondida originais. O texto novo fica no rascunho.
+                  </p>
+                ) : null}
+
+                {recordingAudio || requestingMicrophone ? (
                   <div className="mb-2 flex items-center justify-between gap-3 rounded-full bg-[#fee2e2] px-3 py-2 text-sm text-[#7f1d1d]">
                     <span className="inline-flex items-center gap-2 font-semibold">
                       <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-red-600" />
-                      Gravando audio
+                      {requestingMicrophone ? "Aguardando microfone" : "Gravando audio"}
                     </span>
                     <div className="flex items-center gap-1">
                       <button
@@ -5354,6 +5837,7 @@ export default function ClienteInboxPage() {
                       <button
                         type="button"
                         onClick={stopAudioRecording}
+                        disabled={requestingMicrophone}
                         className="rounded-full bg-red-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-red-500"
                       >
                         Concluir
@@ -5362,7 +5846,7 @@ export default function ClienteInboxPage() {
                   </div>
                 ) : null}
 
-              <div className="flex items-center gap-2">
+              <div className="inbox-compose-row flex min-w-0 items-center gap-2">
                 <button
                   type="button"
                   onClick={() => setEmojiOpen((current) => !current)}
@@ -5375,7 +5859,7 @@ export default function ClienteInboxPage() {
                 <button
                   type="button"
                   onClick={() => fileInputRef.current?.click()}
-                  disabled={!selectedChatId || sending || sendingMedia || recordingAudio || !canOperate || !canSendMediaInChat}
+                  disabled={!selectedChatId || sending || sendingMedia || recordingAudio || requestingMicrophone || !canOperate || !canSendMediaInChat}
                   className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-[var(--cliente-card-text-muted)] transition hover:bg-[var(--cliente-surface-muted)] disabled:opacity-50"
                   aria-label="Anexar arquivo"
                   title={canSendMediaInChat ? "Anexar arquivo" : "Midia disponivel apenas dentro da janela WhatsApp"}
@@ -5391,15 +5875,15 @@ export default function ClienteInboxPage() {
                   onChange={(event) => handleFilesSelected(event.target.files)}
                 />
                 <textarea
+                  ref={messageInputRef}
                   value={messageText}
                   onChange={(event) => setMessageText(event.target.value)}
                   placeholder={mediaFiles.length ? "Legenda para o primeiro arquivo" : canOperate ? "Mensagem" : "Sem permissao para responder"}
                   rows={1}
-                  className="inbox-chat-input max-h-28 min-h-11 min-w-0 flex-1 resize-none rounded-[22px] border border-transparent px-4 py-3 text-sm outline-none focus:border-[#25D366]"
+                  className="inbox-chat-input min-h-11 min-w-0 flex-1 resize-none rounded-[22px] border border-transparent px-4 py-3 text-sm outline-none focus:border-[#25D366]"
                   disabled={!selectedChatId || sending || sendingMedia || !canOperate}
-                  onFocus={() => window.setTimeout(() => scrollMessagesToBottom("smooth"), 160)}
                   onKeyDown={(event) => {
-                    if (event.key === "Enter" && !event.shiftKey) {
+                    if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
                       event.preventDefault();
                       event.currentTarget.form?.requestSubmit();
                     }
@@ -5409,8 +5893,8 @@ export default function ClienteInboxPage() {
                   <button
                     type="button"
                     onClick={recordingAudio ? stopAudioRecording : () => void startAudioRecording()}
-                    disabled={!selectedChatId || sending || sendingMedia || !canOperate || !canSendMediaInChat}
-                    className="inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-[#25D366] text-[#07130C] transition hover:brightness-95 disabled:opacity-55"
+                    disabled={!selectedChatId || sending || sendingMedia || requestingMicrophone || !canOperate || !canSendMediaInChat}
+                    className="inbox-channel-record inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-[#25D366] text-[#07130C] transition hover:brightness-95 disabled:opacity-55"
                     aria-label={recordingAudio ? "Concluir audio" : "Gravar audio"}
                     title={canSendMediaInChat ? "Gravar audio" : "Audio disponivel apenas dentro da janela WhatsApp"}
                   >
@@ -5421,7 +5905,7 @@ export default function ClienteInboxPage() {
                   type="submit"
                   disabled={!selectedChatId || sending || sendingMedia || (!messageText.trim() && !mediaFiles.length) || !canOperate}
                   className={cn(
-                    "h-12 shrink-0 items-center justify-center rounded-full bg-[#25D366] text-sm font-semibold text-[#07130C] transition hover:brightness-95 disabled:opacity-55 sm:w-auto sm:px-4 sm:py-2",
+                    "inbox-channel-send inbox-send-button h-12 w-12 shrink-0 items-center justify-center rounded-full bg-[#25D366] text-sm font-semibold text-[#07130C] transition hover:brightness-95 disabled:opacity-55 sm:w-auto sm:px-4 sm:py-2",
                     !messageText.trim() && !mediaFiles.length ? "hidden" : "inline-flex"
                   )}
                   aria-label="Enviar mensagem"
@@ -5432,12 +5916,12 @@ export default function ClienteInboxPage() {
               </div>
               </div>
             )}
-          </form>
+          </form>}
         </PanelCard>
 
         {showDesktopContextPanel && isWideContextViewport ? (
-          <div className="hidden min-h-0 min-w-0 overflow-x-hidden overflow-y-auto 2xl:block 2xl:sticky 2xl:top-4 2xl:max-h-[calc(100vh-8rem)]">
-            {contextPanelContent}
+          <div className={`${styles.contextDesktop} hidden h-full min-h-0 min-w-0 overflow-x-hidden overflow-y-auto`}>
+            {!showDetailsDrawer ? contextPanelContent : null}
           </div>
         ) : null}
       </section>
@@ -5446,8 +5930,8 @@ export default function ClienteInboxPage() {
         <CustomerProfileDrawer
           open={showDetailsDrawer}
           onClose={() => setShowDetailsDrawer(false)}
-          title="Opcoes avancadas"
-          subtitle="Cliente, oportunidade, assistente e controles desta conversa"
+          title="Cliente e atendimento"
+          subtitle="Contexto e próximas ações da conversa"
         >
           {contextPanelContent}
         </CustomerProfileDrawer>

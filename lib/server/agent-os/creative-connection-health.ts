@@ -36,6 +36,10 @@ export async function recordCreativeConnectionAttempts(attempts: CreativeExecuti
       // route from delaying every new request. It remains recoverable: the next
       // explicit health test or later successful job clears it.
       batch.set(ref, {
+        // `health` alone is not enough: several screens and MCP discovery use
+        // the connection status as their first gate. Keep both fields aligned
+        // so an exhausted provider is never advertised as ready to render.
+        status: "degraded",
         health: {
           status: "degraded",
           lastFailedAt: FieldValue.serverTimestamp(),

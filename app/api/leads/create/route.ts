@@ -3,10 +3,10 @@ import { FieldValue } from "firebase-admin/firestore";
 import { adminDb } from "@/app/lib/server/firebase-admin";
 import { isAdmin, requireRequestUser, RouteAuthError } from "@/app/lib/server/route-auth";
 import { normalizePhoneBR } from "@/app/lib/server/phone";
-import { getTenantForCurrentUser } from "@/lib/server/tenant";
+import { getTenantForCurrentUser, TenantAccessError } from "@/lib/server/tenant";
 import { buildLeadAttributionPatch } from "@/lib/server/lead-intake";
 import { dispatchLeadConversionEvents } from "@/lib/server/pixels/conversions";
-import { runLeadAutomations } from "@/lib/server/automations";
+import { commitManualLeadCreationOccurrence, intakeCreationJobId, processIntakeCreation } from "@/lib/server/crm/intake-occurrence";
 import { recordLeadConversionStep } from "@/lib/server/conversion-trail";
 
 type Body = {
@@ -227,25 +227,30 @@ export async function POST(req: Request) {
       };
     }
 
-    await leadRef.set(removeUndefinedFields(payload), { merge: true });
+    const eventRef = leadRef.collection("events").doc();
+    const committed = await adminDb.runTransaction(async tx => {
+      const current = await tx.get(leadRef);
+      // Preserve the route's update semantics, but never apply a stale ownership
+      // or tenant decision after another request created/reassigned the record.
+      if (current.exists !== existingSnap.exists || current.exists && !current.updateTime?.isEqual(existingSnap.updateTime!)) throw new RouteAuthError(409, "lead_changed", "O lead mudou. Atualize antes de salvar.");
+      if (current.exists) {
+        tx.set(leadRef, removeUndefinedFields(payload), { merge: true });
+        const prior = current.data()!;
+        return { agencyCreated: false, creationJobId: prior.creationProducer === "agency_leads" && prior.intakeCreationEventId ? intakeCreationJobId(prior.intakeCreationEventId) : null };
+      }
+      if (tenantId) {
+        await commitManualLeadCreationOccurrence(tx, { leadRef, eventRef, record: { ...removeUndefinedFields(payload), sourceType: clean(body.sourceType, 80) || "manual" }, actorId: user.uid, actorName: user.name, producer: "agency_leads" });
+      } else {
+        tx.create(leadRef, removeUndefinedFields(payload));
+        tx.create(eventRef, { type: "system", title: "Lead criado", detail: "Lead registrado pela plataforma.", actorId: user.uid, actorName: user.name, createdAt: FieldValue.serverTimestamp() });
+      }
+      return { agencyCreated: true, creationJobId: tenantId ? intakeCreationJobId(eventRef.id) : null };
+    });
+    if (committed.creationJobId) await processIntakeCreation(committed.creationJobId, tenantId || undefined);
 
-    if (!existingSnap.exists) {
-      await leadRef.collection("events").add({
-        type: "system",
-        title: "Lead criado",
-        detail: "Lead registrado pela plataforma.",
-        createdAt: FieldValue.serverTimestamp(),
-      });
+    if (committed.agencyCreated) {
 
       if (tenantId) {
-        await runLeadAutomations({
-          tenantId,
-          trigger: "lead_created",
-          leadId: leadRef.id,
-          actorId: user.uid,
-          actorName: user.name,
-        });
-
         await dispatchLeadConversionEvents({
           tenantId,
           leadId: leadRef.id,
@@ -278,6 +283,9 @@ export async function POST(req: Request) {
       action: existingSnap.exists ? "updated" : "created",
     });
   } catch (error) {
+    if (error instanceof TenantAccessError || error instanceof Error && error.message.startsWith("CRM_STAGE_CREATION_")) {
+      return NextResponse.json({ error: "Autorizacao para criar o contato nesta empresa indisponivel." }, { status: 403 });
+    }
     if (error instanceof RouteAuthError) {
       return NextResponse.json(
         { error: error.message, code: error.code },

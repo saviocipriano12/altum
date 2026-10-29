@@ -1,4 +1,6 @@
 import { FieldValue } from "firebase-admin/firestore";
+import { createHash } from "node:crypto";
+import type { StageAutomationSource } from "@/lib/server/automation-stage-delivery";
 import { adminDb } from "@/app/lib/server/firebase-admin";
 import { normalizePipelineStageId } from "@/lib/pipeline";
 
@@ -19,6 +21,7 @@ type RecordLeadConversionStepInput = {
   actorName?: string;
   detail?: string;
   metadata?: Record<string, unknown>;
+  stageSource?: StageAutomationSource;
 };
 
 function clean(value: unknown, max = 180) {
@@ -57,10 +60,22 @@ export async function recordLeadConversionStep(input: RecordLeadConversionStepIn
 
   const docId = sanitizeDocId(`trail_${tenantId}_${leadId}_${step}`);
   const trailRef = adminDb.collection("lead_conversion_trails").doc(docId);
-  const leadEventRef = adminDb.collection("leads").doc(leadId).collection("events").doc();
+  const receiptId = input.stageSource ? `stage_trail_${createHash("sha256").update(JSON.stringify([tenantId, leadId, input.stageSource.kind, input.stageSource.id])).digest("hex")}` : null;
+  const leadEvents = adminDb.collection("leads").doc(leadId).collection("events");
+  const leadEventRef = receiptId ? leadEvents.doc(receiptId) : leadEvents.doc();
 
   const txResult = await adminDb.runTransaction(async (tx) => {
+    const parent = input.stageSource ? await (await import("@/lib/server/automation-stage-delivery")).assertStageHookSource(tx, { tenantId, leadId, source: input.stageSource }) : null;
+    const signature = createHash("sha256").update(JSON.stringify([tenantId, leadId, step, source, actorId, actorName, detail])).digest("hex");
+    const audit = parent ? await tx.get(leadEventRef) : null;
+    if (parent?.data()?.stageConversionTrailReceipt) {
+      const receipt = parent.data()!.stageConversionTrailReceipt;
+      if (receipt.version !== 1 || receipt.signature !== signature || !audit?.exists || audit.data()?.tenantId !== tenantId || audit.data()?.stageOccurrenceId !== input.stageSource!.id || audit.data()?.stageTrailSignature !== signature) throw new Error("CRM_STAGE_TRAIL_RECEIPT_CHANGED");
+      return { firstOccurrence: false };
+    }
+    if (audit?.exists) throw new Error("CRM_STAGE_TRAIL_RECEIPT_MISSING");
     const trailSnap = await tx.get(trailRef);
+    if (trailSnap.exists && (trailSnap.data()?.tenantId !== tenantId || trailSnap.data()?.leadId !== leadId || trailSnap.data()?.step !== step)) throw new Error("CRM_STAGE_TRAIL_SCOPE_CHANGED");
     const firstOccurrence = !trailSnap.exists;
     const previousOccurrences = trailSnap.exists
       ? Math.max(0, Number((trailSnap.data() as Record<string, unknown>).occurrences || 0))
@@ -86,8 +101,9 @@ export async function recordLeadConversionStep(input: RecordLeadConversionStepIn
       { merge: true }
     );
 
-    if (firstOccurrence) {
+    if (firstOccurrence || parent) {
       tx.set(leadEventRef, {
+        ...(parent ? { tenantId, stageOccurrenceId: input.stageSource!.id, stageTrailSignature: signature } : {}),
         type: "conversion_step",
         title: `Conversao registrada: ${step}`,
         detail: detail || `Lead atingiu etapa ${step}.`,
@@ -100,6 +116,7 @@ export async function recordLeadConversionStep(input: RecordLeadConversionStepIn
       });
     }
 
+    if (parent) tx.update(parent.ref, { stageConversionTrailReceipt: { version: 1, signature, step, createdAt: FieldValue.serverTimestamp() } });
     return { firstOccurrence };
   });
 

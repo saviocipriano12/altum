@@ -1,4 +1,6 @@
-import { FieldValue } from "firebase-admin/firestore";
+import { FieldValue, FieldPath } from "firebase-admin/firestore";
+import { createHash } from "node:crypto";
+import { isVerifiedAsaasBillingProof } from "@/lib/server/crm/asaas-commercial-proof";
 import { Resend } from "resend";
 import { adminDb } from "@/app/lib/server/firebase-admin";
 import { normalizePhoneBR } from "@/app/lib/server/phone";
@@ -665,62 +667,47 @@ export async function reactivateTenantAfterBillingPayment(input: {
   tenantId: string;
   financeId?: string;
   asaasChargeId?: string;
+  ledgerId?: string;
 }) {
   const tenantId = clean(input.tenantId, 140);
   if (!tenantId) return { reactivated: false, reason: "tenant_missing" };
-
-  const pendingSnap = await adminDb
-    .collection("financeiro")
-    .where("tenantId", "==", tenantId)
-    .where("contractAutoBilling", "==", true)
-    .limit(200)
-    .get();
-
-  const hasOpenOverdue = pendingSnap.docs.some((doc) => {
-    const data = doc.data() as Record<string, unknown>;
-    if (isPaidStatus(data.status) || clean(data.status, 40).toLowerCase() === "cancelado") return false;
-    const dueDate = parseYmd(clean(data.contractDueDate || data.vencimento || data.dueDate, 20));
-    return Boolean(dueDate && daysUntil(new Date(), dueDate) < 0);
+  const financeId = clean(input.financeId, 140), chargeId = clean(input.asaasChargeId, 140), ledgerId = clean(input.ledgerId, 180);
+  if (![tenantId, financeId, chargeId, ledgerId].every(value => value && !value.includes("/"))) return { reactivated: false, reason: "verified_billing_source_missing" };
+  const tenantRef = adminDb.collection("tenants").doc(tenantId);
+  const pendingQuery = adminDb.collection("financeiro").where("tenantId", "==", tenantId).where("contractAutoBilling", "==", true).orderBy(FieldPath.documentId()).limit(200);
+  const receiptRef = adminDb.collection("audit_logs").doc(`billing_reactivation_${createHash("sha256").update(JSON.stringify([tenantId, financeId, chargeId])).digest("hex")}`);
+  return adminDb.runTransaction(async tx => {
+    const [tenantRead, financeRead, ledgerRead, receiptRead, firstPage, bindings] = await Promise.all([
+      tx.get(tenantRef), tx.get(adminDb.collection("financeiro").doc(financeId)), tx.get(adminDb.collection("asaas_webhook_events_internal").doc(ledgerId)), tx.get(receiptRef),
+      tx.get(pendingQuery),
+      tx.get(adminDb.collection("financeiro").where("asaasChargeId", "==", chargeId).limit(2)),
+    ]);
+    const tenant = tenantRead.data(), finance = financeRead.data(), ledger = ledgerRead.data(), proof = ledger?.commercialPayment;
+    if (!tenant || !finance || finance.tenantId !== tenantId || finance.asaasChargeId !== chargeId || finance.contractAutoBilling !== true || !isPaidStatus(finance.status) ||
+        bindings.size !== 1 || bindings.docs[0].id !== financeId || !ledger || !["processing", "completed"].includes(ledger.status) || ledger.chargeId !== chargeId || !isVerifiedAsaasBillingProof(proof, chargeId) ||
+        proof.event !== ledger.event || Math.round(Number(finance.valor) * 100) !== proof.amountCents) return { reactivated: false, reason: "verified_billing_source_changed" };
+    if (tenant.cancelAtPeriodEnd || tenant.billingOperationPending || ["cancel_scheduled", "refund_pending", "cancelled"].includes(String(tenant.billingStatus)) ||
+        (tenant.status === "blocked" || tenant.billingStatus === "blocked") && tenant.blockedReason !== "billing_overdue") return { reactivated: false, reason: "human_or_cancellation_state_preserved" };
+    let page = firstPage;
+    for (;;) {
+      if (page.docs.some(doc => {
+        const data = doc.data();
+        if (isPaidStatus(data.status) || clean(data.status, 40).toLowerCase() === "cancelado") return false;
+        const dueDate = parseYmd(clean(data.contractDueDate || data.vencimento || data.dueDate, 20));
+        return Boolean(dueDate && daysUntil(new Date(), dueDate) < 0);
+      })) return { reactivated: false, reason: "open_overdue_finance" };
+      if (page.size < 200) break;
+      page = await tx.get(pendingQuery.startAfter(page.docs[page.size - 1]));
+    }
+    if (receiptRead.exists) {
+      const receipt = receiptRead.data()!;
+      return { reactivated: false, reason: receipt.protocolVersion === 1 && receipt.tenantId === tenantId && receipt.financeId === financeId && receipt.asaasChargeId === chargeId && receipt.amountCents === proof.amountCents ? "payment_already_recorded" : "reactivation_receipt_requires_review" };
+    }
+    tx.set(tenantRef, { status: "active", blockedReason: null, billingStatus: "active", billingReactivatedAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+    tx.set(adminDb.collection("tenant_settings").doc(tenantId), { billing: { status: "active", reason: null, reactivatedAt: FieldValue.serverTimestamp(), financeId, asaasChargeId: chargeId }, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+    tx.create(receiptRef, { protocolVersion: 1, type: "tenant_billing_reactivated", tenantId, financeId, asaasChargeId: chargeId, sourceLedgerId: ledgerId, amountCents: proof.amountCents, createdAt: FieldValue.serverTimestamp() });
+    return { reactivated: true, reason: "payment_confirmed" };
   });
-
-  if (hasOpenOverdue) {
-    return { reactivated: false, reason: "open_overdue_finance" };
-  }
-
-  await Promise.all([
-    adminDb.collection("tenants").doc(tenantId).set(
-      {
-        status: "active",
-        blockedReason: null,
-        billingStatus: "active",
-        billingReactivatedAt: FieldValue.serverTimestamp(),
-        updatedAt: FieldValue.serverTimestamp(),
-      },
-      { merge: true }
-    ),
-    adminDb.collection("tenant_settings").doc(tenantId).set(
-      {
-        billing: {
-          status: "active",
-          reason: null,
-          reactivatedAt: FieldValue.serverTimestamp(),
-          financeId: clean(input.financeId, 140) || null,
-          asaasChargeId: clean(input.asaasChargeId, 140) || null,
-        },
-        updatedAt: FieldValue.serverTimestamp(),
-      },
-      { merge: true }
-    ),
-    adminDb.collection("audit_logs").add({
-      type: "tenant_billing_reactivated",
-      tenantId,
-      financeId: clean(input.financeId, 140) || null,
-      asaasChargeId: clean(input.asaasChargeId, 140) || null,
-      createdAt: FieldValue.serverTimestamp(),
-    }),
-  ]);
-
-  return { reactivated: true, reason: "payment_confirmed" };
 }
 
 async function processOpenBillingFollowUps(input: {

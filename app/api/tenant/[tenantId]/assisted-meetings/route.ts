@@ -1,18 +1,19 @@
 import { NextResponse } from "next/server";
-import { FieldValue } from "firebase-admin/firestore";
 import { adminDb } from "@/app/lib/server/firebase-admin";
 import { requireRequestUser, RouteAuthError } from "@/app/lib/server/route-auth";
 import { assertTenantAccess, assertTenantCapability, assertTenantRole, TenantAccessError } from "@/lib/server/tenant";
+import {observeAssistedMeeting, commitAssistedMeeting, AssistedMeetingChangeError} from "@/lib/server/crm/assisted-meeting-mutation";
 import { upsertLeadCommercialDossier } from "@/lib/server/ai/lead-dossier";
 import { assertTenantModule } from "@/lib/server/tenant-entitlements";
-import { assertLeadCommercialAccess, canAccessAssignedCommercialRecord, hasTeamWideCommercialAccess } from "@/lib/server/commercial-access";
+import { canAccessAssignedCommercialRecord } from "@/lib/server/commercial-access";
 import {
   generateAssistedMeetingSummary,
   summaryToMarkdown,
-  type AssistedMeetingSummary,
 } from "@/lib/server/ai/meeting-assistant";
 
 type Body = {
+  requestId?: string;
+  completeAppointment?: boolean;
   appointmentId?: string | null;
   leadId?: string | null;
   title?: string;
@@ -54,7 +55,7 @@ function toIso(value: unknown) {
   return null;
 }
 
-function normalizeSession(doc: FirebaseFirestore.QueryDocumentSnapshot) {
+function normalizeSession(doc: FirebaseFirestore.DocumentSnapshot) {
   const data = doc.data() as Record<string, unknown>;
   return {
     id: doc.id,
@@ -66,19 +67,10 @@ function normalizeSession(doc: FirebaseFirestore.QueryDocumentSnapshot) {
     language: clean(data.language, 40) || "pt_BR",
     meetingUrl: clean(data.meetingUrl, 800) || null,
     summary: data.summary || null,
+    dossierStatus: data.dossierStatus || null,
     markdown: clean(data.markdown, 10000),
     createdAt: toIso(data.createdAt),
     updatedAt: toIso(data.updatedAt),
-  };
-}
-
-function compactSummary(summary: AssistedMeetingSummary) {
-  return {
-    temperature: summary.qualification.temperature,
-    confidence: summary.qualification.confidence,
-    recommendedStage: summary.qualification.recommendedStage,
-    executiveSummary: summary.executiveSummary,
-    nextSteps: summary.nextSteps,
   };
 }
 
@@ -90,18 +82,6 @@ async function resolveAppointment(tenantId: string, appointmentId: string) {
   const data = snap.data() as Record<string, unknown>;
   if (clean(data.tenantId, 160) !== tenantId) {
     throw new RouteAuthError(403, "forbidden_tenant", "Reuniao fora do tenant informado.");
-  }
-  return { ref, data };
-}
-
-async function resolveLead(tenantId: string, leadId: string) {
-  if (!leadId) return { ref: null, data: null as Record<string, unknown> | null };
-  const ref = adminDb.collection("leads").doc(leadId);
-  const snap = await ref.get();
-  if (!snap.exists) throw new RouteAuthError(404, "lead_not_found", "Lead nao encontrado.");
-  const data = snap.data() as Record<string, unknown>;
-  if (clean(data.tenantId, 160) !== tenantId) {
-    throw new RouteAuthError(403, "forbidden_tenant", "Lead fora do tenant informado.");
   }
   return { ref, data };
 }
@@ -120,14 +100,16 @@ export async function GET(req: Request, context: { params: Promise<{ tenantId: s
       .limit(80)
       .get();
 
-    let items = snap.docs
-      .map(normalizeSession)
-      .sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""));
-    if (!hasTeamWideCommercialAccess(membership)) {
-      const leadsSnap = await adminDb.collection("leads").where("tenantId", "==", tenantId).limit(1000).get();
-      const visibleLeadIds = new Set(leadsSnap.docs.filter((doc) => canAccessAssignedCommercialRecord(membership, user.uid, doc.data() as Record<string, unknown>)).map((doc) => doc.id));
-      items = items.filter((item) => visibleLeadIds.has(clean(item.leadId, 180)) || canAccessAssignedCommercialRecord(membership, user.uid, item as unknown as Record<string, unknown>));
-    }
+    const leadIds = [...new Set(snap.docs.map(doc => doc.data().leadId).filter((id): id is string => typeof id === "string" && Boolean(id) && id.length <= 180 && !id.includes("/")))];
+    const parents = leadIds.length ? await adminDb.getAll(...leadIds.map(id => adminDb.collection("leads").doc(id))) : [];
+    const byId = new Map(parents.map(parent => [parent.id, parent]));
+    const items = snap.docs.filter(doc => {
+      const data = doc.data(), parent = byId.get(data.leadId);
+      if (!parent?.exists || parent.data()?.tenantId !== tenantId || !canAccessAssignedCommercialRecord(membership, user.uid, parent.data()!)) return false;
+      if (data.sourceLeadGeneration) return typeof data.sourceLeadGeneration.isEqual === "function" && data.sourceLeadGeneration.isEqual(parent.createTime);
+      // Legacy sessions cannot belong to a parent created after their own record.
+      return doc.createTime.seconds > parent.createTime!.seconds || doc.createTime.seconds === parent.createTime!.seconds && doc.createTime.nanoseconds >= parent.createTime!.nanoseconds;
+    }).map(normalizeSession).sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""));
 
     return NextResponse.json({ ok: true, tenantId, items });
   } catch (error) {
@@ -152,155 +134,37 @@ export async function POST(req: Request, context: { params: Promise<{ tenantId: 
 
     const body = (await req.json().catch(() => ({}))) as Body;
     const appointmentId = clean(body.appointmentId, 180);
-    const { ref: appointmentRef, data: appointment } = await resolveAppointment(tenantId, appointmentId);
+    if (body.appointmentId != null && (typeof body.appointmentId !== "string" || body.appointmentId !== appointmentId || appointmentId.includes("/")) ||
+      body.leadId != null && (typeof body.leadId !== "string" || body.leadId !== clean(body.leadId, 180) || body.leadId.includes("/"))) throw new AssistedMeetingChangeError(400, "meeting_context_invalid", "Cliente ou compromisso inválido.");
+    const {data: appointment} = await resolveAppointment(tenantId, appointmentId);
     const leadId = clean(body.leadId, 180) || clean(appointment?.leadId, 180);
-    const { ref: leadRef, data: lead } = await resolveLead(tenantId, leadId);
-    if (!leadRef || !lead) {
-      return NextResponse.json({ error: "Selecione um lead ou uma reuniao vinculada a um lead." }, { status: 400 });
+    if (!leadId) return NextResponse.json({error: "Selecione um cliente ou compromisso vinculado."}, {status: 400});
+    if (body.requestId !== undefined && typeof body.requestId !== "string" || body.completeAppointment !== undefined && typeof body.completeAppointment !== "boolean") throw new AssistedMeetingChangeError(400, "meeting_input_invalid", "Pedido da reunião inválido.");
+    const transcript = typeof body.transcript === "string" ? body.transcript.trim().slice(0, 80000) : "";
+    const notes = typeof body.notes === "string" ? body.notes.trim().slice(0, 8000) : "";
+    if (!transcript && !notes) return NextResponse.json({error: "Informe transcrição ou notas da reunião."}, {status: 400});
+    const input = {tenantId, actorId: user.uid, actorName: user.name, leadId, appointmentId, requestId: body.requestId,
+      data: {title: clean(body.title, 180), transcript, notes, objective: clean(body.objective, 700) || "Transformar a reunião em próximos passos comerciais claros.",
+        language: clean(body.language, 40) || "pt_BR", meetingUrl: clean(body.meetingUrl, 800) || null, completeAppointment: body.completeAppointment === true}};
+    const observed = await observeAssistedMeeting(input);
+    if (!observed.replayed) {
+      const summary = await generateAssistedMeetingSummary({transcript, notes, objective: input.data.objective, language: input.data.language,
+        lead: observed.lead.data()!, appointment: observed.appointment?.data() || null});
+      await commitAssistedMeeting({...input, observed, summary, markdown: summaryToMarkdown(summary)});
     }
-    await assertLeadCommercialAccess({ membership, userId: user.uid, tenantId, leadId });
-
-    const transcript = clean(body.transcript, 80000);
-    const notes = clean(body.notes, 8000);
-    if (!transcript && !notes) {
-      return NextResponse.json({ error: "Informe transcricao ou notas da reuniao." }, { status: 400 });
+    let saved = await observed.sessionRef.get();
+    if (!saved.exists) throw new AssistedMeetingChangeError(409, "meeting_removed", "O registro da reunião foi removido. Atualize antes de tentar novamente.");
+    if (saved.data()?.dossierStatus === "pending") {
+      const data = saved.data()!;
+      await upsertLeadCommercialDossier({tenantId, leadId, trigger: data.completeAppointment ? "appointment_completed" : "meeting_analyzed",
+        appointmentId: appointmentId || null, sourceId: saved.id, assistedMeetingFence: saved,
+        actorId: user.uid, actorName: user.name, appointment: observed.appointment?.data() || null})
+        .catch(error => console.error("Reunião salva; brief aguardando revisão ou recuperação:", error));
+      saved = await observed.sessionRef.get();
     }
-
-    const title = clean(body.title, 180) || clean(appointment?.title, 180) || "Reuniao assistida";
-    const meetingUrl = clean(body.meetingUrl, 800) || clean(appointment?.meetingUrl, 800) || null;
-    const objective = clean(body.objective, 700) || "Transformar a reuniao em proximos passos comerciais claros.";
-    const language = clean(body.language, 40) || "pt_BR";
-    const summary = await generateAssistedMeetingSummary({
-      transcript,
-      notes,
-      objective,
-      language,
-      lead,
-      appointment,
-    });
-    const markdown = summaryToMarkdown(summary);
-    const sessionRef = adminDb.collection("assisted_meetings").doc();
-
-    const session = {
-      tenantId,
-      appointmentId: appointmentId || null,
-      leadId,
-      leadName: clean(lead.nome, 180) || null,
-      title,
-      objective,
-      language,
-      meetingUrl,
-      transcript,
-      notes,
-      summary,
-      markdown,
-      createdBy: user.uid,
-      createdByName: user.name,
-      createdAt: FieldValue.serverTimestamp(),
-      updatedAt: FieldValue.serverTimestamp(),
-    };
-
-    const writes: Promise<unknown>[] = [
-      sessionRef.set(session),
-      leadRef.set(
-        {
-          lastAssistedMeetingId: sessionRef.id,
-          lastAssistedMeetingAt: FieldValue.serverTimestamp(),
-          aiLeadSummary: summary.executiveSummary,
-          aiCommercialTemperature: summary.qualification.temperature,
-          aiNextAction: summary.nextSteps[0] || summary.crmUpdate,
-          updatedAt: FieldValue.serverTimestamp(),
-        },
-        { merge: true }
-      ),
-      leadRef.collection("documents").doc(`assisted_meeting_${sessionRef.id}`).set(
-        {
-          id: `assisted_meeting_${sessionRef.id}`,
-          type: "assisted_meeting",
-          title,
-          summary: compactSummary(summary),
-          markdown,
-          appointmentId: appointmentId || null,
-          createdAt: FieldValue.serverTimestamp(),
-          updatedAt: FieldValue.serverTimestamp(),
-          createdBy: user.uid,
-          createdByName: user.name,
-        },
-        { merge: true }
-      ),
-      leadRef.collection("events").add({
-        type: "assisted_meeting_summary",
-        title: "Reuniao analisada por IA",
-        detail: summary.executiveSummary,
-        assistedMeetingId: sessionRef.id,
-        appointmentId: appointmentId || null,
-        actorId: user.uid,
-        actorName: user.name,
-        createdAt: FieldValue.serverTimestamp(),
-      }),
-      adminDb.collection("lead_notes").add({
-        tenantId,
-        leadId,
-        title: "Resumo de reuniao assistida",
-        body: markdown,
-        source: "assisted_meeting",
-        assistedMeetingId: sessionRef.id,
-        createdAt: FieldValue.serverTimestamp(),
-        updatedAt: FieldValue.serverTimestamp(),
-        createdBy: user.uid,
-        createdByName: user.name,
-      }),
-    ];
-
-    if (appointmentRef) {
-      writes.push(
-        appointmentRef.set(
-          {
-            status: "completed",
-            meetingUrl,
-            notes: [clean(appointment?.notes, 3000), summary.crmUpdate].filter(Boolean).join("\n\n"),
-            aiMeetingSummary: summary,
-            assistedMeetingId: sessionRef.id,
-            updatedAt: FieldValue.serverTimestamp(),
-          },
-          { merge: true }
-        )
-      );
-    }
-
-    await Promise.all(writes);
-
-    await upsertLeadCommercialDossier({
-      tenantId,
-      leadId,
-      trigger: "appointment_completed",
-      appointmentId: appointmentId || sessionRef.id,
-      sourceId: sessionRef.id,
-      lead,
-      appointment: {
-        ...(appointment || {}),
-        title,
-        meetingUrl,
-        notes: summary.crmUpdate,
-        startAt: clean(appointment?.startAt, 80),
-      },
-      actorId: user.uid,
-      actorName: user.name,
-    });
-
-    return NextResponse.json({
-      ok: true,
-      tenantId,
-      id: sessionRef.id,
-      item: {
-        id: sessionRef.id,
-        ...session,
-        transcript: undefined,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      },
-    });
+    return NextResponse.json({ok: true, tenantId, id: saved.id, item: normalizeSession(saved), replayed: observed.replayed});
   } catch (error) {
+    if (error instanceof AssistedMeetingChangeError) return NextResponse.json({error: error.message, code: error.code}, {status: error.status});
     if (error instanceof RouteAuthError) {
       return NextResponse.json({ error: error.message, code: error.code }, { status: error.status });
     }

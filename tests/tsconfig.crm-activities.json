@@ -1,0 +1,16 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": { "incremental": false },
+  "include": [
+    "./crm-activity-filter.test.mts",
+    "./crm-activities.emulator.mts",
+    "../app/api/tenant/[tenantId]/activities/route.ts",
+    "../app/api/tenant/[tenantId]/leads/[leadId]/tasks/route.ts",
+    "../app/api/tenant/[tenantId]/leads/[leadId]/tasks/[taskId]/route.ts",
+    "../lib/crm-activity.ts",
+    "../app/cliente/painel/components/commercial-activities.tsx",
+    "../app/cliente/painel/crm/page.tsx",
+    "../app/cliente/painel/agenda/page.tsx"
+  ],
+  "exclude": ["../node_modules", "../.next", "../.qa-artifacts"]
+}

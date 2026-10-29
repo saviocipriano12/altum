@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import { lookupConversationCatalog } from "@/lib/server/commerce/conversation-catalog";
+import { catalogSearchProposal } from "@/lib/shopify-conversation-catalog";
 import { requireRequestUser, RouteAuthError } from "@/app/lib/server/route-auth";
 import {
   assertTenantAccess,
@@ -22,11 +24,30 @@ import { deriveOperationalPlan } from "@/lib/server/ai/operational-plan";
 import { scoreAltumConversationQuality } from "@/lib/server/ai/quality-score";
 import { getBusinessProfile, normalizeBusinessProfileId } from "@/lib/business-profiles";
 import type { AltumLeadMemory } from "@/lib/server/ai/runtime-state";
+import {
+  mergeRelationshipState,
+  normalizeRelationshipState,
+  relationshipFactsForPrompt,
+} from "@/lib/server/ai/relationship-state";
 import { normalizeAltumAssistantRole } from "@/lib/ai-assistant-role";
-import { getAiEvaluationScenario, type AiEvaluationPreview } from "@/lib/ai-evaluation";
+import {
+  specialistSupervisorInstruction,
+  superviseAiSpecialist,
+} from "@/lib/server/ai/specialist-supervisor";
+import {
+  compileAiSpecialistExecutionContract,
+  validateAiSpecialistOutput,
+} from "@/lib/server/ai/specialist-execution";
+import { compileAiActionPlan } from "@/lib/server/ai/action-plan";
+import { composeAiResponse } from "@/lib/server/ai/response-composer";
+import {
+  AI_EVALUATION_SCENARIO_VERSION,
+  getAiEvaluationScenario,
+  type AiEvaluationPreview,
+} from "@/lib/ai-evaluation";
 import {
   extractBusinessFields,
-  normalizeExtractedFieldsForCrm,
+  mergeExtractedFieldsForCrm,
   DEFAULT_GUARDRAILS,
 } from "@/lib/server/ai/agent";
 
@@ -73,8 +94,10 @@ type PreviewKbDoc = {
 };
 
 type Body = {
+  commerceContext?: unknown;
   message?: string;
   messageType?: string;
+  channel?: "whatsapp" | "instagram" | "facebook" | "site";
   history?: PreviewMessage[];
   contactName?: string;
   runtimeStateSummary?: string;
@@ -82,11 +105,19 @@ type Body = {
   assistantRole?: string;
   businessProfileId?: string;
   evaluationScenarioId?: string;
+  learningRecommendationFingerprint?: string;
 };
 
 function summarizeLeadMemoryForPreview(leadMemory: Partial<AltumLeadMemory> | null | undefined) {
   if (!leadMemory) return "";
+  const relationshipEvidence = relationshipFactsForPrompt(leadMemory.relationshipState || null);
   return [
+    relationshipEvidence.confirmed.length
+      ? `fatos confirmados (nao perguntar novamente): ${relationshipEvidence.confirmed.join("; ")}`
+      : "",
+    relationshipEvidence.hypotheses.length
+      ? `hipoteses (validar antes de usar): ${relationshipEvidence.hypotheses.join("; ")}`
+      : "",
     clean(leadMemory.attributionSourceLabel || leadMemory.attributionSource || leadMemory.attributionChannel, 160)
       ? `origem: ${clean(leadMemory.attributionSourceLabel || leadMemory.attributionSource || leadMemory.attributionChannel, 160)}`
       : "",
@@ -111,6 +142,53 @@ function summarizeLeadMemoryForPreview(leadMemory: Partial<AltumLeadMemory> | nu
   ]
     .filter(Boolean)
     .join(" | ");
+}
+
+function preparePreviewLeadMemory(input: {
+  tenantId: string;
+  leadMemory?: Partial<AltumLeadMemory> | null;
+  trustedScenarioId?: string | null;
+}) {
+  if (!input.leadMemory) return null;
+  const leadId = `preview_${clean(input.trustedScenarioId, 80) || "manual"}`;
+  if (input.leadMemory.relationshipState) {
+    return {
+      ...input.leadMemory,
+      relationshipState: normalizeRelationshipState(input.leadMemory.relationshipState, {
+        tenantId: input.tenantId,
+        leadId,
+      }),
+    } as Partial<AltumLeadMemory>;
+  }
+  if (!input.trustedScenarioId) return input.leadMemory;
+  const verifiedFacts = {
+    preferredName: input.leadMemory.preferredName,
+    businessType: input.leadMemory.businessType,
+    primaryGoal: input.leadMemory.primaryGoal,
+    budgetBand: input.leadMemory.budgetBand,
+    urgency: input.leadMemory.urgency,
+    dominantIntent: input.leadMemory.dominantIntent,
+    dominantObjection: input.leadMemory.dominantObjection,
+    decisionMaker: input.leadMemory.decisionMaker,
+    digitalMaturity: input.leadMemory.digitalMaturity,
+    city: input.leadMemory.city,
+    currentChannels: input.leadMemory.currentChannels,
+    teamSize: input.leadMemory.teamSize,
+    recommendedOffer: input.leadMemory.recommendedOffer,
+    leadTone: input.leadMemory.leadTone,
+    activeTopic: input.leadMemory.activeTopic,
+    conversationMaturity: input.leadMemory.conversationMaturity,
+  };
+  const inboundText = Object.values(verifiedFacts).filter(Boolean).join(" ");
+  const seeded = mergeRelationshipState({
+    tenantId: input.tenantId,
+    leadId,
+    occurredAtMs: Date.now() - 1_000,
+    sourceMessageId: `evaluation:${clean(input.trustedScenarioId, 80)}`,
+    inboundText,
+    derivedFacts: verifiedFacts,
+  });
+  return { ...input.leadMemory, relationshipState: seeded.state } as Partial<AltumLeadMemory>;
 }
 
 function clean(value: unknown, max = 900) {
@@ -333,6 +411,7 @@ export async function POST(req: Request, context: { params: Promise<{ tenantId: 
           ...body,
           message: evaluationScenario.message,
           messageType: evaluationScenario.messageType || "text",
+          channel: evaluationScenario.channel || "whatsapp",
           history: evaluationScenario.history,
           leadMemory: evaluationScenario.leadMemory,
           assistantRole: evaluationScenario.assistantRole,
@@ -343,6 +422,11 @@ export async function POST(req: Request, context: { params: Promise<{ tenantId: 
     if (!inboundText) {
       return NextResponse.json({ error: "Mensagem obrigatoria para preview." }, { status: 400 });
     }
+    const previewLeadMemory = preparePreviewLeadMemory({
+      tenantId,
+      leadMemory: effectiveBody.leadMemory,
+      trustedScenarioId: evaluationScenario?.id || null,
+    });
 
     const settings = await getTenantSettings(tenantId);
     const ai = settings && typeof settings.ai === "object" && settings.ai ? (settings.ai as Record<string, unknown>) : {};
@@ -371,7 +455,15 @@ export async function POST(req: Request, context: { params: Promise<{ tenantId: 
     const operatingProfile = normalizeTenantAiOperatingProfile(ai.operatingProfile);
     const runtimePolicy = buildAiRuntimePolicy(operatingProfile);
     const commercialBrain = normalizeCommercialBrain(ai.commercialBrain);
-    const learningHints = await getTenantLearningHints(tenantId);
+    const requestedLearningFingerprint = evaluationScenario
+      ? clean(body.learningRecommendationFingerprint, 160)
+      : "";
+    const learningHints = await getTenantLearningHints(tenantId, {
+      includeShadowFingerprint: requestedLearningFingerprint || null,
+    });
+    const evaluatedLearningFingerprint = requestedLearningFingerprint && learningHints.evidenceFingerprints?.includes(requestedLearningFingerprint)
+      ? requestedLearningFingerprint
+      : null;
 
     const kbSnap = await (await import("@/app/lib/server/firebase-admin")).adminDb
       .collection("kb_docs")
@@ -486,10 +578,21 @@ export async function POST(req: Request, context: { params: Promise<{ tenantId: 
       ...deriveHandoffTopicsFromCommercialCriteria(commercialBrain.handoffCriteria),
       ...(configuredEscalationTopics.length ? configuredEscalationTopics : businessProfile.ai.escalationTopics),
     ])).slice(0, 20);
+    const previewSupervisorDecision = superviseAiSpecialist({
+      tenantId,
+      chatId: "preview_chat",
+      messageId: "preview_current",
+      configuredRole: assistantRole,
+      inboundText,
+      runtimeState: null,
+      leadMemory: (previewLeadMemory || null) as AltumLeadMemory | null,
+      extractedFields: null,
+    });
+    const effectiveAssistantRole = previewSupervisorDecision.selectedSpecialist || assistantRole;
     const tenantContext = compileTenantAiContext({
       tenantId,
       agentName: clean(ai.agentName, 80) || `Agente ${clean(settings?.name, 80) || businessProfile.label}`,
-      assistantRole,
+      assistantRole: effectiveAssistantRole,
       businessSummary: resolvedBusinessSummary,
       objective: clean(ai.objective, 800) || businessProfile.ai.objective,
       toneOfVoice: resolvedToneOfVoice,
@@ -497,6 +600,13 @@ export async function POST(req: Request, context: { params: Promise<{ tenantId: 
       guardrails: previewGuardrails,
       mandatoryQuestions: previewMandatoryQuestions,
       escalationTopics: previewEscalationTopics,
+      hasVerifiedOffers: kbDocs.some((doc) => doc.type === "catalog"),
+    });
+    const previewSpecialistExecution = compileAiSpecialistExecutionContract({
+      supervisor: previewSupervisorDecision,
+      roleContract: tenantContext.roleContract,
+      autonomyMode: operatingProfile.autonomyMode,
+      tenantContextConfigured,
     });
 
     const history = (effectiveBody.history || []).map((item, index) => ({
@@ -515,21 +625,32 @@ export async function POST(req: Request, context: { params: Promise<{ tenantId: 
     const conversation = [...history, currentMessage];
 
     const inferenceStartedAt = Date.now();
+    let liveCatalogTurn = await lookupConversationCatalog({
+      tenantId, inboundText, context: effectiveBody.commerceContext, preview: true,
+      hasReplied: history.some((item) => item.sender === "agent"),
+      allowSemanticRetry: runtimePolicy.primaryProvider !== "altum_rules",
+      campaignOffer: previewLeadMemory?.campaignOfferName,
+      allowedTools: previewSpecialistExecution.taskKind === "human_handoff" ? [] : previewSpecialistExecution.allowedTools,
+    });
     const llmRun =
-      runtimePolicy.primaryProvider !== "altum_rules"
+      runtimePolicy.primaryProvider !== "altum_rules" && (!liveCatalogTurn || liveCatalogTurn.needsInterpretation)
         ? await runConversationAgent(
             {
               tenantId,
               chatId: "preview_chat",
               inboundText,
-              channel: "whatsapp",
+              channel: effectiveBody.channel || "whatsapp",
               agentName: clean(ai.agentName, 80) || `Agente ${clean(settings?.name, 80) || businessProfile.label}`,
-              assistantRole,
+              assistantRole: effectiveAssistantRole,
+              supervisorInstruction: [
+                specialistSupervisorInstruction(previewSupervisorDecision),
+                previewSpecialistExecution.prompt,
+              ].join("\n"),
               tenantContextConfigured,
               tenantContext,
               contactName: typeof effectiveBody.contactName === "string" ? effectiveBody.contactName : undefined,
               runtimeStateSummary: clean(effectiveBody.runtimeStateSummary, 320) || undefined,
-              leadMemorySummary: summarizeLeadMemoryForPreview(effectiveBody.leadMemory || null) || undefined,
+              leadMemorySummary: summarizeLeadMemoryForPreview(previewLeadMemory) || undefined,
               commercialBrainSummary: summarizeCommercialBrain(commercialBrain) || undefined,
               toneOfVoice: resolvedToneOfVoice,
               businessSummary: resolvedBusinessSummary,
@@ -551,7 +672,20 @@ export async function POST(req: Request, context: { params: Promise<{ tenantId: 
             runtimePolicy
           )
         : null;
-    const llmResult = llmRun?.result || null;
+    const rawLlmResult = llmRun?.result || null;
+    const previewSpecialistValidation = validateAiSpecialistOutput({
+      contract: previewSpecialistExecution,
+      result: rawLlmResult,
+    });
+    const llmResult = previewSpecialistValidation.accepted ? rawLlmResult : null;
+    const proposedCatalogSearch = catalogSearchProposal(llmResult, inboundText);
+    if ((!liveCatalogTurn && proposedCatalogSearch) || liveCatalogTurn?.needsInterpretation) {
+      liveCatalogTurn = await lookupConversationCatalog({
+        tenantId, inboundText, context: effectiveBody.commerceContext, preview: true,
+        hasReplied: history.some((item) => item.sender === "agent"), interpretation: proposedCatalogSearch, finalAttempt: true,
+        allowedTools: previewSpecialistExecution.taskKind === "human_handoff" ? [] : previewSpecialistExecution.allowedTools,
+      }) || liveCatalogTurn;
+    }
 
     const tenantAiConfig = {
       enabled: true,
@@ -561,7 +695,7 @@ export async function POST(req: Request, context: { params: Promise<{ tenantId: 
       businessProfileLabel: businessProfile.label,
       salesMotion: "consultative" as const,
       agentName: clean(ai.agentName, 80) || `Agente ${clean(settings?.name, 80) || businessProfile.label}`,
-      assistantRole,
+      assistantRole: effectiveAssistantRole,
       businessSummary: resolvedBusinessSummary,
       objective: clean(ai.objective, 800) || businessProfile.ai.objective,
       commercialBrain,
@@ -601,7 +735,7 @@ export async function POST(req: Request, context: { params: Promise<{ tenantId: 
       inboundText,
       tenantAiConfig
     );
-    const extractedFields = normalizeExtractedFieldsForCrm(llmResult?.extractedFields || heuristicExtractedFields);
+    const extractedFields = mergeExtractedFieldsForCrm(heuristicExtractedFields, llmResult?.extractedFields);
 
     const fallbackChoice = tenantContextConfigured
       ? buildPreviewFallbackChoice({
@@ -617,7 +751,7 @@ export async function POST(req: Request, context: { params: Promise<{ tenantId: 
           responseText:
             "Olá! Ainda estou conhecendo esta empresa e não tenho informações confiáveis sobre produtos, serviços ou atendimento. Antes de orientar um cliente, configure a descrição do negócio e a base de conhecimento da empresa.",
         };
-    const choice = tenantContextConfigured
+    const choice = liveCatalogTurn || (tenantContextConfigured
       ? resolveConversationalChoice({
           fallbackChoice,
           llmDecision: llmResult?.decision,
@@ -628,24 +762,65 @@ export async function POST(req: Request, context: { params: Promise<{ tenantId: 
           llmTurnGoal: llmResult?.turnGoal || null,
           inboundText,
         })
-      : { ...fallbackChoice, ledBy: "fallback" as const };
+      : { ...fallbackChoice, ledBy: "fallback" as const });
     const plannerDecision = deriveOperationalPlan({
       inboundText,
       messageType: clean(effectiveBody.messageType, 40) || "text",
       choice,
-      llmDecision: llmResult?.decision,
+      llmDecision: liveCatalogTurn ? liveCatalogTurn.decision : llmResult?.decision,
       llmReason: llmResult?.reason || null,
       llmConfidence: llmResult?.confidence ?? null,
       llmTurnGoal: llmResult?.turnGoal || null,
       runtimeState: null,
-      leadMemory: (effectiveBody.leadMemory || null) as AltumLeadMemory | null,
+      leadMemory: (previewLeadMemory || null) as AltumLeadMemory | null,
       extractedFields,
       conversation,
       kbDocs,
-      tenantAi: tenantAiConfig,
+      tenantAi: { ...tenantAiConfig, roleContract: tenantContext.roleContract },
+    });
+    const confirmedFactKeys = previewLeadMemory?.relationshipState
+      ? Object.values(previewLeadMemory.relationshipState.facts)
+          .filter((fact) => fact.status === "confirmed")
+          .map((fact) => fact.key)
+          .slice(0, 20)
+      : [];
+    const actionPlan = compileAiActionPlan({
+      tenantId,
+      chatId: "preview_chat",
+      messageId: "preview_current",
+      leadId: "preview_lead",
+      autonomyMode: operatingProfile.autonomyMode,
+      specialist: previewSpecialistExecution,
+      planner: plannerDecision,
+      tenantContextConfigured,
+      shadowMode: true,
+      extractedFieldKeys: Object.keys(extractedFields || {}),
+      confirmedFactKeys,
+      verifiedOffer: kbDocs.some((doc) => doc.type === "catalog"),
+      explicitPurchaseIntent:
+        plannerDecision.intent === "purchase_interest" ||
+        /\b(quero\s+(comprar|fechar|contratar)|pode\s+(fechar|gerar|mandar)|vou\s+fechar|finalizar\s+(a\s+)?compra)\b/i.test(inboundText),
+      sensitiveDataDetected:
+        /\b(senha|cvv|codigo\s+de\s+seguranca|numero\s+completo\s+do\s+cartao|cartao\s+completo)\b/i.test(inboundText),
     });
 
-    const responseText = cleanPreviewResponseForLead(choice.responseText || fallbackChoice.responseText || "", inboundText) || "";
+    const responseComposition = composeAiResponse({
+      inboundText,
+      draftText: liveCatalogTurn ? liveCatalogTurn.responseText : cleanPreviewResponseForLead(choice.responseText || fallbackChoice.responseText || "", inboundText),
+      channel: effectiveBody.channel || "whatsapp",
+      messageType: clean(effectiveBody.messageType, 40) || "text",
+      decision: choice.decision,
+      responseGoal: plannerDecision.responseGoal,
+      relationshipState: previewLeadMemory?.relationshipState || null,
+      allowUrls: false,
+      verifiedUrls: liveCatalogTurn?.verifiedUrls,
+      preserveLineBreaks: Boolean(liveCatalogTurn),
+      verifiedPrice: liveCatalogTurn ? liveCatalogTurn.verifiedPrice : kbDocs.some((doc) => doc.type === "catalog" && doc.priceFrom !== null),
+      verifiedInventory: liveCatalogTurn ? liveCatalogTurn.verifiedInventory : kbDocs.some((doc) => doc.type === "catalog" && doc.inventoryQuantity !== null),
+      verifiedPayment: kbDocs.some((doc) => doc.type === "catalog" && Boolean(doc.paymentConditions)),
+      verifiedDelivery: kbDocs.some((doc) => doc.type === "catalog" && Boolean(doc.stockDelivery)),
+    });
+    const responseText = responseComposition.text;
 
     const quality = scoreAltumConversationQuality({
       inboundText,
@@ -655,11 +830,15 @@ export async function POST(req: Request, context: { params: Promise<{ tenantId: 
     });
 
     const preview: AiEvaluationPreview & Record<string, unknown> = {
+        commerce: liveCatalogTurn ? { status: liveCatalogTurn.status, checkedAt: liveCatalogTurn.checkedAt,
+          context: liveCatalogTurn.context, variantId: liveCatalogTurn.variantId } : null,
         conversationalChoice: choice,
         plannerDecision,
         llmTurnGoal: llmResult?.turnGoal || null,
         llmMemorySummary: llmResult?.memorySummary || null,
         extractedFields: extractedFields || null,
+        actionPlan,
+        responseValidationTrace: responseComposition.receipt,
         responseText,
         quality,
         providerFallbackTriggered: Boolean(llmRun?.providerFallbackTriggered || false),
@@ -679,9 +858,41 @@ export async function POST(req: Request, context: { params: Promise<{ tenantId: 
           source: llmResult ? "model" : "fallback",
           provider: llmResult?.provider || null,
           model: llmResult?.model || null,
-          providerFallbackTriggered: Boolean(llmRun?.providerFallbackTriggered || llmResult?.fallbackUsed),
+          providerFallbackTriggered: Boolean(llmRun?.providerFallbackTriggered || rawLlmResult?.fallbackUsed),
           providerChainError: llmRun?.providerChainError || null,
           tenantContextFingerprint: tenantContext.fingerprint,
+          tenantContextSchemaVersion: tenantContext.schemaVersion,
+          roleContractVersion: tenantContext.roleContract.schemaVersion,
+          roleContractFingerprint: tenantContext.roleContract.fingerprint,
+          effectiveAssistantRole: tenantContext.roleContract.role,
+          configuredAssistantRole: assistantRole,
+          specialistSupervisorVersion: previewSupervisorDecision.schemaVersion,
+          specialistSupervisorMode: previewSupervisorDecision.mode,
+          specialistSupervisorReason: previewSupervisorDecision.reason,
+          specialistDecisionKey: previewSupervisorDecision.idempotencyKey,
+          specialistExecutionVersion: previewSpecialistExecution.schemaVersion,
+          specialistTaskKind: previewSpecialistExecution.taskKind,
+          specialistAllowedTools: previewSpecialistExecution.allowedTools,
+          specialistOutputStatus: previewSpecialistValidation.status,
+          specialistBlockedReasons: previewSpecialistValidation.blockedReasons,
+          actionPlanVersion: actionPlan.schemaVersion,
+          actionPlanFingerprint: actionPlan.fingerprint,
+          actionPlanExecutionMode: actionPlan.executionMode,
+          actionPlanReadySteps: actionPlan.steps.filter((step) => step.authorization === "ready").map((step) => step.kind),
+          actionPlanApprovalSteps: actionPlan.steps.filter((step) => step.authorization === "approval_required").map((step) => step.kind),
+          actionPlanBlockedSteps: actionPlan.steps.filter((step) => step.authorization === "blocked").map((step) => step.kind),
+          responseComposerVersion: responseComposition.receipt.schemaVersion,
+          responseValidationStatus: responseComposition.receipt.status,
+          responseValidationBlockedReasons: responseComposition.receipt.blockedReasons,
+          responseValidationTransformations: responseComposition.receipt.transformations,
+          responseMessageCount: responseComposition.receipt.messageCount,
+          learningRecommendationFingerprint: evaluatedLearningFingerprint,
+          roleReadiness: tenantContext.roleContract.readiness,
+          missingRoleSignals: tenantContext.roleContract.missingSignals,
+          relationshipStateRevision: previewLeadMemory?.relationshipState?.revision ?? null,
+          relationshipConfirmedFactKeys: confirmedFactKeys,
+          relationshipRemovedRepeatedQuestionKeys: responseComposition.receipt.removedRelationshipQuestionKeys,
+          relationshipPrivacyBoundaryApplied: responseComposition.receipt.transformations.some((item) => item.startsWith("privacy_boundary:")),
           configuredGuardrails: tenantContext.diagnostics.guardrailCount,
           configuredMandatoryQuestions: tenantContext.diagnostics.mandatoryQuestionCount,
           configuredEscalationTopics: tenantContext.diagnostics.escalationTopicCount,
@@ -700,7 +911,7 @@ export async function POST(req: Request, context: { params: Promise<{ tenantId: 
         tenantId,
         createdBy: user.uid,
         scenarioId: evaluationScenario.id,
-        scenarioVersion: "2026-09-28",
+        scenarioVersion: AI_EVALUATION_SCENARIO_VERSION,
         preview,
         createdAt: new Date(),
       });

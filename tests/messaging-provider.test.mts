@@ -55,6 +55,28 @@ test("normalizes an inbound Evolution text event", () => {
   });
 });
 
+test("preserves Evolution provider time and quoted-message context", () => {
+  const inbound = parseEvolutionInbound({
+    event: "messages.upsert",
+    data: {
+      messageTimestamp: 1_700_000_000,
+      key: { id: "quoted-1", remoteJid: "5511999999999@s.whatsapp.net", fromMe: false },
+      message: {
+        extendedTextMessage: {
+          text: "Quero essa opção",
+          contextInfo: {
+            stanzaId: "previous-9",
+            quotedMessage: { conversation: "Plano recomendado" },
+          },
+        },
+      },
+    },
+  });
+  assert.equal(inbound?.occurredAtMs, 1_700_000_000_000);
+  assert.equal(inbound?.quotedMessageId, "previous-9");
+  assert.equal(inbound?.quotedMessageText, "Plano recomendado");
+});
+
 test("normalizes Evolution media and delivery updates", () => {
   const media = parseEvolutionInbound({
     event: "MESSAGES_UPSERT",
@@ -113,12 +135,15 @@ test("normalizes wrapped Evolution media and resolves phone numbers behind LIDs"
   assert.equal(media?.mediaBase64, "YWJj");
 });
 
-test("ignores outbound and non-message Evolution events", () => {
+test("preserves own-device messages as outgoing and ignores non-message Evolution events", () => {
   assert.equal(parseEvolutionInbound({ event: "connection.update", data: {} }), null);
-  assert.equal(parseEvolutionInbound({
+  const own = parseEvolutionInbound({
     event: "messages.upsert",
-    data: { key: { remoteJid: "5511999999999@s.whatsapp.net", fromMe: true }, message: { conversation: "Oi" } },
-  }), null);
+    data: { key: { id: "qa-own-message", remoteJid: "5511999999999@s.whatsapp.net", fromMe: true }, message: { conversation: "Oi" } },
+  });
+  assert.equal(own?.fromMe, true);
+  assert.equal(own?.messageId, "qa-own-message");
+  assert.equal(own?.text, "Oi");
 });
 
 test("extracts message ids from Meta and Evolution payloads", () => {

@@ -256,6 +256,20 @@ type PriorityItem = {
   tone: Tone;
 };
 
+type ProactiveRecommendationItem = {
+  id: string;
+  leadId?: string;
+  kind?: "human_takeover" | "overdue_commitment" | "appointment_risk" | "proposal_followup" | "hot_lead_recovery" | "retention_recovery";
+  status?: string;
+  priority?: "urgent" | "high" | "medium";
+  score?: number;
+};
+
+type ProactiveResponse = {
+  items?: ProactiveRecommendationItem[];
+  summary?: { actionable?: number; urgent?: number };
+};
+
 type CycleItem = {
   id: string;
   title: string;
@@ -374,6 +388,7 @@ export default function ClientePainelOverviewPage() {
   const { tenant, hasCapability } = useClienteTenant();
   const canViewTeam = hasCapability("view_team_records") || hasCapability("manage_users") || hasCapability("manage_settings");
   const canConfigure = hasCapability("manage_settings");
+  const canEditLeads = hasCapability("edit_leads");
   const tenantId = tenant?.tenantId;
   const [showDesktopCharts, setShowDesktopCharts] = useState(false);
 
@@ -388,6 +403,7 @@ export default function ClientePainelOverviewPage() {
   const [metricsSummary, setMetricsSummary] = useState<MetricsSummaryPayload>({});
   const [automationSummary, setAutomationSummary] = useState<AutomationSummaryPayload>({});
   const [readiness, setReadiness] = useState<ReadinessPayload>({});
+  const [proactive, setProactive] = useState<ProactiveResponse>({});
   const [snapshotAt, setSnapshotAt] = useState<number>(() => Date.now());
 
   const loadOverview = useCallback(
@@ -410,11 +426,14 @@ export default function ClientePainelOverviewPage() {
         readJson<{ items?: AppointmentItem[] }>(`/api/tenant/${tenantId}/appointments`),
         readJson<{ items?: LeadItem[]; error?: string }>(`/api/tenant/${tenantId}/leads`),
         readJson<MetricsSummaryPayload>(`/api/tenant/${tenantId}/metrics-summary`),
+        canEditLeads
+          ? readJson<ProactiveResponse>(`/api/tenant/${tenantId}/ai-proactive`)
+          : Promise.resolve({ ok: true, payload: {} as ProactiveResponse }),
       ]);
 
-      const [dashboardResult, chatsResult, followUpsResult, appointmentsResult, leadsResult, metricsResult] = results;
+      const [dashboardResult, chatsResult, followUpsResult, appointmentsResult, leadsResult, metricsResult, proactiveResult] = results;
       setUnavailableSections([
-        ["Conversas", chatsResult], ["Retornos", followUpsResult], ["Agenda", appointmentsResult], ["Clientes", leadsResult], ["Indicadores", metricsResult],
+        ["Conversas", chatsResult], ["Retornos", followUpsResult], ["Agenda", appointmentsResult], ["Clientes", leadsResult], ["Indicadores", metricsResult], ["Prioridades da IA", proactiveResult],
       ].filter(([, result]) => {
         const item = result as PromiseSettledResult<{ ok: boolean }>;
         return item.status !== "fulfilled" || !item.value.ok;
@@ -433,6 +452,7 @@ export default function ClientePainelOverviewPage() {
       if (appointmentsResult.status === "fulfilled" && appointmentsResult.value.ok) setAppointments(appointmentsResult.value.payload.items || []);
       if (leadsResult.status === "fulfilled" && leadsResult.value.ok) setLeads(leadsResult.value.payload.items || []);
       if (metricsResult.status === "fulfilled" && metricsResult.value.ok) setMetricsSummary(metricsResult.value.payload || {});
+      if (proactiveResult.status === "fulfilled" && proactiveResult.value.ok) setProactive(proactiveResult.value.payload || {});
 
       setSnapshotAt(Date.now());
       setLoading(false);
@@ -452,7 +472,7 @@ export default function ClientePainelOverviewPage() {
         });
       }
     },
-    [tenantId, canViewTeam, canConfigure]
+    [tenantId, canViewTeam, canConfigure, canEditLeads]
   );
 
   useAdaptivePolling({
@@ -739,6 +759,27 @@ export default function ClientePainelOverviewPage() {
 
   const priorityActions = (() => {
     const items: PriorityItem[] = [];
+
+    for (const recommendation of (proactive.items || []).filter((item) => ["suggested", "accepted"].includes(String(item.status || ""))).slice(0, 3)) {
+      const lead = leads.find((item) => item.id === recommendation.leadId);
+      const contact = lead ? leadName(lead) : "este cliente";
+      const copy = recommendation.kind === "human_takeover"
+        ? { title: `Assumir conversa de ${contact}`, detail: "A IA identificou um pedido ou necessidade de atendimento humano.", badge: "urgente", tone: "danger" as Tone }
+        : recommendation.kind === "overdue_commitment"
+          ? { title: `Resolver compromisso com ${contact}`, detail: "Existe uma tarefa prometida que passou do prazo.", badge: "vencido", tone: "danger" as Tone }
+          : recommendation.kind === "retention_recovery"
+            ? { title: `Recuperar a experiencia de ${contact}`, detail: "Ha um incidente sem resolucao antes de qualquer nova oferta.", badge: "reter", tone: "warning" as Tone }
+            : recommendation.kind === "appointment_risk"
+              ? { title: `Confirmar agenda com ${contact}`, detail: "O compromisso esta proximo e merece confirmacao.", badge: "agenda", tone: "warning" as Tone }
+              : recommendation.kind === "proposal_followup"
+                ? { title: `Revisar proposta de ${contact}`, detail: "A proposta esta sem retorno e precisa de uma decisao humana.", badge: "proposta", tone: "ai" as Tone }
+                : { title: `Retomar oportunidade com ${contact}`, detail: "A Altum encontrou interesse alto sem movimento recente.", badge: "oportunidade", tone: "ai" as Tone };
+      items.push({
+        id: `proactive-${recommendation.id}`,
+        ...copy,
+        href: recommendation.leadId ? `/cliente/painel/crm?leadId=${encodeURIComponent(recommendation.leadId)}` : "/cliente/painel/crm",
+      });
+    }
 
     if (overdueChats > 0) {
       items.push({

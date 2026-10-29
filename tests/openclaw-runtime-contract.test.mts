@@ -2,12 +2,13 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   OPENCLAW_RUNTIME_SOURCE,
+  openClawMissionEnvelopeSchema,
   openClawRuntimeEventSchema,
   runtimeEventDocumentId,
   signOpenClawRuntimeBody,
   verifyOpenClawRuntimeBearer,
   verifyOpenClawRuntimeSignature,
-} from "../lib/server/agent-os/openclaw-runtime.ts";
+} from "@/lib/server/agent-os/openclaw-runtime";
 
 test("OpenClaw runtime keeps a pinned, MIT source of record", () => {
   assert.equal(OPENCLAW_RUNTIME_SOURCE.repository, "openclaw/openclaw");
@@ -30,6 +31,66 @@ test("runtime callbacks require a recent body-bound HMAC signature", () => {
   assert.equal(verifyOpenClawRuntimeSignature({ body, secret, timestamp, signature, now: 1791393210_000 }), true);
   assert.equal(verifyOpenClawRuntimeSignature({ body: `${body} `, secret, timestamp, signature, now: 1791393210_000 }), false);
   assert.equal(verifyOpenClawRuntimeSignature({ body, secret, timestamp: "1790000000", signature, now: 1791393210_000 }), false);
+});
+
+const mission = {
+  id: "mission-1",
+  tenantId: "tenant-1",
+  conversationId: null,
+  title: "Planejar campanha",
+  objective: "Criar um plano verificável.",
+  template: "marketing",
+  risk: "low" as const,
+  budgetBrl: 0,
+  constraints: [],
+};
+
+test("runtime envelope persists task attribution with the mission", () => {
+  const parsed = openClawMissionEnvelopeSchema.parse({
+    protocol: "altum.openclaw.mission.v1",
+    dispatchId: "dispatch-1",
+    operation: "execute",
+    mission,
+    task: {
+      id: "task-1",
+      title: "Pesquisar público",
+      agent: "Research Agent",
+      capability: "WEB_RESEARCH",
+      agentCandidateId: "market-research-synthesist",
+      agentCandidateSource: "Ado77/agency-agents",
+      agentCandidateStatus: "review_required",
+    },
+    policy: { externalActionsRequireApproval: true, secretHandling: "altum_vault_only", artifactDelivery: "altum_private_library" },
+    callback: { url: "https://altum.example/api/internal/agent-runtime/events", signatureHeader: "x-altum-runtime-signature", timestampHeader: "x-altum-runtime-timestamp" },
+  });
+  assert.equal(parsed.task?.id, "task-1");
+  assert.equal(parsed.task?.agentCandidateStatus, "review_required");
+});
+
+test("runtime envelope remains readable for dispatches created before task attribution", () => {
+  const parsed = openClawMissionEnvelopeSchema.parse({
+    protocol: "altum.openclaw.mission.v1",
+    dispatchId: "dispatch-before-task-context",
+    operation: "plan",
+    mission,
+    policy: { externalActionsRequireApproval: true, secretHandling: "altum_vault_only", artifactDelivery: "altum_private_library" },
+    callback: { url: "https://altum.example/api/internal/agent-runtime/events", signatureHeader: "x-altum-runtime-signature", timestampHeader: "x-altum-runtime-timestamp" },
+  });
+  assert.equal(parsed.task, null);
+});
+
+test("runtime events may carry task attribution while remaining compatible with old dispatches", () => {
+  const base = {
+    protocol: "altum.openclaw.event.v1",
+    eventId: "event-12345",
+    dispatchId: "dispatch-1",
+    missionId: "mission-1",
+    tenantId: "tenant-1",
+    type: "mission.progress",
+    occurredAt: "2026-10-12T12:00:00.000Z",
+  };
+  assert.equal(openClawRuntimeEventSchema.parse({ ...base, taskId: "task-1" }).taskId, "task-1");
+  assert.equal(openClawRuntimeEventSchema.parse(base).taskId, undefined);
 });
 
 test("runtime events are tenant-scoped and idempotently addressable", () => {

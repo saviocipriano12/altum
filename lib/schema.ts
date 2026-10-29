@@ -1,3 +1,5 @@
+import { ALTUM_SOCIAL_PROFILES } from "@/lib/public-social";
+
 export type FaqItem = {
   question: string;
   answer: string;
@@ -32,6 +34,7 @@ type ArticleSchemaOptions = {
   publisherName?: string;
   publisherUrl?: string;
   publisherLogoPath?: string;
+  imageUrl?: string;
 };
 
 type ItemListSchemaOptions = {
@@ -43,9 +46,11 @@ type ItemListSchemaOptions = {
 
 const DEFAULT_SITE_URL = "https://altumia.com.br";
 
-const normalizeSiteUrl = (value: string): string => value.trim().replace(/\/+$/, "");
+const normalizeSiteUrl = (value: string): string =>
+  value.trim().replace(/\/+$/, "");
 
-export const getSiteUrl = (): string => normalizeSiteUrl(process.env.NEXT_PUBLIC_SITE_URL || DEFAULT_SITE_URL);
+export const getSiteUrl = (): string =>
+  normalizeSiteUrl(process.env.NEXT_PUBLIC_SITE_URL || DEFAULT_SITE_URL);
 
 export const toAbsoluteUrl = (siteUrl: string, pathOrUrl: string): string => {
   if (!pathOrUrl) return siteUrl;
@@ -56,6 +61,7 @@ export const toAbsoluteUrl = (siteUrl: string, pathOrUrl: string): string => {
 export const getSocialLinksFromEnv = (): string[] => {
   const siteUrl = getSiteUrl();
   const maybeLinks = [
+    ...ALTUM_SOCIAL_PROFILES.map((profile) => profile.href),
     process.env.NEXT_PUBLIC_LINKEDIN_URL,
     process.env.NEXT_PUBLIC_INSTAGRAM_URL,
     process.env.NEXT_PUBLIC_YOUTUBE_URL,
@@ -63,10 +69,18 @@ export const getSocialLinksFromEnv = (): string[] => {
     process.env.NEXT_PUBLIC_X_URL,
   ];
 
-  return maybeLinks.filter((item): item is string => Boolean(item && /^https?:\/\//i.test(item) && item !== siteUrl));
+  return [
+    ...new Set(
+      maybeLinks.filter((item): item is string =>
+        Boolean(item && /^https?:\/\//i.test(item) && item !== siteUrl),
+      ),
+    ),
+  ];
 };
 
-export const buildOrganizationSchema = (options: OrganizationSchemaOptions = {}) => {
+export const buildOrganizationSchema = (
+  options: OrganizationSchemaOptions = {},
+) => {
   const siteUrl = normalizeSiteUrl(options.siteUrl ?? getSiteUrl());
   const socialLinks = options.socialLinks ?? [];
   const logoPath = options.logoPath?.trim();
@@ -76,6 +90,7 @@ export const buildOrganizationSchema = (options: OrganizationSchemaOptions = {})
     "@type": "Organization",
     "@id": `${siteUrl}/#organization`,
     name: options.name ?? "ALTUM",
+    alternateName: "Altum — operação comercial com IA",
     url: siteUrl,
   };
 
@@ -108,7 +123,9 @@ export const buildWebSiteSchema = (options: WebSiteSchemaOptions = {}) => {
   };
 };
 
-export const buildSoftwareApplicationSchema = (options: SoftwareApplicationSchemaOptions = {}) => {
+export const buildSoftwareApplicationSchema = (
+  options: SoftwareApplicationSchemaOptions = {},
+) => {
   const siteUrl = normalizeSiteUrl(options.siteUrl ?? getSiteUrl());
   return {
     "@context": "https://schema.org",
@@ -120,6 +137,15 @@ export const buildSoftwareApplicationSchema = (options: SoftwareApplicationSchem
       options.description ??
       "Plataforma de vendas e relacionamento com CRM, inbox, pipeline, automacoes, follow-up e inteligencia artificial.",
     applicationCategory: "BusinessApplication",
+    applicationSubCategory: "CRM e atendimento com inteligência artificial",
+    featureList: [
+      "Atendimento por canais conectados",
+      "Clientes e oportunidades",
+      "Funil de vendas",
+      "Agenda e follow-up",
+      "Assistente de inteligência artificial",
+    ],
+    image: `${siteUrl}/images/altum-social-card.png`,
     operatingSystem: "Web",
     inLanguage: "pt-BR",
     publisher: {
@@ -139,15 +165,27 @@ export const buildArticleSchema = (options: ArticleSchemaOptions) => {
     dateModified: options.dateModified ?? options.datePublished,
     mainEntityOfPage: options.url,
     author: {
-      "@type": "Person",
+      "@type": /^(?:(?:time|equipe)\s+)?altum$/i.test(
+        options.authorName ?? "Time ALTUM",
+      )
+        ? "Organization"
+        : "Person",
       name: options.authorName ?? "Time ALTUM",
+      ...(/^(?:(?:time|equipe)\s+)?altum$/i.test(options.authorName ?? "Time ALTUM")
+        ? { url: `${publisherUrl}/sobre` }
+        : {}),
     },
     publisher: {
       "@type": "Organization",
+      "@id": `${publisherUrl}/#organization`,
       name: options.publisherName ?? "ALTUM",
       url: publisherUrl,
     },
   };
+
+  if (options.imageUrl)
+    schema.image = toAbsoluteUrl(publisherUrl, options.imageUrl);
+  schema.inLanguage = "pt-BR";
 
   if (options.publisherLogoPath) {
     const publisher = schema.publisher as Record<string, unknown>;
@@ -189,5 +227,18 @@ export const buildFaqSchema = (items: FaqItem[]) => ({
 });
 
 export const toJsonLdScript = (schema: unknown): { __html: string } => ({
-  __html: JSON.stringify(schema),
+  __html: JSON.stringify(schema).replace(/</g, "\\u003c"),
+});
+
+export const buildBreadcrumbSchema = (
+  items: readonly { name: string; href: string }[],
+) => ({
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  itemListElement: items.map((item, index) => ({
+    "@type": "ListItem",
+    position: index + 1,
+    name: item.name,
+    item: toAbsoluteUrl(getSiteUrl(), item.href),
+  })),
 });

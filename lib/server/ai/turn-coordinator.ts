@@ -1,3 +1,6 @@
+import { createHash } from "node:crypto";
+
+export const CONVERSATION_TURN_COLLECTION = "ai_conversation_turns_v2";
 const DEFAULT_DEBOUNCE_MS = 3_500;
 const MAX_DEBOUNCE_MS = 15_000;
 
@@ -21,6 +24,10 @@ export function resolveConversationDebounceMs(input?: {
 }
 
 export function getConversationTurnDocId(tenantId: string, chatId: string) {
+  return `turn_v2_${createHash("sha256").update(JSON.stringify([tenantId, chatId])).digest("hex")}`;
+}
+
+export function getLegacyConversationTurnDocId(tenantId: string, chatId: string) {
   const raw = `${tenantId.trim()}_${chatId.trim()}`;
   return raw.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 440);
 }
@@ -32,3 +39,4 @@ export function isSupersededConversationTurn(input: {
   const latestMessageId = String(input.latestMessageId || "").trim();
   return Boolean(latestMessageId && latestMessageId !== input.jobMessageId.trim());
 }
+

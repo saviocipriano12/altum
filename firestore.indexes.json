@@ -1,6 +1,161 @@
 {
   "indexes": [
     {
+      "collectionGroup": "lead_tasks", "queryScope": "COLLECTION",
+      "fields": [{ "fieldPath": "tenantId", "order": "ASCENDING" }, { "fieldPath": "crmTaskIndex.version", "order": "ASCENDING" }, { "fieldPath": "crmTaskIndex.issue", "order": "ASCENDING" }, { "fieldPath": "crmTaskIndex.openRank", "order": "ASCENDING" }, { "fieldPath": "crmTaskIndex.dueOrder", "order": "ASCENDING" }]
+    },
+    {
+      "collectionGroup": "lead_tasks", "queryScope": "COLLECTION",
+      "fields": [{ "fieldPath": "tenantId", "order": "ASCENDING" }, { "fieldPath": "crmTaskIndex.version", "order": "ASCENDING" }, { "fieldPath": "crmTaskIndex.issue", "order": "ASCENDING" }, { "fieldPath": "crmTaskIndex.state", "order": "ASCENDING" }, { "fieldPath": "crmTaskIndex.dueOrder", "order": "ASCENDING" }]
+    },
+    {
+      "collectionGroup": "lead_tasks", "queryScope": "COLLECTION",
+      "fields": [{ "fieldPath": "tenantId", "order": "ASCENDING" }, { "fieldPath": "leadId", "order": "ASCENDING" }, { "fieldPath": "crmTaskIndex.version", "order": "ASCENDING" }, { "fieldPath": "crmTaskIndex.issue", "order": "ASCENDING" }, { "fieldPath": "crmTaskIndex.openRank", "order": "ASCENDING" }, { "fieldPath": "crmTaskIndex.dueOrder", "order": "ASCENDING" }]
+    },
+    {
+      "collectionGroup": "lead_tasks", "queryScope": "COLLECTION",
+      "fields": [{ "fieldPath": "tenantId", "order": "ASCENDING" }, { "fieldPath": "leadId", "order": "ASCENDING" }, { "fieldPath": "crmTaskIndex.version", "order": "ASCENDING" }, { "fieldPath": "crmTaskIndex.issue", "order": "ASCENDING" }, { "fieldPath": "crmTaskIndex.state", "order": "ASCENDING" }, { "fieldPath": "crmTaskIndex.dueOrder", "order": "ASCENDING" }]
+    },
+    {
+      "collectionGroup": "chats", "queryScope": "COLLECTION",
+      "fields": [{ "fieldPath": "tenantId", "order": "ASCENDING" }, { "fieldPath": "lastClientMessageAt", "order": "ASCENDING" }]
+    },
+    {
+      "collectionGroup": "commercial_read_issues", "queryScope": "COLLECTION",
+      "fields": [{ "fieldPath": "scope", "order": "ASCENDING" }, { "fieldPath": "resolved", "order": "ASCENDING" }]
+    },
+    {
+      "collectionGroup": "automations", "queryScope": "COLLECTION",
+      "fields": [{ "fieldPath": "tenantId", "order": "ASCENDING" }, { "fieldPath": "trigger", "order": "ASCENDING" }]
+    },
+    {
+      "collectionGroup": "ecommerce_commercial_actions", "queryScope": "COLLECTION",
+      "fields": [{ "fieldPath": "tenantId", "order": "ASCENDING" }, { "fieldPath": "sourceEventId", "order": "ASCENDING" }]
+    },
+    {
+      "collectionGroup": "ecommerce_commercial_actions", "queryScope": "COLLECTION",
+      "fields": [{ "fieldPath": "tenantId", "order": "ASCENDING" }, { "fieldPath": "whatsappDelivery.jobId", "order": "ASCENDING" }]
+    },
+    {
+      "collectionGroup": "ecommerce_events", "queryScope": "COLLECTION",
+      "fields": [{ "fieldPath": "occurrence.protocolVersion", "order": "ASCENDING" }, { "fieldPath": "occurrence.status", "order": "ASCENDING" }, { "fieldPath": "receivedAt", "order": "ASCENDING" }]
+    },
+    {
+      "collectionGroup": "ecommerce_events", "queryScope": "COLLECTION",
+      "fields": [{ "fieldPath": "occurrence.protocolVersion", "order": "ASCENDING" }, { "fieldPath": "occurrence.status", "order": "ASCENDING" }, { "fieldPath": "tenantId", "order": "ASCENDING" }, { "fieldPath": "receivedAt", "order": "ASCENDING" }]
+    },
+    {
+      "collectionGroup": "ecommerce_events", "queryScope": "COLLECTION",
+      "fields": [{ "fieldPath": "occurrence.protocolVersion", "order": "ASCENDING" }, { "fieldPath": "occurrence.status", "order": "ASCENDING" }, { "fieldPath": "occurrence.leaseUntil", "order": "ASCENDING" }]
+    },
+    {
+      "collectionGroup": "ecommerce_events", "queryScope": "COLLECTION",
+      "fields": [{ "fieldPath": "occurrence.protocolVersion", "order": "ASCENDING" }, { "fieldPath": "occurrence.status", "order": "ASCENDING" }, { "fieldPath": "tenantId", "order": "ASCENDING" }, { "fieldPath": "occurrence.leaseUntil", "order": "ASCENDING" }]
+    },
+    {
+      "collectionGroup": "jobs",
+      "queryScope": "COLLECTION",
+      "fields": [{ "fieldPath": "type", "order": "ASCENDING" }, { "fieldPath": "status", "order": "ASCENDING" }, { "fieldPath": "leaseUntil", "order": "ASCENDING" }]
+    },
+    {
+      "collectionGroup": "jobs",
+      "queryScope": "COLLECTION",
+      "fields": [{ "fieldPath": "type", "order": "ASCENDING" }, { "fieldPath": "status", "order": "ASCENDING" }, { "fieldPath": "availableAt", "order": "ASCENDING" }, { "fieldPath": "priority", "order": "ASCENDING" }]
+    },
+    {
+      "collectionGroup": "jobs",
+      "queryScope": "COLLECTION",
+      "fields": [{ "fieldPath": "type", "order": "ASCENDING" }, { "fieldPath": "status", "order": "ASCENDING" }, { "fieldPath": "tenantId", "order": "ASCENDING" }, { "fieldPath": "leaseUntil", "order": "ASCENDING" }]
+    },
+    {
+      "collectionGroup": "jobs",
+      "queryScope": "COLLECTION",
+      "fields": [{ "fieldPath": "type", "order": "ASCENDING" }, { "fieldPath": "status", "order": "ASCENDING" }, { "fieldPath": "executeAfter", "order": "ASCENDING" }]
+    },
+    {
+      "collectionGroup": "jobs",
+      "queryScope": "COLLECTION",
+      "fields": [{ "fieldPath": "type", "order": "ASCENDING" }, { "fieldPath": "status", "order": "ASCENDING" }, { "fieldPath": "tenantId", "order": "ASCENDING" }, { "fieldPath": "executeAfter", "order": "ASCENDING" }]
+    },
+    {
+      "collectionGroup": "chats",
+      "queryScope": "COLLECTION",
+      "fields": [{ "fieldPath": "tenantId", "order": "ASCENDING" }, { "fieldPath": "channel", "order": "ASCENDING" }, { "fieldPath": "channelId", "order": "ASCENDING" }, { "fieldPath": "contactExternalId", "order": "ASCENDING" }]
+    },
+    {
+      "collectionGroup": "outbound_campaign_deliveries",
+      "queryScope": "COLLECTION",
+      "fields": [{ "fieldPath": "tenantId", "order": "ASCENDING" }, { "fieldPath": "runId", "order": "ASCENDING" }]
+    },
+    {
+      "collectionGroup": "chats",
+      "queryScope": "COLLECTION",
+      "fields": [{ "fieldPath": "tenantId", "order": "ASCENDING" }, { "fieldPath": "contactPhone", "order": "ASCENDING" }]
+    },
+    {
+      "collectionGroup": "chat_media_uploads",
+      "queryScope": "COLLECTION",
+      "fields": [{ "fieldPath": "tenantId", "order": "ASCENDING" }, { "fieldPath": "chatId", "order": "ASCENDING" }]
+    },
+    {
+      "collectionGroup": "chat_outbound_locks",
+      "queryScope": "COLLECTION",
+      "fields": [{ "fieldPath": "tenantId", "order": "ASCENDING" }, { "fieldPath": "chatId", "order": "ASCENDING" }]
+    },
+    {
+      "collectionGroup": "messages",
+      "queryScope": "COLLECTION",
+      "fields": [{ "fieldPath": "tenantId", "order": "ASCENDING" }, { "fieldPath": "chatId", "order": "ASCENDING" }, { "fieldPath": "createdAt", "order": "DESCENDING" }]
+    },
+    {
+      "collectionGroup": "whatsapp_delivery_events",
+      "queryScope": "COLLECTION",
+      "fields": [{ "fieldPath": "tenantId", "order": "ASCENDING" }, { "fieldPath": "phoneNumberId", "order": "ASCENDING" }, { "fieldPath": "metaMessageId", "order": "ASCENDING" }]
+    },
+    {
+      "collectionGroup": "messages",
+      "queryScope": "COLLECTION",
+      "fields": [{ "fieldPath": "tenantId", "order": "ASCENDING" }, { "fieldPath": "metaMessageId", "order": "ASCENDING" }]
+    },
+    {
+      "collectionGroup": "outbound_campaign_deliveries",
+      "queryScope": "COLLECTION",
+      "fields": [{ "fieldPath": "tenantId", "order": "ASCENDING" }, { "fieldPath": "metaMessageId", "order": "ASCENDING" }]
+    },
+    {
+      "collectionGroup": "whatsapp_delivery_events",
+      "queryScope": "COLLECTION",
+      "fields": [{ "fieldPath": "tenantId", "order": "ASCENDING" }, { "fieldPath": "metaMessageId", "order": "ASCENDING" }]
+    },
+    {
+      "collectionGroup": "agent_runtime_dispatches",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "operation", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "conversion_dispatches",
+      "queryScope": "COLLECTION",
+      "fields": [{ "fieldPath": "status", "order": "ASCENDING" }, { "fieldPath": "nextAttemptAt", "order": "ASCENDING" }]
+    },
+    {
+      "collectionGroup": "conversion_dispatches",
+      "queryScope": "COLLECTION",
+      "fields": [{ "fieldPath": "status", "order": "ASCENDING" }, { "fieldPath": "leaseUntil", "order": "ASCENDING" }]
+    },
+    {
+      "collectionGroup": "conversion_dispatches",
+      "queryScope": "COLLECTION",
+      "fields": [{ "fieldPath": "tenantId", "order": "ASCENDING" }, { "fieldPath": "status", "order": "ASCENDING" }, { "fieldPath": "nextAttemptAt", "order": "ASCENDING" }]
+    },
+    {
+      "collectionGroup": "conversion_dispatches",
+      "queryScope": "COLLECTION",
+      "fields": [{ "fieldPath": "tenantId", "order": "ASCENDING" }, { "fieldPath": "status", "order": "ASCENDING" }, { "fieldPath": "leaseUntil", "order": "ASCENDING" }]
+    },
+    {
       "collectionGroup": "chats",
       "queryScope": "COLLECTION",
       "fields": [
@@ -204,6 +359,117 @@
       "fields": [
         { "fieldPath": "status", "order": "ASCENDING" },
         { "fieldPath": "createdAt", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "chat_outbound_jobs",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "tenantId", "order": "ASCENDING" },
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "crm_observation_jobs",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "tenantId", "order": "ASCENDING" },
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "tenant_trash",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "tenantId", "order": "ASCENDING" },
+        { "fieldPath": "expiresAt", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "contacts",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "tenantId", "order": "ASCENDING" },
+        { "fieldPath": "leadIds", "arrayConfig": "CONTAINS" }
+      ]
+    },
+    {
+      "collectionGroup": "contacts",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "tenantId", "order": "ASCENDING" },
+        { "fieldPath": "leadId", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "contacts",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "tenantId", "order": "ASCENDING" },
+        { "fieldPath": "primaryLeadId", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "leads",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "tenantId", "order": "ASCENDING" },
+        { "fieldPath": "contactId", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "leads",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "tenantId", "order": "ASCENDING" },
+        { "fieldPath": "email", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "leads",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "tenantId", "order": "ASCENDING" },
+        { "fieldPath": "telefone", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "leads",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "tenantId", "order": "ASCENDING" },
+        { "fieldPath": "sourceId", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "leads",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "tenantId", "order": "ASCENDING" },
+        { "fieldPath": "externalProfileId", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "lead_tasks",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "tenantId", "order": "ASCENDING" },
+        { "fieldPath": "crmTaskIndex.version", "order": "ASCENDING" },
+        { "fieldPath": "crmTaskIndex.openRank", "order": "ASCENDING" },
+        { "fieldPath": "crmTaskIndex.dueOrder", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "lead_tasks",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "tenantId", "order": "ASCENDING" },
+        { "fieldPath": "leadId", "order": "ASCENDING" },
+        { "fieldPath": "crmTaskIndex.version", "order": "ASCENDING" },
+        { "fieldPath": "crmTaskIndex.openRank", "order": "ASCENDING" },
+        { "fieldPath": "crmTaskIndex.dueOrder", "order": "ASCENDING" }
       ]
     }
   ],

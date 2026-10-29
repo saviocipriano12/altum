@@ -1,0 +1,6 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": { "incremental": false },
+  "include": ["./crm-current-facts.test.mts", "./crm-current-facts.emulator.mts", "../lib/crm-current-facts.ts", "../lib/server/ai/agent.ts"],
+  "exclude": ["../node_modules", "../.next", "../.qa-artifacts", "../_benchmark"]
+}

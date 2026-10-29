@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { WhatsAppChannelConfig } from "@/app/lib/server/whatsapp-channel";
 import { firebaseStorageBucketCandidates, saveFirebaseStorageFileWithFallback } from "@/lib/server/firebase-storage";
-import { messagingResult } from "./result";
+import { extractExternalMessageId, messagingResult } from "./result";
 import type { MessagingProvider, MessagingSessionResult } from "./types";
 import { readEvolutionQr } from "./evolution-qr";
 import { buildEvolutionMediaRequest } from "./evolution-media";
@@ -47,11 +47,13 @@ function payloadError(payload: Record<string, unknown>, status: number) {
 
 class EvolutionRequestError extends Error {
   readonly status: number;
+  readonly payload: Record<string, unknown>;
 
-  constructor(status: number, message: string) {
+  constructor(status: number, message: string, payload: Record<string, unknown>) {
     super(message);
     this.name = "EvolutionRequestError";
     this.status = status;
+    this.payload = payload;
   }
 }
 
@@ -90,7 +92,7 @@ export class EvolutionMessagingProvider implements MessagingProvider {
       },
     });
     const payload = await response.json().catch(() => ({})) as Record<string, unknown>;
-    if (!response.ok) throw new EvolutionRequestError(response.status, payloadError(payload, response.status));
+    if (!response.ok) throw new EvolutionRequestError(response.status, payloadError(payload, response.status), payload);
     return payload;
   }
 
@@ -100,8 +102,11 @@ export class EvolutionMessagingProvider implements MessagingProvider {
       const payload = await this.request(path, { method: "POST", body: JSON.stringify({ number: input.to, text: input.text }) });
       return messagingResult(this.id, payload);
     } catch (error) {
-      const message = error instanceof Error ? error.message : "";
-      if (!/400|422|valid|text/i.test(message)) throw error;
+      // A second payload is safe only after an explicit legacy-schema rejection.
+      // A timeout/5xx mentioning "text" is not proof that WhatsApp rejected it.
+      if (!(error instanceof EvolutionRequestError) || ![400, 422].includes(error.status) ||
+        extractExternalMessageId(error.payload) || !/\btextMessage\b/i.test(error.message) ||
+        !/required|requires|missing|must be (?:an? )?object|should be (?:an? )?object/i.test(error.message)) throw error;
       const payload = await this.request(path, {
         method: "POST",
         body: JSON.stringify({ number: input.to, textMessage: { text: input.text } }),
@@ -178,7 +183,7 @@ export class EvolutionMessagingProvider implements MessagingProvider {
       url: input.webhookUrl,
       webhookByEvents: false,
       webhookBase64: false,
-      events: ["MESSAGES_UPSERT", "MESSAGES_UPDATE", "SEND_MESSAGE_UPDATE", "CONNECTION_UPDATE", "QRCODE_UPDATED"],
+      events: ["MESSAGES_UPSERT", "MESSAGES_UPDATE", "SEND_MESSAGE", "SEND_MESSAGE_UPDATE", "CONNECTION_UPDATE", "QRCODE_UPDATED"],
       headers: {
         Authorization: `Bearer ${this.channel.accessToken}`,
         "x-altum-whatsapp-channel-id": this.channel.id,
@@ -209,7 +214,7 @@ export async function downloadEvolutionInboundMedia(
     }
   );
   const payload = await response.json().catch(() => ({})) as Record<string, unknown>;
-  if (!response.ok) throw new EvolutionRequestError(response.status, payloadError(payload, response.status));
+  if (!response.ok) throw new EvolutionRequestError(response.status, payloadError(payload, response.status), payload);
   const base64 = readMediaBase64(payload.base64);
   if (!base64) throw new Error("Evolution nao retornou o conteudo da midia.");
   return {
@@ -217,6 +222,21 @@ export async function downloadEvolutionInboundMedia(
     contentType: clean(payload.mimetype || payload.mimeType, 180) || "application/octet-stream",
     filename: clean(payload.fileName || payload.filename, 240),
   };
+}
+
+export async function fetchEvolutionGroupName(channel: WhatsAppChannelConfig, groupJid: string, signal?: AbortSignal) {
+  if (!/@g\.us$/i.test(groupJid)) return null;
+  for (const route of ["findGroupInfos", "findGroupInfoByJid"]) {
+    const response = await fetch(`${baseUrl(channel)}/group/${route}/${encodeURIComponent(instanceName(channel))}?groupJid=${encodeURIComponent(groupJid)}`, {
+      headers: { apikey: channel.accessToken }, signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(5_000)]) : AbortSignal.timeout(5_000), cache: "no-store",
+    });
+    if (response.status === 404) continue;
+    if (!response.ok) return null;
+    const payload = await response.json() as Record<string, unknown>;
+    if (payload.id && payload.id !== groupJid) return null;
+    return clean(payload.subject, 180) || null;
+  }
+  return null;
 }
 
 export async function fetchEvolutionProfilePicture(channel: WhatsAppChannelConfig, phone: string) {

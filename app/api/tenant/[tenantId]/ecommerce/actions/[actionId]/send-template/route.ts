@@ -1,10 +1,10 @@
 import { NextResponse } from "next/server";
 import { FieldValue } from "firebase-admin/firestore";
 import { adminDb } from "@/app/lib/server/firebase-admin";
-import { normalizePhone } from "@/app/lib/server/phone";
 import { requireRequestUser, RouteAuthError } from "@/app/lib/server/route-auth";
 import { assertTenantAccess, hasTenantCapability, TenantAccessError } from "@/lib/server/tenant";
-import { sendTenantChatTemplate } from "@/lib/server/chat-dispatch";
+import { deliverEcommerceActionTemplate, EcommerceDeliveryPendingError } from "@/lib/server/ecommerce-action-delivery";
+import { ChatOutboundIdempotencyError } from "@/lib/server/chat-outbound-idempotency";
 import { assertTenantModule } from "@/lib/server/tenant-entitlements";
 import {
   automationTemplateForAction,
@@ -32,53 +32,6 @@ function normalizeTemplateName(value: unknown) {
 function normalizeBodyParams(value: unknown) {
   if (!Array.isArray(value)) return [] as string[];
   return value.map((item) => clean(item, 200)).filter(Boolean).slice(0, 20);
-}
-
-async function ensureWhatsAppChat(input: {
-  tenantId: string;
-  leadId: string;
-  phone: string;
-  name: string;
-  actorName: string;
-}) {
-  const phone = normalizePhone(input.phone);
-  if (!phone) throw new Error("Acao sem telefone valido para WhatsApp.");
-
-  const existing = await adminDb
-    .collection("chats")
-    .where("tenantId", "==", input.tenantId)
-    .where("contactPhone", "==", phone)
-    .limit(1)
-    .get();
-  if (!existing.empty) {
-    const doc = existing.docs[0];
-    await doc.ref.set(
-      {
-        leadId: input.leadId || clean(doc.data().leadId, 180) || null,
-        contactName: input.name || clean(doc.data().contactName, 180) || phone,
-        channel: "whatsapp",
-        updatedAt: FieldValue.serverTimestamp(),
-      },
-      { merge: true }
-    );
-    return doc.id;
-  }
-
-  const created = await adminDb.collection("chats").add({
-    tenantId: input.tenantId,
-    leadId: input.leadId || null,
-    channel: "whatsapp",
-    contactName: input.name || phone,
-    contactPhone: phone,
-    contactPhoneNormalized: phone,
-    status: "open",
-    ownerName: input.actorName,
-    createdAt: FieldValue.serverTimestamp(),
-    updatedAt: FieldValue.serverTimestamp(),
-    lastMessageTime: FieldValue.serverTimestamp(),
-    lastMessage: "",
-  });
-  return created.id;
 }
 
 export async function POST(
@@ -117,32 +70,23 @@ export async function POST(
 
     if (!templateName) return NextResponse.json({ error: "Template nao configurado para esta acao." }, { status: 400 });
 
-    const chatId = await ensureWhatsAppChat({
+    const result = await deliverEcommerceActionTemplate({
       tenantId,
-      leadId: clean(action.leadId, 180),
-      phone: clean(action.customerPhone, 80),
-      name: clean(action.customerName, 180),
-      actorName: user.name,
-    });
-
-    const result = await sendTenantChatTemplate({
-      tenantId,
-      chatId,
+      actionId: actionRef.id,
       templateName,
       languageCode,
       bodyParams: resolvedParams,
       actor: { id: user.uid, name: user.name },
-      pauseAi: true,
-      pauseMinutes: 30,
     });
+    const chatId = result.chatId;
 
     const markDone = body.markDone !== false;
     await actionRef.set(
       {
         status: markDone ? "done" : "sent",
         whatsappSentAt: FieldValue.serverTimestamp(),
-        whatsappSentBy: user.uid,
-        whatsappSentByName: user.name,
+        whatsappSentBy: result.actor.id,
+        whatsappSentByName: result.actor.name,
         whatsappChatId: chatId,
         whatsappTemplateName: templateName,
         whatsappTemplateLanguage: languageCode,
@@ -156,23 +100,33 @@ export async function POST(
       { merge: true }
     );
 
-    const leadId = clean(action.leadId, 180);
+    const leadId = result.leadId;
     if (leadId) {
-      await adminDb.collection("leads").doc(leadId).collection("events").add({
-        type: "ecommerce_whatsapp_template",
-        title: "Template WhatsApp enviado",
-        detail: `${templateName} enviado para acao ecommerce.`,
-        actorId: user.uid,
-        actorName: user.name,
-        metadata: {
-          actionId: actionRef.id,
-          actionType,
-          chatId,
-          templateName,
-          languageCode,
-          metaMessageId: result.metaMessageId || "",
-        },
-        createdAt: FieldValue.serverTimestamp(),
+      const leadRef = adminDb.collection("leads").doc(leadId);
+      const eventRef = leadRef.collection("events").doc(`ecommerce-template-${result.jobId}`);
+      await adminDb.runTransaction(async tx => {
+        const [lead, event] = await Promise.all([tx.get(leadRef), tx.get(eventRef)]);
+        if (!lead.exists || lead.data()?.tenantId !== tenantId) throw new Error("Lead alterado apos envio. Evento nao foi gravado fora da empresa.");
+        if (event.exists) {
+          if (event.data()?.metadata?.actionId !== actionRef.id) throw new Error("Evento de envio ecommerce fora do escopo.");
+          return;
+        }
+        tx.create(eventRef, {
+          type: "ecommerce_whatsapp_template",
+          title: "Template WhatsApp enviado",
+          detail: `${templateName} enviado para acao ecommerce.`,
+          actorId: result.actor.id,
+          actorName: result.actor.name,
+          metadata: {
+            actionId: actionRef.id,
+            actionType,
+            chatId,
+            templateName,
+            languageCode,
+            metaMessageId: result.metaMessageId || "",
+          },
+          createdAt: FieldValue.serverTimestamp(),
+        });
       });
     }
 
@@ -186,6 +140,8 @@ export async function POST(
       metaMessageId: result.metaMessageId,
     });
   } catch (error) {
+    if (error instanceof EcommerceDeliveryPendingError) return NextResponse.json({ ok: false, pending: true, code: "delivery_pending", jobId: error.jobId, chatId: error.chatId, error: error.message }, { status: 409 });
+    if (error instanceof ChatOutboundIdempotencyError) return NextResponse.json({ error: error.message, code: error.code }, { status: 409 });
     if (error instanceof RouteAuthError) return NextResponse.json({ error: error.message, code: error.code }, { status: error.status });
     if (error instanceof TenantAccessError) return NextResponse.json({ error: error.message, code: error.code }, { status: 403 });
     console.error("Erro ao enviar template ecommerce:", error);

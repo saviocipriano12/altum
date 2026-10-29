@@ -34,6 +34,19 @@ export const openClawMissionEnvelopeSchema = z.object({
     budgetBrl: z.number().finite().min(0),
     constraints: z.array(z.string().max(300)).max(24),
   }),
+  // A mission may be dispatched more than once as its approved work advances.
+  // This context does not change the mission state machine by itself; it gives
+  // the runtime and audit trail an unambiguous view of the current unit of
+  // work, so task-level execution can be enabled without a protocol break.
+  task: z.object({
+    id: z.string().min(1).max(180),
+    title: z.string().min(1).max(240),
+    agent: z.string().min(1).max(160),
+    capability: z.string().min(1).max(120),
+    agentCandidateId: z.string().min(1).max(160).nullable(),
+    agentCandidateSource: z.string().min(1).max(240).nullable(),
+    agentCandidateStatus: z.enum(["review_required", "active", "disabled", "deprecated"]).nullable(),
+  }).nullable().optional().default(null),
   policy: z.object({
     externalActionsRequireApproval: z.literal(true),
     secretHandling: z.literal("altum_vault_only"),
@@ -54,6 +67,7 @@ export const openClawRuntimeEventSchema = z.object({
   dispatchId: z.string().trim().min(1).max(180),
   missionId: z.string().trim().min(1).max(180),
   tenantId: z.string().trim().min(1).max(180),
+  taskId: z.string().trim().min(1).max(180).optional(),
   type: z.enum(["mission.progress", "mission.await_approval", "mission.completed", "mission.failed", "mission.cancelled"]),
   occurredAt: z.string().datetime(),
   message: z.string().trim().max(4_000).optional(),
@@ -145,8 +159,18 @@ export async function dispatchMissionToOpenClaw(input: {
   constraints: string[];
   operation: OpenClawMissionOperation;
   actorId: string;
+  task?: {
+    id: string;
+    title: string;
+    agent: string;
+    capability: string;
+    agentCandidateId?: string | null;
+    agentCandidateSource?: string | null;
+    agentCandidateStatus?: "review_required" | "active" | "disabled" | "deprecated" | null;
+  } | null;
 }) {
   const dispatchRef = adminDb.collection("agent_runtime_dispatches").doc();
+  const executionRef = adminDb.collection("agent_task_executions").doc(dispatchRef.id);
   const status = getOpenClawRuntimeStatus();
   const baseRecord = {
     missionId: input.missionId,
@@ -155,6 +179,25 @@ export async function dispatchMissionToOpenClaw(input: {
     runtime: "openclaw",
     source: OPENCLAW_RUNTIME_SOURCE.repository,
     sourceCommit: OPENCLAW_RUNTIME_SOURCE.commit,
+    taskId: input.task?.id || null,
+    taskTitle: input.task?.title || null,
+    agentCandidateId: input.task?.agentCandidateId || null,
+    createdBy: input.actorId,
+    createdAt: FieldValue.serverTimestamp(),
+    updatedAt: FieldValue.serverTimestamp(),
+  };
+  const executionRecord = {
+    dispatchId: dispatchRef.id,
+    missionId: input.missionId,
+    tenantId: input.tenantId,
+    taskId: input.task?.id || null,
+    taskTitle: input.task?.title || null,
+    runtime: "openclaw",
+    status: "queued",
+    attempt: 1,
+    agentCandidateId: input.task?.agentCandidateId || null,
+    agentCandidateSource: input.task?.agentCandidateSource || null,
+    agentCandidateStatus: input.task?.agentCandidateStatus || null,
     createdBy: input.actorId,
     createdAt: FieldValue.serverTimestamp(),
     updatedAt: FieldValue.serverTimestamp(),
@@ -163,6 +206,7 @@ export async function dispatchMissionToOpenClaw(input: {
   if (!status.configured) {
     await Promise.all([
       dispatchRef.set({ ...baseRecord, status: "not_configured", missingConfiguration: status.missing }),
+      executionRef.set({ ...executionRecord, status: "not_configured", missingConfiguration: status.missing }),
       adminDb.collection("agent_missions").doc(input.missionId).set({ runtimeStatus: "not_configured", runtimeMessage: callbackFailureMessage(), updatedAt: FieldValue.serverTimestamp() }, { merge: true }),
     ]);
     return { dispatched: false as const, reason: "not_configured" as const, dispatchId: dispatchRef.id };
@@ -183,6 +227,15 @@ export async function dispatchMissionToOpenClaw(input: {
       budgetBrl: input.budgetBrl,
       constraints: input.constraints,
     },
+    task: input.task ? {
+      id: input.task.id,
+      title: input.task.title,
+      agent: input.task.agent,
+      capability: input.task.capability,
+      agentCandidateId: input.task.agentCandidateId || null,
+      agentCandidateSource: input.task.agentCandidateSource || null,
+      agentCandidateStatus: input.task.agentCandidateStatus || null,
+    } : null,
     policy: { externalActionsRequireApproval: true, secretHandling: "altum_vault_only", artifactDelivery: "altum_private_library" },
     callback: { url: status.callbackUrl, signatureHeader: "x-altum-runtime-signature", timestampHeader: "x-altum-runtime-timestamp" },
   };
@@ -197,6 +250,7 @@ export async function dispatchMissionToOpenClaw(input: {
       deliveryAttempts: 0,
       queuedAt: FieldValue.serverTimestamp(),
     }),
+    executionRef.set({ ...executionRecord, queuedAt: FieldValue.serverTimestamp() }),
     adminDb.collection("agent_missions").doc(input.missionId).set({
       runtimeStatus: "queued",
       runtimeDispatchId: dispatchRef.id,

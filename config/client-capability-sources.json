@@ -1,0 +1,79 @@
+{
+  "reviewedAt": "2026-10-21",
+  "scope": "Area do cliente: reunioes, transcricao e copiloto",
+  "sources": [
+    {
+      "id": "vexa",
+      "repository": "https://github.com/Vexa-ai/vexa",
+      "commit": "f1a62fbbdfd2c98cb162582d82c31fe8102acc89",
+      "license": "Apache-2.0",
+      "decision": "pilot",
+      "use": "Captura de reunioes por API; reutilizar o adapter Altum existente",
+      "verified": "README, licenca e codigo upstream do spawn e das gravacoes; nao houve reuniao real"
+    },
+    {
+      "id": "meetily",
+      "repository": "https://github.com/Zackriya-Solutions/meetily",
+      "commit": "a2cb62e827da7ef59f65064c97233efb2313878e",
+      "license": "MIT",
+      "decision": "reference",
+      "use": "Captura local e experiencia de notas/transcricao; aplicativo desktop, sem transplante integral para Next.js",
+      "verified": "Repositorio, licenca, manutencao e escopo Community/Pro; nao executado"
+    },
+    {
+      "id": "anarlog",
+      "previousName": "Hyprnote",
+      "repository": "https://github.com/fastrepl/anarlog",
+      "commit": "3fad1860b2cbf890d8e0786b79c6ec967391c447",
+      "license": "MIT",
+      "decision": "reference",
+      "use": "Notas de reuniao e contexto; avaliar componentes individualmente antes de copiar",
+      "verified": "Redirect canonico, licenca e manutencao; nao executado"
+    },
+    {
+      "id": "copilotkit",
+      "repository": "https://github.com/CopilotKit/CopilotKit",
+      "commit": "abc6807f35865e043c498398e3080f137ddbdad9",
+      "license": "MIT",
+      "decision": "evaluate",
+      "use": "Contexto da tela, sugestoes editaveis e intervencao humana; preservar autenticacao e executor Altum",
+      "verified": "Repositorio, licenca raiz e manutencao; exemplos e dependencias ainda nao reproduzidos"
+    },
+    {
+      "id": "livekit-agents",
+      "repository": "https://github.com/livekit/agents",
+      "commit": "c1fcb42999a2f8b818791dcc6d85b3d8f65f0964",
+      "license": "Apache-2.0",
+      "decision": "defer",
+      "use": "Voz em tempo real quando houver demanda; nao instalar junto de outro motor de voz por antecipacao",
+      "verified": "Repositorio, licenca e manutencao; nao executado"
+    },
+    {
+      "id": "pipecat",
+      "repository": "https://github.com/pipecat-ai/pipecat",
+      "commit": "9b0459b47675324843ffea17d90d8d3e422eb92c",
+      "license": "BSD-2-Clause",
+      "decision": "defer",
+      "use": "Alternativa para pipeline de audio/coaching; comparar com LiveKit se streaming proprio se tornar necessario",
+      "verified": "Repositorio, licenca e manutencao; nao executado"
+    },
+    {
+      "id": "whisperx",
+      "repository": "https://github.com/m-bain/whisperX",
+      "commit": "db8fde4d31a3e7f49fe5835938685a76f5ba5477",
+      "license": "BSD-2-Clause",
+      "decision": "defer",
+      "use": "Timestamps e separacao de falantes em worker; modelos, pesos e recursos de GPU exigem avaliacao propria",
+      "verified": "Repositorio, licenca do codigo e manutencao; nao executado"
+    },
+    {
+      "id": "attendee",
+      "repository": "https://github.com/attendee-labs/attendee",
+      "commit": "b89e8cc6373a2b615e88de1861f6029f640de0a5",
+      "license": "Elastic-2.0",
+      "decision": "exclude-from-default-adoption",
+      "use": "Nao incorporar como servico hospedado para clientes sem permissao comercial aplicavel",
+      "verified": "LICENSE limita hosted/managed service para terceiros; nao copiado"
+    }
+  ]
+}

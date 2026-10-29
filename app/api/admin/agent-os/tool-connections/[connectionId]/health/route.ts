@@ -38,7 +38,7 @@ export async function POST(request: Request, context: { params: Promise<{ connec
       if (!model) throw new RouteAuthError(409, "compatible_model_missing", "A conexão não informou nenhum modelo disponível. Salve um modelo ou revise o endereço da API.");
       result = await probeOpenAiCompatibleChat({ baseUrl, apiKey, model });
     } else if (["comfyui", "ltx", "openmontage"].includes(providerId)) result = await probeCreativeExecutor(connection);
-    else throw new RouteAuthError(400, "unsupported_health_check", "Este provider ainda não possui um adaptador de teste. Ele não será tratado como rota disponível até possuir um.");
+    else throw new RouteAuthError(400, "unsupported_health_check", "Este provedor não possui teste rápido implementado. A conexão cadastrada permanece disponível para a primeira geração aprovada, que validará a execução real.");
     await ref.set({ status: "healthy", health: { status: "healthy", checkedAt: FieldValue.serverTimestamp(), details: result }, ...(Array.isArray((result as { availableModels?: unknown }).availableModels) ? { modelCatalog: (result as { availableModels: string[] }).availableModels } : {}), lastHealthAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp(), updatedBy: actor.uid }, { merge: true });
     await adminDb.collection("audit_logs").add({ type: "agent_tool_connection_health_checked", actorId: actor.uid, actorName: actor.name, connectionId, providerId: connection.providerId, healthy: true, createdAt: FieldValue.serverTimestamp() });
     return NextResponse.json({ ok: true, healthy: true, details: result });
@@ -46,7 +46,7 @@ export async function POST(request: Request, context: { params: Promise<{ connec
     // A failed live probe is operational evidence. Do not keep advertising the
     // route as healthy (or let the router keep selecting it) until a later
     // successful test clears the degradation.
-    if (checkedConnectionId) {
+    if (checkedConnectionId && !(error instanceof RouteAuthError && error.code === "unsupported_health_check")) {
       const reason = error instanceof Error ? error.message.slice(0, 500) : "connection_probe_failed";
       await adminDb.collection("tool_connections").doc(checkedConnectionId).set({
         status: "degraded",

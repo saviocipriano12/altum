@@ -1,9 +1,21 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { readFileSync } from "node:fs";
-import { deriveEcommerceOrderJourney } from "../lib/ecommerce-journey.ts";
+import { deriveEcommerceOrderJourney, isPaidEcommerceJourneyState } from "../lib/ecommerce-journey.ts";
 
 const ecommerceServerSource = readFileSync(new URL("../lib/server/ecommerce.ts", import.meta.url), "utf8");
+
+test("paid awaiting fulfillment remains previously paid on repeated updates", () => {
+  const next = deriveEcommerceOrderJourney({ paymentStatus: "paid", fulfillmentStatus: "unfulfilled" });
+  assert.equal(next.state, "fulfillment_pending");
+  assert.equal(isPaidEcommerceJourneyState(next.state), true);
+  const previouslyPaid = isPaidEcommerceJourneyState(next.state);
+  const purchaseDelta = next.paid && !previouslyPaid ? 1 : next.terminal && previouslyPaid ? -1 : 0;
+  assert.equal(purchaseDelta, 0);
+  assert.equal(isPaidEcommerceJourneyState("order_created"), false);
+  assert.equal(isPaidEcommerceJourneyState("refunded"), false);
+  assert.match(ecommerceServerSource, /const previouslyPaid = isPaidEcommerceJourneyState\(input\.previousJourneyState\)/);
+});
 
 test("pedido pendente acompanha pagamento sem confirmar compra", () => {
   const journey = deriveEcommerceOrderJourney({ status: "created", paymentStatus: "pending" });

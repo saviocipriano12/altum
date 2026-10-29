@@ -24,11 +24,11 @@ test("remote WhatsApp audio is converted and persisted for mobile playback", asy
 test("open chat polling requests only newer messages and merges them by id", async () => {
   const messagesRoute = await source("app/api/tenant/[tenantId]/chats/[chatId]/messages/route.ts");
   const inbox = await source("app/cliente/painel/inbox/page.tsx");
-  assert.match(messagesRoute, /searchParams\.get\("since"\)/);
-  assert.match(messagesRoute, /where\("createdAt", ">", Timestamp\.fromMillis\(sinceMs\)\)/);
+  assert.match(messagesRoute, /rawDirection === "newer"/);
+  assert.match(messagesRoute, /startAfter\([\s\S]*Timestamp\.fromMillis\(input\.cursor\.timestampMs\),[\s\S]*input\.cursor\.documentId/);
   assert.match(inbox, /incrementalMessages: true/);
   assert.match(inbox, /mergeChatMessages\(current, nextMessages\)/);
-  assert.match(inbox, /messagesRef\.current\.map\(messageTimeMs\)/);
+  assert.match(inbox, /while \(hasMoreNewer && continuationCursor && drainedPages < 50\)/);
 });
 
 test("protected chat media falls back to an authenticated Blob when signed URLs fail", async () => {
@@ -46,9 +46,9 @@ test("Inbox defers secondary channel and AI settings so the first conversation c
 test("Inbox uses a compact first load instead of enriching hundreds of conversations", async () => {
   const inbox = await source("app/cliente/painel/inbox/page.tsx");
   const chatsRoute = await source("app/api/tenant/[tenantId]/chats/route.ts");
-  assert.match(inbox, /new URLSearchParams\(\{ limit: "100", view: "compact" \}\)/);
+  assert.match(inbox, /new URLSearchParams\(\{ limit: "50", view: "compact" \}\)/);
   assert.match(chatsRoute, /const compact = url\.searchParams\.get\("view"\) === "compact"/);
-  assert.match(chatsRoute, /compact \? Promise\.resolve\(emptyChatEnrichment\(\)\) : getChatEnrichment\(tenantId\)/);
+  assert.match(chatsRoute, /compact && !filteredRequest[\s\S]*getChatEnrichmentForPage\(tenantId, scannedDocs\)/);
 });
 
 test("CRM opens its lead list before loading cross-chat signals and metrics", async () => {

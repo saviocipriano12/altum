@@ -33,12 +33,14 @@ test("cobranca nunca e executada automaticamente e exige valor valido", () => {
   assert.equal(validateCommercialAgentAction({ type: "review_charge", leadId: "l1", referenceId: "b1", amount: 500 }).valid, true);
 });
 
-test("agendamento da IA nasce como sugestao e so converte depois da aprovacao", async () => {
-  const agentSource = await readFile(new URL("../lib/server/ai/agent.ts", import.meta.url), "utf8");
+test("agendamento usa os serviços de rascunho e confirmação com controle humano", async () => {
+  const draftSource = await readFile(new URL("../lib/server/crm/agent-commercial-draft.ts", import.meta.url), "utf8");
+  const mutationSource = await readFile(new URL("../lib/server/crm/appointment-mutation.ts", import.meta.url), "utf8");
   const approvalSource = await readFile(new URL("../app/api/tenant/[tenantId]/commercial-agent/actions/[actionId]/route.ts", import.meta.url), "utf8");
-  assert.match(agentSource, /status: "draft"/);
-  assert.match(approvalSource, /status: "scheduled"/);
-  assert.match(approvalSource, /appointment_conflict/);
+  assert.match(draftSource, /status: "draft"/);
+  assert.match(approvalSource, /commitAppointmentChange/);
+  assert.match(approvalSource, /decision === "approved" \? "scheduled" : "canceled"/);
+  assert.match(mutationSource, /appointment_conflict/);
   assert.match(approvalSource, /meeting_scheduled/);
 });
 

@@ -303,6 +303,7 @@ export default function ClientePipelinePage() {
         stages: payload.stages || draftStages,
       }));
       setEditingStages(false);
+      window.dispatchEvent(new CustomEvent("altum:pipeline-updated", { detail: { tenantId: tenant.tenantId } }));
       await loadPipeline();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Nao foi possivel salvar as etapas.");
@@ -345,8 +346,9 @@ export default function ClientePipelinePage() {
     <CrmWorkspace>
       <div className="pipeline-refined space-y-5">
         <CrmHero
+          compact
           active="Funil"
-          title="Funil comercial com leitura tradicional e movimento rapido entre etapas."
+          title="Funil de oportunidades"
           description="Aqui o time enxerga volume, valor, gargalos e proxima acao no formato de CRM que o cliente ja conhece."
           assistantTitle="Apoio da Altum"
           assistantSubtitle="priorizacao comercial"

@@ -1,6 +1,7 @@
 import crypto from "crypto";
 import { FieldValue } from "firebase-admin/firestore";
 import { adminDb } from "@/app/lib/server/firebase-admin";
+import { withCommercialTaskIndex } from "@/lib/crm-task-index";
 import { normalizePhone } from "@/app/lib/server/phone";
 import { decryptSecret, encryptSecret, hasStoredSecret, maskStoredSecret } from "@/app/lib/server/secret-crypto";
 import { recordInboundLead } from "@/lib/server/lead-intake";
@@ -11,10 +12,14 @@ import { commerceProviderMeta, connectionConfigFromDoc, hasCommerceCredentials, 
 import type { CommerceSyncEvent } from "@/lib/server/commerce/types";
 import { verifyNativeCommerceWebhook } from "@/lib/server/commerce/webhook-security";
 import { fetchNuvemshopWebhookResource } from "@/lib/server/commerce/providers/nuvemshop";
-import { deriveEcommerceOrderJourney } from "@/lib/ecommerce-journey";
+import { deriveEcommerceOrderJourney, isPaidEcommerceJourneyState } from "@/lib/ecommerce-journey";
 import { normalizeEcommerceAgentRollout, type EcommerceAgentRollout } from "@/lib/ecommerce-agent-policy";
 import { recommendEcommerceRelatedOffer, type EcommerceOfferRecommendation } from "@/lib/ecommerce-recommendation";
 import { recordNativeGrowthEvent } from "@/lib/server/growth/record-event";
+import { commitShopifyLeadProjection, type EcommerceProjectionInput } from "@/lib/server/crm/ecommerce-projection";
+import { commerceSnapshotDigest } from "@/lib/server/commerce/event-identity";
+import { admitShopifyOccurrence, runShopifyOccurrence } from "@/lib/server/commerce/shopify-occurrence";
+import { createShopifyCommercialAction } from "@/lib/server/commerce/shopify-action-authority";
 
 export const ECOMMERCE_PROVIDERS = ["shopify", "nuvemshop", "woocommerce", "vtex", "tray", "loja_integrada", "checkout_externo"] as const;
 
@@ -254,6 +259,19 @@ function hashId(parts: Array<unknown>) {
     .update(parts.map((part) => clean(part, 500)).join("|"))
     .digest("hex")
     .slice(0, 32);
+}
+
+async function writeEcommerceLeadProjection(input: Omit<EcommerceProjectionInput, "sourceEventId"> & { provider: EcommerceProvider; sourceEventId?: string }) {
+  if (input.provider === "shopify") return commitShopifyLeadProjection({ ...input,
+    sourceEventId: input.sourceEventId || hashId([input.tenantId, input.connectionId, input.eventId]),
+  });
+  // Other providers retain their previous path; they are not homologated here.
+  const ref = adminDb.collection("leads").doc(input.leadId);
+  const eventId = hashId([input.tenantId, input.connectionId, input.eventId, input.kind === "order" ? "order_journey" : input.kind]);
+  return Promise.all([
+    ref.set({ ...input.patch, ...(Array.isArray(input.patch.tags) ? { tags: FieldValue.arrayUnion(...input.patch.tags) } : {}) }, { merge: true }),
+    ref.collection("events").doc(eventId).set(input.eventData, { merge: true }),
+  ]);
 }
 
 function actionDocId(input: { tenantId: string; connectionId: string; type: string; externalId: string }) {
@@ -570,7 +588,7 @@ async function createLeadTask(input: {
   const snap = await taskRef.get();
   if (snap.exists) return taskRef.id;
 
-  await taskRef.set({
+  await taskRef.set(withCommercialTaskIndex({
     tenantId: input.tenantId,
     leadId: input.leadId,
     title: input.title,
@@ -585,7 +603,7 @@ async function createLeadTask(input: {
     createdByName: "Ecommerce",
     createdAt: FieldValue.serverTimestamp(),
     updatedAt: FieldValue.serverTimestamp(),
-  });
+  }));
 
   return taskRef.id;
 }
@@ -605,6 +623,7 @@ async function createCommercialAction(input: {
   productNames: string[];
   amount: number | null;
   metadata?: Record<string, unknown>;
+  sourceEventId?: string;
 }) {
   const ref = adminDb.collection("ecommerce_commercial_actions").doc(
     actionDocId({
@@ -614,6 +633,7 @@ async function createCommercialAction(input: {
       externalId: input.externalId,
     })
   );
+  if (input.provider === "shopify") return createShopifyCommercialAction(ref, { ...input, metadata: input.metadata || {} });
   const snap = await ref.get();
   await ref.set(
     {
@@ -651,16 +671,12 @@ async function resolveLeadTask(input: {
   reason: string;
 }) {
   const ref = adminDb.collection("lead_tasks").doc(hashId([input.tenantId, input.leadId, input.key]));
-  const snap = await ref.get();
-  if (!snap.exists || clean(snap.data()?.status, 40) === "done") return;
-  await ref.set({
-    status: "done",
-    completedAt: FieldValue.serverTimestamp(),
-    updatedAt: FieldValue.serverTimestamp(),
-    updatedBy: "ecommerce_webhook",
-    updatedByName: "Ecommerce",
-    resolutionReason: input.reason,
-  }, { merge: true });
+  await adminDb.runTransaction(async tx => {
+    const snap = await tx.get(ref), current = snap.data();
+    if (!current || current.tenantId !== input.tenantId || current.leadId !== input.leadId || clean(current.status, 40) === "done") return;
+    tx.update(ref, withCommercialTaskIndex({ status: "done", completedAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp(),
+      updatedBy: "ecommerce_webhook", updatedByName: "Ecommerce", resolutionReason: input.reason }, current));
+  });
 }
 
 async function resolveCommercialAction(input: {
@@ -693,13 +709,12 @@ async function syncOrderToCommercial(input: {
   provider: EcommerceProvider;
   order: NormalizedOrder;
   eventId: string;
+  sourceEventId: string;
   previousJourneyState?: string;
 }) {
   const order = input.order;
   const journey = deriveEcommerceOrderJourney(order);
-  const previouslyPaid = ["payment_confirmed", "shipped", "delivered", "partially_refunded"].includes(
-    clean(input.previousJourneyState, 60)
-  );
+  const previouslyPaid = isPaidEcommerceJourneyState(input.previousJourneyState);
   const purchaseDelta = journey.paid && !previouslyPaid ? 1 : journey.terminal && previouslyPaid ? -1 : 0;
   const revenueDelta = purchaseDelta * Math.max(0, order.totalPrice || 0);
   const productText = order.purchasedProductNames.length ? order.purchasedProductNames.join(", ") : "produtos do pedido";
@@ -836,8 +851,10 @@ async function syncOrderToCommercial(input: {
       channel: "ecommerce",
       name: order.customerName,
     }),
-    adminDb.collection("leads").doc(lead.leadId).set(
-      {
+    writeEcommerceLeadProjection({
+      tenantId: input.tenantId, leadId: lead.leadId, connectionId: input.connectionId, provider: input.provider,
+      eventId: input.eventId, sourceEventId: input.sourceEventId, kind: "order", externalId: order.externalOrderId,
+      patch: {
         priority: order.trackingCode ? "medium" : "high",
         potentialValue: order.totalPrice ?? 0,
         valorPotencial: order.totalPrice ?? 0,
@@ -864,14 +881,10 @@ async function syncOrderToCommercial(input: {
           ecommerceRecommendationRelation: catalogRecommendation?.relation || null,
           updatedAt: new Date().toISOString(),
         },
-        tags: FieldValue.arrayUnion("ecommerce", "cliente", input.provider, journey.state),
+        tags: ["ecommerce", "cliente", input.provider, journey.state],
         updatedAt: FieldValue.serverTimestamp(),
       },
-      { merge: true }
-    ),
-    adminDb.collection("leads").doc(lead.leadId).collection("events").doc(
-      hashId([input.tenantId, input.connectionId, input.eventId, "order_journey"])
-    ).set({
+      eventData: {
       type: "ecommerce_order",
       title: journey.state === "payment_confirmed" ? "Pagamento confirmado" : journey.state === "delivered" ? "Pedido entregue" : journey.state === "shipped" ? "Pedido enviado" : journey.terminal ? "Pedido encerrado" : "Pedido recebido",
       detail: `Pedido ${order.orderNumber || order.externalOrderId} em ${providerLabel(input.provider)}. Itens: ${productText}.`,
@@ -886,12 +899,14 @@ async function syncOrderToCommercial(input: {
         eventId: input.eventId,
       },
       createdAt: FieldValue.serverTimestamp(),
-    }, { merge: true }),
+      },
+    }),
   ]);
 
   if (journey.shouldConfirmPurchase) {
     await Promise.all([
       createCommercialAction({
+        sourceEventId: input.sourceEventId,
         tenantId: input.tenantId, connectionId: input.connectionId, provider: input.provider,
         type: "purchase_confirmation", leadId: lead.leadId, externalId: order.externalOrderId,
         title: "Confirmar compra realizada",
@@ -932,6 +947,7 @@ async function syncOrderToCommercial(input: {
       journeyState: journey.state,
     },
     skipConversionDispatch: true,
+    ...(input.provider === "shopify" ? { orderSource: { id: input.sourceEventId, connectionId: input.connectionId, orderId: order.externalOrderId } } : {}),
   });
 
   if (journey.paid && !journey.terminal) {
@@ -952,6 +968,7 @@ async function syncOrderToCommercial(input: {
   if (journey.shouldSendTracking) {
     await Promise.all([
       createCommercialAction({
+        sourceEventId: input.sourceEventId,
         tenantId: input.tenantId,
         connectionId: input.connectionId,
         provider: input.provider,
@@ -993,6 +1010,7 @@ async function syncOrderToCommercial(input: {
 
   if (journey.shouldCreatePostPurchaseUpsell && catalogRecommendation) {
     await createCommercialAction({
+      sourceEventId: input.sourceEventId,
       tenantId: input.tenantId,
       connectionId: input.connectionId,
       provider: input.provider,
@@ -1026,6 +1044,7 @@ async function syncCartToCommercial(input: {
   provider: EcommerceProvider;
   cart: NormalizedCart;
   eventId: string;
+  sourceEventId: string;
   existingLeadId?: string;
 }) {
   const cart = input.cart;
@@ -1040,23 +1059,25 @@ async function syncCartToCommercial(input: {
         tenantId: input.tenantId, connectionId: input.connectionId, externalId: cart.externalCartId,
         type: "abandoned_cart_recovery", status: "done", reason: "cart_recovered",
       }),
-      adminDb.collection("leads").doc(leadId).set({
-        tags: FieldValue.arrayUnion("carrinho_recuperado"),
+      writeEcommerceLeadProjection({
+        tenantId: input.tenantId, leadId, connectionId: input.connectionId, provider: input.provider,
+        eventId: input.eventId, kind: "recovered_cart", externalId: cart.externalCartId,
+        patch: {
+        tags: ["carrinho_recuperado"],
         commercialState: {
           lastRecoveredCartId: cart.externalCartId,
           lastRecoveredCartAt: new Date().toISOString(),
         },
         updatedAt: FieldValue.serverTimestamp(),
-      }, { merge: true }),
-      adminDb.collection("leads").doc(leadId).collection("events").doc(
-        hashId([input.tenantId, input.connectionId, input.eventId, "recovered_cart"])
-      ).set({
+        },
+        eventData: {
         type: "ecommerce_recovered_cart",
         title: "Carrinho recuperado",
         detail: `Carrinho ${cart.externalCartId} foi recuperado em ${providerLabel(input.provider)}.`,
         metadata: { connectionId: input.connectionId, provider: input.provider, cartId: cart.externalCartId, eventId: input.eventId },
         createdAt: FieldValue.serverTimestamp(),
-      }, { merge: true }),
+        },
+      }),
     ]);
     return leadId;
   }
@@ -1103,10 +1124,12 @@ async function syncCartToCommercial(input: {
       channel: "ecommerce",
       name: cart.customerName,
     }),
-    adminDb.collection("leads").doc(lead.leadId).set(
-      {
+    writeEcommerceLeadProjection({
+      tenantId: input.tenantId, leadId: lead.leadId, connectionId: input.connectionId, provider: input.provider,
+      eventId: input.eventId, kind: "abandoned_cart", externalId: cart.externalCartId,
+      patch: {
         priority: "high",
-        tags: FieldValue.arrayUnion("ecommerce", "carrinho_abandonado", input.provider),
+        tags: ["ecommerce", "carrinho_abandonado", input.provider],
         commercialState: {
           lastAbandonedCartId: cart.externalCartId,
           lastAbandonedCartProvider: input.provider,
@@ -1117,11 +1140,7 @@ async function syncCartToCommercial(input: {
         },
         updatedAt: FieldValue.serverTimestamp(),
       },
-      { merge: true }
-    ),
-    adminDb.collection("leads").doc(lead.leadId).collection("events").doc(
-      hashId([input.tenantId, input.connectionId, input.eventId, "abandoned_cart"])
-    ).set({
+      eventData: {
       type: "ecommerce_abandoned_cart",
       title: "Carrinho abandonado",
       detail: `Carrinho em ${providerLabel(input.provider)} com ${productText}.`,
@@ -1134,8 +1153,10 @@ async function syncCartToCommercial(input: {
         eventId: input.eventId,
       },
       createdAt: FieldValue.serverTimestamp(),
-    }, { merge: true }),
+      },
+    }),
     createCommercialAction({
+      sourceEventId: input.sourceEventId,
       tenantId: input.tenantId,
       connectionId: input.connectionId,
       provider: input.provider,
@@ -1456,7 +1477,9 @@ export async function processEcommerceWebhook(input: {
   req: Request;
   rawBody?: string;
   trusted?: boolean;
+  recoveryEventId?: string;
 }) {
+  if (input.recoveryEventId && input.trusted !== true) throw new Error("ecommerce_recovery_not_authorized");
   const connectionRef = adminDb.collection("ecommerce_connections").doc(input.connectionId);
   const connectionSnap = await connectionRef.get();
   if (!connectionSnap.exists) throw new Error("ecommerce_connection_not_found");
@@ -1479,9 +1502,15 @@ export async function processEcommerceWebhook(input: {
   }
   const normalized = normalizeWebhookEvent(input.provider, effectivePayload, input.req.headers);
   const eventRef = adminDb.collection("ecommerce_events").doc(hashId([input.tenantId, input.connectionId, normalized.externalEventId]));
-  const eventSnap = await eventRef.get();
-  const eventAlreadyExists = eventSnap.exists;
-  await eventRef.set(
+  if (input.recoveryEventId && input.recoveryEventId !== eventRef.id) throw new Error("ecommerce_recovery_source_mismatch");
+  let eventAlreadyExists = false;
+  if (input.provider === "shopify") {
+    await admitShopifyOccurrence({ id: eventRef.id, tenantId: input.tenantId, connectionId: input.connectionId,
+      topic: normalized.topic, externalEventId: normalized.externalEventId, payload: effectivePayload,
+      normalized: { product: normalized.product || null, order: normalized.order || null, cart: normalized.cart || null } }, !input.recoveryEventId);
+  } else {
+    const eventSnap = await eventRef.get(); eventAlreadyExists = eventSnap.exists;
+    await eventRef.set(
     {
       tenantId: input.tenantId,
       connectionId: input.connectionId,
@@ -1500,7 +1529,9 @@ export async function processEcommerceWebhook(input: {
     },
     { merge: true }
   );
+  }
 
+  const execute = async (assertActive: () => Promise<void> = async () => {}) => {
   const connectionUpdates: Record<string, unknown> = {
     lastEventAt: FieldValue.serverTimestamp(),
     lastError: "",
@@ -1509,6 +1540,7 @@ export async function processEcommerceWebhook(input: {
   };
 
   if (normalized.product) {
+    await assertActive();
     const productRef = adminDb.collection("ecommerce_products").doc(hashId([input.tenantId, input.connectionId, normalized.product.externalProductId]));
     const productSnap = await productRef.get();
     await productRef.set(
@@ -1523,10 +1555,11 @@ export async function processEcommerceWebhook(input: {
       { merge: true }
     );
     await mirrorProductToKnowledge({ tenantId: input.tenantId, connectionId: input.connectionId, provider: input.provider, product: normalized.product });
-    if (!eventAlreadyExists) connectionUpdates.productCount = FieldValue.increment(1);
+    if (!eventAlreadyExists && input.provider !== "shopify") connectionUpdates.productCount = FieldValue.increment(1);
   }
 
   if (normalized.order) {
+    await assertActive();
     const orderRef = adminDb.collection("ecommerce_orders").doc(hashId([input.tenantId, input.connectionId, normalized.order.externalOrderId]));
     const orderSnap = await orderRef.get();
     const journey = deriveEcommerceOrderJourney(normalized.order);
@@ -1548,13 +1581,15 @@ export async function processEcommerceWebhook(input: {
       provider: input.provider,
       order: normalized.order,
       eventId: normalized.externalEventId,
+      sourceEventId: eventRef.id,
       previousJourneyState: clean(orderSnap.data()?.journeyState, 60),
     });
     await orderRef.set({ leadId, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
-    if (!eventAlreadyExists) connectionUpdates.orderCount = FieldValue.increment(1);
+    if (!eventAlreadyExists && input.provider !== "shopify") connectionUpdates.orderCount = FieldValue.increment(1);
   }
 
   if (normalized.cart) {
+    await assertActive();
     const cartRef = adminDb.collection("ecommerce_abandoned_carts").doc(hashId([input.tenantId, input.connectionId, normalized.cart.externalCartId]));
     const cartSnap = await cartRef.get();
     await cartRef.set(
@@ -1575,12 +1610,14 @@ export async function processEcommerceWebhook(input: {
       cart: normalized.cart,
       eventId: normalized.externalEventId,
       existingLeadId: clean(cartSnap.data()?.leadId, 180),
+      sourceEventId: eventRef.id,
     });
     if (leadId) await cartRef.set({ leadId, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
-    if (!eventAlreadyExists) connectionUpdates.cartCount = FieldValue.increment(1);
+    if (!eventAlreadyExists && input.provider !== "shopify") connectionUpdates.cartCount = FieldValue.increment(1);
   }
 
   if (!eventAlreadyExists && (normalized.order || normalized.cart)) {
+    await assertActive();
     try {
       const settingsSnap = await adminDb.collection("tenant_settings").doc(input.tenantId).get();
       const tenantSettings = settingsSnap.exists ? settingsSnap.data() as Record<string, unknown> : {};
@@ -1593,6 +1630,7 @@ export async function processEcommerceWebhook(input: {
           limit: automation.agent.maxActionsPerRun,
           actor: { id: "ecommerce_agent", name: "Agente Ecommerce Altum" },
           source: "webhook",
+          ...(input.provider === "shopify" ? { shopifySourceEventId: eventRef.id } : {}),
         });
       }
     } catch (error) {
@@ -1601,7 +1639,14 @@ export async function processEcommerceWebhook(input: {
     }
   }
 
+  await assertActive();
+  if (input.provider === "shopify" && connectionUpdates.lastAutomationError) throw new Error("SHOPIFY_OCCURRENCE_AUTOMATION_UNCONFIRMED");
+  if (input.provider === "shopify") return connectionUpdates;
   await connectionRef.set(connectionUpdates, { merge: true });
+  };
+
+  if (input.provider === "shopify") return runShopifyOccurrence(eventRef.id, input.tenantId, execute);
+  await execute();
 
   return {
     ok: true,
@@ -1613,6 +1658,10 @@ export async function processEcommerceWebhook(input: {
   };
 }
 
+/** Existing automation consumer calls this; no second scheduler or unscoped
+ * webhook bypass. Recovery uses the admitted source and current connection. */
+export { processPendingShopifyOccurrences } from "@/lib/server/commerce/shopify-occurrence-recovery";
+
 export async function processEcommerceSyncEvent(input: {
   tenantId: string;
   connectionId: string;
@@ -1621,7 +1670,11 @@ export async function processEcommerceSyncEvent(input: {
 }) {
   const headers = new Headers({
     "x-altum-event": input.event.topic,
-    "x-altum-event-id": input.event.externalEventId,
+    // API sync IDs identify a resource, unlike webhook delivery IDs. A changed
+    // snapshot needs a new occurrence; identical snapshots retain one receipt.
+    "x-altum-event-id": input.provider === "shopify"
+      ? `sync:v1:${commerceSnapshotDigest([input.event.externalEventId, input.event.topic, input.event.payload])}`
+      : input.event.externalEventId,
   });
   const req = new Request("https://altum.invalid/internal-commerce-sync", { method: "POST", headers });
   return processEcommerceWebhook({

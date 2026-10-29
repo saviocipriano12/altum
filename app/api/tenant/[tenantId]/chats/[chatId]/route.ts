@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import { commercialRecordIdentity, commercialPotentialValue } from "@/lib/crm-commercial-record";
+import { resolveWhatsAppGroupName } from "@/lib/server/messaging/whatsapp-group-name";
 import { FieldValue, type DocumentSnapshot } from "firebase-admin/firestore";
 import { adminDb } from "@/app/lib/server/firebase-admin";
 import { requireRequestUser, RouteAuthError } from "@/app/lib/server/route-auth";
@@ -12,11 +14,12 @@ import {
 import { getChatState } from "@/lib/server/ai/agent";
 import { buildManualQueuePatch } from "@/lib/server/chat-operations";
 import { upsertContactProfile } from "@/lib/server/contact-profile";
-import { deleteTenantChat, recordDeletionAudit } from "@/lib/server/tenant-data-deletion";
+import { deleteTenantChat, recordDeletionAudit, TenantDeletionConflict } from "@/lib/server/tenant-data-deletion";
 import { assertTenantModule } from "@/lib/server/tenant-entitlements";
 import { assertChatCommercialAccess, hasTeamWideCommercialAccess } from "@/lib/server/commercial-access";
 import { listTenantOperators } from "@/lib/server/tenant-routing";
 import { deriveSalesJourney } from "@/lib/sales-journey";
+import { persistConversationAssignment } from "@/lib/server/conversation-assignment";
 
 type ChatDoc = Record<string, unknown> & {
   tenantId?: string;
@@ -256,14 +259,12 @@ async function resolveLead(chat: ChatDoc, tenantId: string) {
         ? (leadData.commercialDossier as Record<string, unknown>)
         : null,
     commercialDossierUpdatedAt: leadData.commercialDossierUpdatedAt || null,
-    potentialValue:
-      typeof leadData.potentialValue === "number"
-        ? leadData.potentialValue
-        : typeof leadData.valorPotencial === "number"
-          ? leadData.valorPotencial
-          : null,
+    ...commercialRecordIdentity(leadData),
+    potentialValue: commercialPotentialValue(leadData),
     tags: parseTags(leadData.tags),
     aiFieldEvidence: leadData.aiFieldEvidence && typeof leadData.aiFieldEvidence === "object" ? leadData.aiFieldEvidence : null,
+      aiLatestMediaInsight: leadData.aiLatestMediaInsight && typeof leadData.aiLatestMediaInsight === "object" ? leadData.aiLatestMediaInsight : null,
+      aiCommercialReadState: leadData.aiCommercialReadState && typeof leadData.aiCommercialReadState === "object" ? leadData.aiCommercialReadState : null,
     aiCaptureChecklist: leadData.aiCaptureChecklist && typeof leadData.aiCaptureChecklist === "object" ? leadData.aiCaptureChecklist : null,
     aiConversationStage: typeof leadData.aiConversationStage === "string" ? leadData.aiConversationStage : "",
     aiNextAction: typeof leadData.aiNextAction === "string" ? leadData.aiNextAction : "",
@@ -501,6 +502,8 @@ export async function GET(
 
     const { chat } = await getChatSnapshot(chatId, tenantId);
     await assertChatCommercialAccess({ membership, userId: user.uid, tenantId, chatId });
+    const groupName = await resolveWhatsAppGroupName(tenantId, chatId, chat as unknown as Record<string, unknown>);
+    if (groupName) { chat.contactName = groupName; chat.groupName = groupName; }
     const [lead, aiState, notes, teamMembers, settings, contactProfile] = await Promise.all([
       resolveLead(chat, tenantId),
       getChatState(tenantId, chatId),
@@ -617,7 +620,7 @@ export async function PATCH(
     }
 
     const currentTags = parseTags(chat.tags);
-    if (JSON.stringify(currentTags) !== JSON.stringify(nextTags)) {
+    if (body.tags !== undefined && JSON.stringify(currentTags) !== JSON.stringify(nextTags)) {
       patch.tags = nextTags;
       changes.push(`tags: ${nextTags.length ? nextTags.join(", ") : "sem tags"}`);
     }
@@ -634,7 +637,8 @@ export async function PATCH(
     let assignedUserName: string | null = null;
     const currentAssignedUserId = cleanString(chat.assignedTo || chat.ownerId, 120);
     if (body.assignedUserId !== undefined && assignedUserId !== currentAssignedUserId) {
-      if (!hasTeamWideCommercialAccess(membership)) {
+      const returningOwnConversation = !assignedUserId && currentAssignedUserId === user.uid;
+      if (!hasTeamWideCommercialAccess(membership) && !returningOwnConversation) {
         throw new TenantAccessError(
           "commercial_assignment_denied",
           "Somente gestores podem transferir conversas entre vendedores."
@@ -687,7 +691,10 @@ export async function PATCH(
       })
     );
 
-    const writes: Promise<unknown>[] = [chatRef.set(patch, { merge: true })];
+    const assignmentChanged = Object.prototype.hasOwnProperty.call(patch, "assignedTo");
+    // Complete the ownership transition before writing optional audit records.
+    if (assignmentChanged) await persistConversationAssignment({ tenantId, chatId, expectedOwner: currentAssignedUserId, patch, actorId: user.uid, actorName: user.name });
+    const writes: Promise<unknown>[] = assignmentChanged ? [] : [chatRef.set(patch, { merge: true })];
 
     if (typeof patch.contactPhotoUrl === "string") {
       writes.push(
@@ -730,18 +737,7 @@ export async function PATCH(
         })
       );
 
-      if (Object.prototype.hasOwnProperty.call(patch, "assignedTo")) {
-        writes.push(
-          leadRef.set(
-            {
-              ownerId: assignedUserId || null,
-              owner: assignedUserId ? assignedUserName || user.name : null,
-              updatedAt: FieldValue.serverTimestamp(),
-            },
-            { merge: true }
-          )
-        );
-      }
+
     }
 
     await Promise.all(writes);
@@ -770,7 +766,7 @@ export async function DELETE(
     await assertTenantModule(tenantId, "inbox");
     assertTenantCapability(membership, "respond_inbox");
     await assertChatCommercialAccess({ membership, userId: user.uid, tenantId, chatId });
-    const result = await deleteTenantChat({ tenantId, chatId });
+    const result = await deleteTenantChat({ tenantId, chatId, authority: { userId: user.uid, capability: "respond_inbox" }, authorize: async () => { await assertChatCommercialAccess({ membership, userId: user.uid, tenantId, chatId }); } });
     await recordDeletionAudit({
       tenantId,
       actorId: user.uid,
@@ -782,6 +778,7 @@ export async function DELETE(
   } catch (error) {
     if (error instanceof RouteAuthError) return NextResponse.json({ error: error.message, code: error.code }, { status: error.status });
     if (error instanceof TenantAccessError) return NextResponse.json({ error: error.message, code: error.code }, { status: 403 });
+    if (error instanceof TenantDeletionConflict) return NextResponse.json({ error: error.message, code: "deletion_conflict" }, { status: 409 });
     console.error("Erro ao apagar conversa:", error);
     return NextResponse.json({ error: "Falha ao apagar conversa." }, { status: 500 });
   }

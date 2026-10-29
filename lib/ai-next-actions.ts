@@ -23,13 +23,15 @@ export function humanizeAiNextAction(value?: string | null) {
   return action.replaceAll("_", " ");
 }
 
-export function suggestPipelineStageForAiAction(action: string | null | undefined, stages: string[]) {
-  const normalizedStages = stages.map((stage) => String(stage || "").trim()).filter(Boolean);
+export function suggestPipelineStageForAiAction(action: string | null | undefined, stages: Array<string | import("@/lib/pipeline").PipelineStageDefinition>) {
+  const definitions = stages.map((stage) => typeof stage === "string" ? { id: stage, label: stage, description: "", isTerminal: false } : stage)
+    .filter((stage) => !stage.isTerminal && !/ganh|perdid|sem.resposta|cancelad/.test(`${stage.id} ${stage.label}`.toLowerCase()));
+  const normalizedStages = definitions.map((stage) => stage.id.trim()).filter(Boolean);
   const nextAction = String(action || "").trim().toLowerCase();
   if (!nextAction || !normalizedStages.length) return null;
 
   const findStage = (patterns: RegExp[]) =>
-    normalizedStages.find((stage) => patterns.some((pattern) => pattern.test(stage))) || null;
+    definitions.find((stage) => patterns.some((pattern) => pattern.test(`${stage.id} ${stage.label} ${stage.description}`.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase())))?.id || null;
 
   if (nextAction === "preparar_proposta_comercial" || nextAction.startsWith("sugerir_oferta_")) {
     return findStage([/proposta/, /orcamento/, /negociacao/]);
@@ -45,7 +47,7 @@ export function suggestPipelineStageForAiAction(action: string | null | undefine
     nextAction === "tratar_objecao_confianca" ||
     nextAction === "tratar_objecao_suave"
   ) {
-    return findStage([/negociacao/, /proposta/, /qualific/, /triagem/]) || normalizedStages[1] || normalizedStages[0] || null;
+    return findStage([/negociacao/, /proposta/, /qualific/, /triagem/]);
   }
 
   if (
@@ -60,7 +62,7 @@ export function suggestPipelineStageForAiAction(action: string | null | undefine
     nextAction === "conduzir_para_diagnostico_ou_reuniao" ||
     nextAction === "coletar_contexto_comercial_minimo"
   ) {
-    return findStage([/qualific/, /triagem/, /contato/, /respond/, /negociacao/]) || normalizedStages[1] || normalizedStages[0] || null;
+    return findStage([/qualific/, /triagem/, /contato/, /respond/]);
   }
 
   return null;

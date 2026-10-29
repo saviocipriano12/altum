@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   getConversationTurnDocId,
+  getLegacyConversationTurnDocId,
   isSupersededConversationTurn,
   resolveConversationDebounceMs,
 } from "../lib/server/ai/turn-coordinator.ts";
@@ -23,5 +24,6 @@ test("only the latest inbound message represents the current conversation turn",
 });
 
 test("conversation coordinator ids are stable and firestore-safe", () => {
-  assert.equal(getConversationTurnDocId("tenant/1", "chat 2"), "tenant_1_chat_2");
+  assert.equal(getLegacyConversationTurnDocId("tenant/1", "chat 2"), "tenant_1_chat_2");
+  assert.match(getConversationTurnDocId("tenant/1", "chat 2"), /^turn_v2_[a-f0-9]{64}$/);
 });

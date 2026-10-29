@@ -37,3 +37,18 @@ test("a quality evaluation becomes stale after the AI settings change", () => {
   assert.equal(isAiEvaluationFreshForSettings({ evaluatedAtMs: 200, settingsUpdatedAtMs: 100 }), true);
   assert.equal(isAiEvaluationFreshForSettings({ evaluatedAtMs: 100, settingsUpdatedAtMs: 101 }), false);
 });
+
+test("a quality evaluation becomes stale after the official scenario contract changes", () => {
+  assert.equal(isAiEvaluationFreshForSettings({
+    evaluatedAtMs: 200,
+    settingsUpdatedAtMs: 100,
+    scenarioVersion: "role-contract-v1",
+    expectedScenarioVersion: "role-contract-v1",
+  }), true);
+  assert.equal(isAiEvaluationFreshForSettings({
+    evaluatedAtMs: 200,
+    settingsUpdatedAtMs: 100,
+    scenarioVersion: "legacy-suite",
+    expectedScenarioVersion: "role-contract-v1",
+  }), false);
+});

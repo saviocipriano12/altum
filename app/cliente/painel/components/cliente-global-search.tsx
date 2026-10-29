@@ -9,7 +9,7 @@ import { getPipelineStageLabel } from "@/lib/pipeline";
 
 type SearchResponse = {
   modules?: Array<{ id: string; label: string; path: string; description?: string }>;
-  leads?: Array<{ id: string; name: string; email?: string; phone?: string; stage?: string }>;
+  leads?: Array<{ id: string; name: string; opportunityTitle?: string; email?: string; phone?: string; stage?: string }>;
   chats?: Array<{ id: string; contactName: string; contactPhone?: string; preview?: string }>;
   budgets?: Array<{ id: string; title: string; leadId?: string; leadName?: string; status?: string }>;
   finance?: Array<{ id: string; description: string; leadId?: string; leadName?: string; status?: string; type?: string }>;
@@ -28,6 +28,7 @@ export function ClienteGlobalSearch() {
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
   const [data, setData] = useState<SearchResponse>({});
 
   useEffect(() => {
@@ -73,10 +74,12 @@ export function ClienteGlobalSearch() {
     const timeout = setTimeout(async () => {
       try {
         setLoading(true);
+        setError("");
         const res = await authedFetch(`/api/tenant/${tenant.tenantId}/search?q=${encodeURIComponent(normalized)}`, {
           signal: controller.signal,
         });
         const payload = (await res.json()) as SearchResponse;
+        if (controller.signal.aborted) return;
 
         if (res.ok) {
           setData({
@@ -92,8 +95,12 @@ export function ClienteGlobalSearch() {
         }
 
         setData(EMPTY_RESULTS);
+        setError("Não foi possível concluir a busca. Tente novamente.");
       } catch {
-        if (!controller.signal.aborted) setData(EMPTY_RESULTS);
+        if (!controller.signal.aborted) {
+          setData(EMPTY_RESULTS);
+          setError("Não foi possível concluir a busca. Confira a conexão e tente novamente.");
+        }
       } finally {
         if (!controller.signal.aborted) setLoading(false);
       }
@@ -183,6 +190,8 @@ export function ClienteGlobalSearch() {
             <div className="flex items-center justify-center py-8 text-[var(--cliente-text-muted)]">
               <Loader2 className="h-4 w-4 animate-spin" />
             </div>
+          ) : error ? (
+            <p role="alert" className="px-3 py-5 text-sm text-[var(--cliente-text-muted)]">{error}</p>
           ) : hasAnyResult ? (
             <div className="space-y-3">
               {(data.modules || []).length ? (
@@ -199,11 +208,11 @@ export function ClienteGlobalSearch() {
               ) : null}
 
               {(data.leads || []).length ? (
-                <SearchSection title="Contatos">
+                <SearchSection title="Clientes e oportunidades">
                   {(data.leads || []).map((lead) => (
                     <SearchButton
                       key={lead.id}
-                      title={lead.name}
+                      title={lead.opportunityTitle ? `${lead.name} · ${lead.opportunityTitle}` : lead.name}
                       subtitle={`${lead.email || lead.phone || "Sem contato"} | Etapa ${getPipelineStageLabel(lead.stage || "captado")}`}
                       onClick={() => navigate(`/cliente/painel/crm?leadId=${encodeURIComponent(lead.id)}`)}
                     />

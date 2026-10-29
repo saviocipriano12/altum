@@ -14,6 +14,7 @@ type PollingOptions = {
   slowIntervalMs?: number;
   runOnMount?: boolean;
   source?: string;
+  refreshOnResume?: boolean;
 };
 
 type NetworkInformationLike = {
@@ -40,6 +41,7 @@ export function useAdaptivePolling({
   slowIntervalMs = 90000,
   runOnMount = true,
   source,
+  refreshOnResume = false,
 }: PollingOptions) {
   const onTickRef = useRef(onTick);
   useEffect(() => {
@@ -149,6 +151,11 @@ export function useAdaptivePolling({
     };
 
     const onEnvironmentChange = () => {
+      if (refreshOnResume && navigator.onLine !== false && document.visibilityState === "visible") {
+        clearTimer();
+        void run();
+        return;
+      }
       schedule();
     };
 
@@ -181,5 +188,5 @@ export function useAdaptivePolling({
       window.removeEventListener(CLIENTE_REALTIME_REFRESH_EVENT, onManualRefresh as EventListener);
       networkInfo?.removeEventListener?.("change", onEnvironmentChange);
     };
-  }, [enabled, fastIntervalMs, runOnMount, slowIntervalMs, source]);
+  }, [enabled, fastIntervalMs, refreshOnResume, runOnMount, slowIntervalMs, source]);
 }

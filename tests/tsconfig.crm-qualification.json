@@ -1,0 +1,6 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": { "incremental": false },
+  "include": ["./crm-qualification-review.emulator.mts", "./crm-qualification-policy.test.mts", "../components/client/commercial-qualification-review.tsx", "../lib/server/ai/agent.ts"],
+  "exclude": ["../node_modules", "../.next", "../.qa-artifacts", "../_benchmark"]
+}

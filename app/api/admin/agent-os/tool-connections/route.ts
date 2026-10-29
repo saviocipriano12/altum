@@ -3,9 +3,10 @@ import { adminDb } from "@/app/lib/server/firebase-admin";
 import { encryptSecret, hasStoredSecret, maskStoredSecret } from "@/app/lib/server/secret-crypto";
 import { requireRequestUser, RouteAuthError } from "@/app/lib/server/route-auth";
 import { toolConnectionCreateSchema } from "@/lib/server/agent-os/tool-registry";
+import { configuredFreeLlmApiUrl } from "@/lib/server/agent-os/freellmapi";
 
 const DEFAULT_PROVIDER_URLS: Record<string, string> = {
-  freellmapi: "http://127.0.0.1:31415",
+  freellmapi: configuredFreeLlmApiUrl(),
   "nvidia-nim": "https://integrate.api.nvidia.com/v1",
   groq: "https://api.groq.com/openai/v1",
   cerebras: "https://api.cerebras.ai/v1",
@@ -15,7 +16,9 @@ const DEFAULT_PROVIDER_URLS: Record<string, string> = {
   fal: "https://queue.fal.run",
   replicate: "https://api.replicate.com/v1",
   higgsfield: "https://api.higgsfield.ai",
-  "ltx-cloud": "https://api.ltx.video",
+  // LTX's current public REST API is api.ltx.io. Older drafts used the
+  // marketing-domain hostname, which cannot execute a render.
+  "ltx-cloud": "https://api.ltx.io",
   heygen: "https://api.heygen.com",
 };
 
@@ -34,7 +37,7 @@ function errorResponse(error: unknown) {
 export async function GET(request: Request) {
   try {
     await requireRequestUser(request, { roles: ["agency_admin"] });
-    const snap = await adminDb.collection("tool_connections").orderBy("__name__").limit(200).get();
+    const snap = await adminDb.collection("tool_connections").where("scope", "==", "platform").limit(200).get();
     return Response.json({ items: snap.docs.map((doc) => { const data = doc.data(); const health = data.health && typeof data.health === "object" ? data.health as Record<string, unknown> : {}; return { id: doc.id, providerId: String(data.providerId || ""), displayName: String(data.displayName || ""), scope: data.scope === "tenant" ? "tenant" : "platform", tenantId: typeof data.tenantId === "string" ? data.tenantId : null, connectionType: String(data.connectionType || "api"), baseUrl: typeof data.baseUrl === "string" ? data.baseUrl : null, chatModel: typeof data.chatModel === "string" ? data.chatModel : null, modelCatalog: Array.isArray(data.modelCatalog) ? data.modelCatalog.map(String).slice(0, 200) : [], capabilities: Array.isArray(data.capabilities) ? data.capabilities.map(String) : [], notes: typeof data.notes === "string" ? data.notes : "", status: String(data.status || "pending_config"), healthStatus: typeof health.status === "string" ? health.status : null, credential: maskStoredSecret(data.credential), credentialConfigured: hasStoredSecret(data.credential), createdAt: timestamp(data.createdAt), lastHealthAt: timestamp(data.lastHealthAt) }; }) }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) { return errorResponse(error); }
 }
@@ -59,7 +62,7 @@ export async function POST(request: Request) {
       : input.providerId === "replicate" ? "bytedance/seedance-1-pro"
         : input.providerId === "higgsfield" ? "bytedance/seedance-2.0/text-to-video"
           : input.providerId === "alibaba-model-studio" ? "qwen-image-3.0" : null;
-    batch.set(ref, { providerId: input.providerId, displayName: input.displayName, scope: input.scope, tenantId: input.scope === "tenant" ? input.tenantId : null, connectionType: input.connectionType, baseUrl, credential, chatModel: input.chatModel || null, capabilities: input.capabilities, notes: input.notes || "", creativeModel, status, activationPolicy, createdBy: actor.uid, createdByName: actor.name, createdAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp() });
+    batch.set(ref, { providerId: input.providerId, displayName: input.displayName, scope: input.scope, tenantId: input.scope === "tenant" ? input.tenantId : null, connectionType: input.connectionType, baseUrl, credential, chatModel: input.chatModel || null, modelCatalog: input.modelCatalog || [], capabilities: input.capabilities, notes: input.notes || "", creativeModel, status, activationPolicy, createdBy: actor.uid, createdByName: actor.name, createdAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp() });
     batch.set(adminDb.collection("audit_logs").doc(), { type: "agent_tool_connection_created", actorId: actor.uid, actorName: actor.name, connectionId: ref.id, providerId: input.providerId, tenantId: input.scope === "tenant" ? input.tenantId : null, connectionType: input.connectionType, credentialConfigured: Boolean(credential), createdAt: FieldValue.serverTimestamp() });
     await batch.commit();
     return Response.json({ ok: true, id: ref.id, status }, { status: 201 });

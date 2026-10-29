@@ -1,8 +1,21 @@
-import { FieldValue, type DocumentReference } from "firebase-admin/firestore";
+import { FieldPath, FieldValue, type DocumentReference } from "firebase-admin/firestore";
+import { createHash, randomUUID } from "node:crypto";
+import { isDeepStrictEqual } from "node:util";
+import { AutomationInternalEffectAuthorizationError, commitInboundAutomationInternalEffect, commitScheduledAutomationInternalEffect, commitLegacyAutomationCrmEffect, supportsAtomicAutomationEffect } from "@/lib/server/automation-internal-effect";
+import { supportsAtomicCrmEffect } from "@/lib/automation-effect-contract";
 import { adminDb } from "@/app/lib/server/firebase-admin";
+import { withCommercialTaskIndex } from "@/lib/crm-task-index";
 import { normalizePipelineStageId } from "@/lib/pipeline";
 import { sendTenantChatText } from "@/lib/server/chat-dispatch";
+import { freezeProposalAutomationPlans, queueProposalAutomationMessage, scheduleProposalAutomationMessage, commitProposalAutomationInternalRecords,
+  scheduleProposalAutomationInternalRecords, commitScheduledProposalAutomationInternalRecords,
+  assertProposalAutomationSchedule, isProposalAutomationSchedule, isProposalAutomationAuthorizationError, type ProposalAutomationClaim } from "@/lib/server/automation-proposal-delivery";
 import { reserveTenantAutomationExecution } from "@/lib/server/tenant-usage";
+import { queueScheduledAutomationMessage, queueWaitingReplyAutomationMessage, queueInboundAutomationMessage } from "@/lib/server/automation-message-delivery";
+import { admitInboundAutomationEvent, claimInboundAutomationExecution, finishInboundAutomationExecution, InboundAutomationPreparingError, type InboundAutomationClaim } from "@/lib/server/automation-inbound-execution";
+import { freezeStageAutomationPlans, beginStageAutomationRun, finishStageAutomationRun, queueStageAutomationMessage, commitStageAutomationInternalRecords,
+  scheduleStageAutomationAction, isStageAutomationSchedule, assertStageAutomationSchedule, isStageAutomationAuthorizationError,
+  commitScheduledStageAutomationInternalRecords, type StageAutomationSource } from "@/lib/server/automation-stage-delivery";
 
 export type TenantAutomationTrigger =
   | "lead_created"
@@ -22,7 +35,6 @@ export type TenantAutomationActionType =
   | "set_priority"
   | "send_message";
 export const AUTOMATION_SCHEDULED_JOB_TYPE = "automation_scheduled_action";
-const AUTOMATION_WAITING_REPLY_RUNTIME_TYPE = "automation_waiting_reply_runtime";
 
 export type TenantAutomationCondition = {
   stageIn?: string[];
@@ -76,6 +88,14 @@ type LeadAutomationContext = {
   chatId?: string | null;
   channel?: string | null;
   messageText?: string | null;
+  sourceMessageId?: string;
+  inboundClaim?: InboundAutomationClaim;
+  schedulerClaimToken?: string;
+  recoveryAutomationId?: string;
+  strictErrors?: boolean;
+  proposalClaim?: ProposalAutomationClaim;
+  stageSource?: StageAutomationSource;
+  socialClaim?: { logId: string; token: string };
   aiNextAction?: string | null;
   waitingSince?: Date | null;
   slaBreached?: boolean;
@@ -99,6 +119,7 @@ type ScheduledAutomationJob = {
   id: string;
   ref: DocumentReference;
   attempts: number;
+  claimToken: string;
 } & Record<string, unknown>;
 
 function cleanText(value: unknown, max = 240) {
@@ -109,11 +130,6 @@ function cleanText(value: unknown, max = 240) {
 function cleanNumber(value: unknown) {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : null;
-}
-
-function sanitizeId(value: string, max = 220) {
-  const cleaned = value.replace(/[^a-zA-Z0-9_-]/g, "_").trim();
-  return cleaned.slice(0, max) || `automation_${Date.now()}`;
 }
 
 function parseStringList(value: unknown, maxItems = 12, maxItemLen = 60) {
@@ -285,7 +301,7 @@ function matchesConditions(automation: TenantAutomationDoc, lead: LeadSnapshot, 
 
 async function createExecutionLog(input: {
   tenantId: string;
-  automationId: string;
+  automationId: string | null;
   automationName: string;
   trigger: TenantAutomationTrigger;
   leadId: string;
@@ -393,11 +409,10 @@ async function resolveChatIdForLead(tenantId: string, leadId: string) {
 async function executeImmediateAction(
   action: TenantAutomationAction,
   automation: TenantAutomationDoc,
-  leadRef: DocumentReference,
   lead: LeadSnapshot,
   context: LeadAutomationContext,
-  tagSet: Set<string>,
-  leadPatch: Record<string, unknown>
+  scheduledJobId?: string,
+  actionIndex?: number
 ) {
   if (context.trigger === "ai_next_action" && action.type === "send_message") {
     return {
@@ -410,12 +425,38 @@ async function executeImmediateAction(
     };
   }
 
+  if (scheduledJobId && supportsAtomicAutomationEffect(action)) {
+    const stage = await commitScheduledStageAutomationInternalRecords({ tenantId: context.tenantId, leadId: context.leadId,
+      scheduledJobId, token: context.schedulerClaimToken || "", action });
+    if (stage) return stage;
+    const proposal = await commitScheduledProposalAutomationInternalRecords({ tenantId: context.tenantId, leadId: context.leadId,
+      scheduledJobId, token: context.schedulerClaimToken || "", action });
+    if (proposal) return proposal;
+    const committed = await commitScheduledAutomationInternalEffect({ tenantId: context.tenantId, chatId: context.chatId || "", leadId: context.leadId,
+      scheduledJobId, claimToken: context.schedulerClaimToken || "", action });
+    if (committed) return committed;
+  }
+  if (context.inboundClaim && supportsAtomicAutomationEffect(action)) {
+    return commitInboundAutomationInternalEffect({ tenantId: context.tenantId, chatId: context.chatId || "", leadId: context.leadId,
+      sourceMessageId: context.sourceMessageId || "", claim: context.inboundClaim, actionIndex: actionIndex ?? -1, action });
+  }
+  if (context.proposalClaim && supportsAtomicAutomationEffect(action)) {
+    return commitProposalAutomationInternalRecords({ tenantId: context.tenantId, leadId: context.leadId, claim: context.proposalClaim,
+      automation, actionIndex: actionIndex ?? -1, action });
+  }
+  if (context.stageSource && supportsAtomicAutomationEffect(action)) {
+    return commitStageAutomationInternalRecords({ tenantId: context.tenantId, leadId: context.leadId, source: context.stageSource,
+      automation, actionIndex: actionIndex ?? -1, action });
+  }
+  if (supportsAtomicCrmEffect(action)) return commitLegacyAutomationCrmEffect({ tenantId: context.tenantId,
+    leadId: context.leadId, automationId: automation.id, automationName: automation.name, trigger: context.trigger, action });
+
   if ((action.type === "create_task" || action.type === "follow_up") && (action.title || action.type === "follow_up")) {
     const dueInHours = Math.max(0, Math.min(24 * 30, Number(action.dueInHours || 0)));
     const taskTitle =
       action.title ||
       (action.type === "follow_up" ? `Follow-up automatico para ${lead.nome}` : "Tarefa automatica");
-    await adminDb.collection("lead_tasks").add({
+    await adminDb.collection("lead_tasks").add(withCommercialTaskIndex({
       tenantId: context.tenantId,
       leadId: context.leadId,
       title: taskTitle,
@@ -431,7 +472,7 @@ async function executeImmediateAction(
       createdByName: context.actorName || automation.name,
       automationId: automation.id,
       automationName: automation.name,
-    });
+    }));
     return {
       executed: true,
       event: {
@@ -442,25 +483,10 @@ async function executeImmediateAction(
     };
   }
 
-  if (action.type === "move_stage" && action.stageId) {
-    const nextStage = normalizePipelineStageId(action.stageId);
-    leadPatch.pipelineStage = nextStage;
-    leadPatch.stage = nextStage;
-    leadPatch.stageUpdatedAt = FieldValue.serverTimestamp();
-    return {
-      executed: true,
-      event: {
-        type: "automation_stage_changed",
-        title: "Automacao moveu stage",
-        detail: `${lead.pipelineStage} -> ${nextStage}`,
-      },
-    };
-  }
-
   if (action.type === "alert_human") {
     const dueInHours = Math.max(0, Math.min(24 * 30, Number(action.dueInHours || 0)));
     const title = action.title || `Handoff humano para ${lead.nome}`;
-    await adminDb.collection("lead_tasks").add({
+    await adminDb.collection("lead_tasks").add(withCommercialTaskIndex({
       tenantId: context.tenantId,
       leadId: context.leadId,
       title,
@@ -478,7 +504,7 @@ async function executeImmediateAction(
       createdByName: context.actorName || automation.name,
       automationId: automation.id,
       automationName: automation.name,
-    });
+    }));
 
     if (action.text) {
       await adminDb.collection("lead_notes").add({
@@ -525,32 +551,8 @@ async function executeImmediateAction(
     };
   }
 
-  if (action.type === "add_tag" && action.tag) {
-    tagSet.add(action.tag);
-    return {
-      executed: true,
-      event: {
-        type: "automation_tag_added",
-        title: "Automacao adicionou tag",
-        detail: action.tag,
-      },
-    };
-  }
-
-  if (action.type === "set_priority" && action.priority) {
-    leadPatch.priority = action.priority;
-    return {
-      executed: true,
-      event: {
-        type: "automation_priority_changed",
-        title: "Automacao ajustou prioridade",
-        detail: action.priority,
-      },
-    };
-  }
-
   if (action.type === "send_message" && action.text) {
-    const chatId = cleanText(context.chatId, 140) || (await resolveChatIdForLead(context.tenantId, context.leadId));
+    const chatId = (context.inboundClaim ? context.chatId || "" : cleanText(context.chatId, 140)) || (await resolveChatIdForLead(context.tenantId, context.leadId));
     if (!chatId) {
       return {
         executed: false,
@@ -562,6 +564,43 @@ async function executeImmediateAction(
       };
     }
 
+    if (scheduledJobId) {
+      const accepted = await queueScheduledAutomationMessage({ tenantId: context.tenantId, chatId,
+        scheduledJobId, automationId: automation.id, automationName: automation.name, text: action.text, schedulerClaimToken: context.schedulerClaimToken });
+      return { executed: true, event: { type: "automation_message_queued", title: "Automacao registrou mensagem para envio",
+        detail: action.text.slice(0, 240), messageId: accepted.messageId, outboundJobId: accepted.jobId } };
+    }
+
+    if (context.trigger === "waiting_for_reply" && !context.stageSource) {
+      const accepted = await queueWaitingReplyAutomationMessage({ tenantId: context.tenantId, chatId,
+        waitingSinceMs: context.waitingSince?.getTime() ?? Number.NaN, actionIndex: actionIndex ?? -1,
+        automationId: automation.id, automationName: automation.name, text: action.text });
+      return { executed: true, event: { type: "automation_message_queued", title: "Automacao registrou mensagem para envio",
+        detail: action.text.slice(0, 240), messageId: accepted.messageId, outboundJobId: accepted.jobId } };
+    }
+
+    if (context.trigger === "message_received" && context.sourceMessageId !== undefined) {
+      if (!context.inboundClaim) throw new Error("Evento de mensagem sem plano de automacao aceito.");
+      const accepted = await queueInboundAutomationMessage({ tenantId: context.tenantId, chatId, leadId: context.leadId,
+        sourceMessageId: context.sourceMessageId, actionIndex: actionIndex ?? -1, claim: context.inboundClaim,
+        automationId: automation.id, automationName: automation.name, text: action.text });
+      return { executed: true, event: { type: "automation_message_queued", title: "Automacao registrou mensagem para envio",
+        detail: action.text.slice(0, 240), messageId: accepted.messageId, outboundJobId: accepted.jobId } };
+    }
+
+    if (context.proposalClaim) {
+      if (context.trigger !== "budget_approved") throw new Error("Origem de proposta fora do gatilho autorizado.");
+      const accepted = await queueProposalAutomationMessage({ tenantId: context.tenantId, leadId: context.leadId, chatId,
+        claim: context.proposalClaim, automation, actionIndex: actionIndex ?? -1, text: action.text });
+      return { executed: true, event: { type: "automation_message_queued", title: "Automacao registrou mensagem para envio",
+        detail: action.text.slice(0, 240), messageId: accepted.messageId, outboundJobId: accepted.jobId } };
+    }
+    if (context.stageSource) {
+      const accepted = await queueStageAutomationMessage({ tenantId: context.tenantId, leadId: context.leadId, chatId,
+        source: context.stageSource, automation, actionIndex: actionIndex ?? -1, text: action.text });
+      return { executed: true, event: { type: "automation_message_queued", title: "Automacao registrou mensagem para envio",
+        detail: action.text.slice(0, 240), messageId: accepted.messageId, outboundJobId: accepted.jobId } };
+    }
     await sendTenantChatText({
       tenantId: context.tenantId,
       chatId,
@@ -591,11 +630,27 @@ async function scheduleAutomationAction(input: {
   action: TenantAutomationAction;
   context: LeadAutomationContext;
   leadName: string;
+  actionIndex: number;
 }) {
+  if (input.context.stageSource) {
+    const chatId = input.action.type === "send_message" ? input.context.chatId || await resolveChatIdForLead(input.context.tenantId, input.context.leadId) : null;
+    return scheduleStageAutomationAction({ tenantId: input.context.tenantId, leadId: input.context.leadId, source: input.context.stageSource,
+      automation: input.automation, action: input.action, actionIndex: input.actionIndex, chatId });
+  }
+  if (input.context.proposalClaim && supportsAtomicAutomationEffect(input.action)) {
+    return scheduleProposalAutomationInternalRecords({ tenantId: input.context.tenantId, leadId: input.context.leadId,
+      claim: input.context.proposalClaim, automation: input.automation, action: input.action, actionIndex: input.actionIndex });
+  }
+  if (input.context.proposalClaim && input.action.type === "send_message") {
+    const chatId = input.context.chatId || await resolveChatIdForLead(input.context.tenantId, input.context.leadId);
+    if (!chatId) throw new Error("PROPOSAL_SCHEDULE_CHAT_MISSING");
+    return scheduleProposalAutomationMessage({ tenantId: input.context.tenantId, leadId: input.context.leadId,
+      chatId, claim: input.context.proposalClaim, automation: input.automation, action: input.action, actionIndex: input.actionIndex });
+  }
   const waitInHours = Math.max(0, Math.min(24 * 30, Number(input.action.waitInHours || 0)));
   const executeAfter = new Date(Date.now() + waitInHours * 3600_000);
 
-  await adminDb.collection("jobs").add({
+  const data = {
     tenantId: input.context.tenantId,
     type: AUTOMATION_SCHEDULED_JOB_TYPE,
     status: "pending",
@@ -614,7 +669,33 @@ async function scheduleAutomationAction(input: {
     detail: `Acao ${input.action.type} agendada para ${waitInHours}h`,
     createdAt: FieldValue.serverTimestamp(),
     updatedAt: FieldValue.serverTimestamp(),
+  };
+  if (!input.context.inboundClaim) return (await adminDb.collection("jobs").add(data)).id;
+  const claim = input.context.inboundClaim;
+  const id = `automation_scheduled_${createHash("sha256").update(JSON.stringify([claim.id, input.actionIndex])).digest("hex")}`;
+  await adminDb.runTransaction(async tx => {
+    const runRef = adminDb.collection("jobs").doc(claim.id), ref = adminDb.collection("jobs").doc(id);
+    const [run, existing] = await Promise.all([tx.get(runRef), tx.get(ref)]);
+    const row = run.data();
+    const actions = Array.isArray(row?.plan?.actions) ? [...row.plan.actions].sort((a, b) => Number(a.sequenceOrder || 0) - Number(b.sequenceOrder || 0)) : [];
+    if (!row || row.tenantId !== input.context.tenantId || row.leadId !== input.context.leadId || row.chatId !== input.context.chatId ||
+        row.automationId !== input.automation.id || row.claimToken !== claim.token || row.status !== "processing" ||
+        toTime(row.leaseUntil) <= Date.now() || !isDeepStrictEqual(actions[input.actionIndex], input.action)) {
+      throw new Error("Plano/claim do agendamento expirou ou mudou.");
+    }
+    if (existing.exists) {
+      const previous = existing.data()!;
+      if (previous.tenantId !== row.tenantId || previous.inboundExecutionId !== claim.id || previous.actionIndex !== input.actionIndex ||
+          previous.chatId !== row.chatId || previous.leadId !== row.leadId || !isDeepStrictEqual(previous.action, input.action)) {
+        throw new Error("Agendamento aceito com outro plano/destino.");
+      }
+      return;
+    }
+    tx.create(ref, { ...data, inboundExecutionId: claim.id, actionIndex: input.actionIndex,
+      ...(supportsAtomicAutomationEffect(input.action) ? { internalEffectProtocolVersion: 1 } : {}),
+      sourceMessageId: row.sourceMessageId, executeAfter: new Date(toTime(row.createdAt) + waitInHours * 3600_000) });
   });
+  return id;
 }
 
 async function executeActions(
@@ -623,49 +704,40 @@ async function executeActions(
   lead: LeadSnapshot,
   context: LeadAutomationContext
 ) {
-  const tagSet = new Set(lead.tags);
-  const leadPatch: Record<string, unknown> = {
-    updatedAt: FieldValue.serverTimestamp(),
-  };
   const eventEntries: Array<Record<string, unknown>> = [];
   let actionsExecuted = 0;
   const orderedActions = [...automation.actions].sort(
     (a, b) => Number(a.sequenceOrder || 0) - Number(b.sequenceOrder || 0)
   );
 
-  for (const action of orderedActions) {
+  for (const [actionIndex, action] of orderedActions.entries()) {
+    if ((context.trigger === "ai_next_action" || context.stageSource?.kind === "socialEvent") && action.type === "send_message") continue;
     if (Number(action.waitInHours || 0) > 0) {
-      await scheduleAutomationAction({
+      const scheduledJobId = await scheduleAutomationAction({
         automation,
         action,
         context,
         leadName: lead.nome,
+        actionIndex,
       });
       eventEntries.push({
         type: "automation_action_scheduled",
         title: "Automacao agendou etapa",
         detail: `${action.type} em ${Number(action.waitInHours || 0)}h`,
+        scheduledJobId,
       });
       actionsExecuted += 1;
       continue;
     }
 
-    const result = await executeImmediateAction(action, automation, leadRef, lead, context, tagSet, leadPatch);
-    if (result.executed && result.event) {
-      eventEntries.push(result.event);
-      actionsExecuted += 1;
-    }
+    const result = await executeImmediateAction(action, automation, lead, context, undefined, actionIndex);
+    if (result.executed) actionsExecuted += 1;
+    if (result.executed && result.event) eventEntries.push(result.event);
   }
-
-  if (tagSet.size !== lead.tags.length) {
-    leadPatch.tags = Array.from(tagSet).slice(0, 12);
-  }
-
-  await leadRef.set(leadPatch, { merge: true });
 
   await Promise.all(
-    eventEntries.map((entry) =>
-      leadRef.collection("events").add({
+    eventEntries.map(async (entry) => {
+      const event = {
         ...entry,
         actorId: "automation",
         actorName: automation.name,
@@ -673,8 +745,15 @@ async function executeActions(
         automationName: automation.name,
         trigger: context.trigger,
         createdAt: FieldValue.serverTimestamp(),
-      })
-    )
+      };
+      if (entry.type === "automation_message_queued" && typeof entry.outboundJobId === "string") {
+        const ref = leadRef.collection("events").doc(`automation_${entry.outboundJobId}`);
+        await adminDb.runTransaction(async tx => { if (!(await tx.get(ref)).exists) tx.create(ref, event); });
+      } else if (entry.type === "automation_action_scheduled" && typeof entry.scheduledJobId === "string") {
+        const ref = leadRef.collection("events").doc(`scheduled_${entry.scheduledJobId}`);
+        await adminDb.runTransaction(async tx => { if (!(await tx.get(ref)).exists) tx.create(ref, event); });
+      } else await leadRef.collection("events").add(event);
+    })
   );
 
   return actionsExecuted;
@@ -685,14 +764,28 @@ export async function listTenantAutomations(tenantId: string) {
   return snap.docs.map((doc) => normalizeAutomationDoc(doc.id, doc.data() as Record<string, unknown>, tenantId));
 }
 
-async function claimScheduledJob(jobId: string) {
+export async function claimScheduledAutomationJob(jobId: string, tenantId?: string) {
   const jobRef = adminDb.collection("jobs").doc(jobId);
   return adminDb.runTransaction(async (tx) => {
     const snap = await tx.get(jobRef);
     if (!snap.exists) return null;
 
     const data = snap.data() as Record<string, unknown>;
+    if (data.type !== AUTOMATION_SCHEDULED_JOB_TYPE || (tenantId && data.tenantId !== tenantId)) return null;
     const status = cleanText(data.status, 40).toLowerCase();
+    const scheduledAction = data.action && typeof data.action === "object" ? data.action as TenantAutomationAction : null;
+    const internalProof = scheduledAction && supportsAtomicAutomationEffect(scheduledAction) &&
+      data.internalEffectProtocolVersion === 1 && data.internalEffectExecutorVersion === 1 &&
+      typeof data.internalEffectExecutorToken === "string" && Boolean(data.internalEffectExecutorToken) &&
+      data.internalEffectExecutorToken === data.claimToken && (typeof data.inboundExecutionId === "string" ||
+        data.proposalScheduleProtocol === 1 && typeof data.automationProposalSourceId === "string" ||
+        data.stageScheduleProtocol === 1 && typeof data.stageSourceId === "string");
+    const retryProof = internalProof || (scheduledAction?.type === "send_message" && data.schedulerProtocolVersion === 1);
+    if ((status === "retrying" || (status === "pending" && Number(data.attempts || 0) > 0)) && !retryProof) {
+      tx.update(jobRef, { status: "reconciliation_required", updatedAt: FieldValue.serverTimestamp(),
+        lastError: "Tentativa anterior sem recibo/protocolo comprovado; conferir efeito antes de repetir." });
+      return null;
+    }
     const executeAfter =
       data.executeAfter instanceof Date
         ? data.executeAfter
@@ -703,15 +796,50 @@ async function claimScheduledJob(jobId: string) {
           ? (data.executeAfter as { toDate: () => Date }).toDate()
           : null;
 
-    if (!["pending", "retrying"].includes(status)) return null;
+    if (status === "processing") {
+      if (toTime(data.leaseUntil) > Date.now()) return null;
+      const safeRecovery = data.schedulerProtocolVersion === 1 && (scheduledAction?.type === "send_message" || internalProof) && Number(data.attempts || 0) < 3;
+      if (!safeRecovery) {
+        tx.update(jobRef, { status: "reconciliation_required", updatedAt: FieldValue.serverTimestamp(),
+          lastError: "Execucao interrompida sem prova de efeito idempotente; conferir antes de retomar." });
+        return null;
+      }
+    } else if (!["pending", "retrying"].includes(status)) return null;
     if (executeAfter && executeAfter.getTime() > Date.now()) return null;
+    if (toTime(data.retryAfter) > Date.now()) return null;
+
+    if (isStageAutomationSchedule(jobId, data)) {
+      try { await assertStageAutomationSchedule(tx, jobId, data, "claim"); }
+      catch (error) {
+        if (error instanceof InboundAutomationPreparingError) return null;
+        if (!isStageAutomationAuthorizationError(error)) throw error;
+        tx.update(jobRef, { status: "reconciliation_required", lastError: error instanceof Error ? error.message : "STAGE_SCHEDULE_REVOKED", updatedAt: FieldValue.serverTimestamp() });
+        return null;
+      }
+    }
+
+    if (isProposalAutomationSchedule(jobId, data)) {
+      try { await assertProposalAutomationSchedule(tx, jobId, data, "claim"); }
+      catch (error) {
+        if (error instanceof InboundAutomationPreparingError) return null;
+        if (!isProposalAutomationAuthorizationError(error)) throw error;
+        tx.update(jobRef, { status: "reconciliation_required", lastError: error instanceof Error ? error.message : "PROPOSAL_SCHEDULE_REVOKED", updatedAt: FieldValue.serverTimestamp() });
+        return null;
+      }
+    }
 
     const attempts = Number(data.attempts || 0) + 1;
+    const claimToken = randomUUID();
+    const internalExecutor = Boolean(scheduledAction && supportsAtomicAutomationEffect(scheduledAction) && (typeof data.inboundExecutionId === "string" ||
+      data.proposalScheduleProtocol === 1 && typeof data.automationProposalSourceId === "string" ||
+      data.stageScheduleProtocol === 1 && typeof data.stageSourceId === "string"));
     tx.set(
       jobRef,
       {
         status: "processing",
         attempts,
+        claimToken, leaseUntil: new Date(Date.now() + 60_000), schedulerProtocolVersion: 1,
+        ...(internalExecutor ? { internalEffectExecutorVersion: 1, internalEffectExecutorToken: claimToken } : {}),
         updatedAt: FieldValue.serverTimestamp(),
       },
       { merge: true }
@@ -720,88 +848,86 @@ async function claimScheduledJob(jobId: string) {
     return {
       id: snap.id,
       ref: jobRef,
-      attempts,
       ...(data as Record<string, unknown>),
+      ...(internalExecutor ? { internalEffectExecutorVersion: 1, internalEffectExecutorToken: claimToken } : {}),
+      attempts, claimToken,
     } as ScheduledAutomationJob;
   });
 }
 
-async function claimWaitingReplyRuntime(input: {
-  tenantId: string;
-  automationId: string;
-  chatId: string;
-  waitingKey: string;
-  leadId: string;
-}) {
-  const runtimeId = sanitizeId(
-    `${input.tenantId}_${input.automationId}_${input.chatId}_${input.waitingKey}`,
-    240
-  );
-  const runtimeRef = adminDb.collection("jobs").doc(runtimeId);
-
-  return adminDb.runTransaction(async (tx) => {
-    const snap = await tx.get(runtimeRef);
-    if (snap.exists) return null;
-
-    tx.set(runtimeRef, {
-      tenantId: input.tenantId,
-      type: AUTOMATION_WAITING_REPLY_RUNTIME_TYPE,
-      automationId: input.automationId,
-      chatId: input.chatId,
-      leadId: input.leadId,
-      waitingKey: input.waitingKey,
-      status: "claimed",
-      createdAt: FieldValue.serverTimestamp(),
-      updatedAt: FieldValue.serverTimestamp(),
-    });
-
-    return runtimeRef;
+export async function finishScheduledAutomationJob(claim: ScheduledAutomationJob, patch: Record<string, unknown>) {
+  return adminDb.runTransaction(async tx => {
+    const current = await tx.get(claim.ref), row = current.data();
+    if (!row || row.status !== "processing" || row.claimToken !== claim.claimToken || row.tenantId !== claim.tenantId ||
+        toTime(row.leaseUntil) <= Date.now()) return false;
+    tx.update(claim.ref, { ...patch, updatedAt: FieldValue.serverTimestamp() });
+    return true;
   });
+}
+
+/** Merge paged per-tenant streams in waiting-time order. Skipped/completed
+ * intervals never consume the work budget or permanently hide later chats. */
+async function* waitingChatCatalogue(tenantIds: string[], rejected: Set<string>): AsyncGenerator<AutomationChatRow> {
+  const streams = await Promise.all(tenantIds.map(async tenantId => {
+    const query = adminDb.collection("chats").where("tenantId", "==", tenantId).orderBy("lastClientMessageAt", "asc").orderBy(FieldPath.documentId()).limit(100);
+    let page: FirebaseFirestore.QueryDocumentSnapshot[] = [], index = 0, cursor: FirebaseFirestore.QueryDocumentSnapshot | undefined, more = true;
+    const next = async (): Promise<AutomationChatRow | null> => {
+      if (index >= page.length) {
+        if (!more) return null;
+        const snap = await (cursor ? query.startAfter(cursor) : query).get();
+        page = snap.docs; index = 0; more = page.length === 100; cursor = page[page.length - 1];
+        if (!page.length) return null;
+      }
+      const doc = page[index++]; return { ...doc.data(), id: doc.id };
+    };
+    return { tenantId, next, head: await next() };
+  }));
+  for (;;) {
+    const active = streams.filter(stream => stream.head && !rejected.has(stream.tenantId));
+    if (!active.length) return;
+    const first = active.reduce((a, b) => {
+      const time = toTime(a.head!.lastClientMessageAt) - toTime(b.head!.lastClientMessageAt);
+      return time < 0 || time === 0 && a.head!.id < b.head!.id ? a : b;
+    });
+    yield first.head!;
+    first.head = rejected.has(first.tenantId) ? null : await first.next();
+  }
 }
 
 export async function processWaitingReplyAutomations(input?: { tenantId?: string; limit?: number }) {
   const limit = Math.max(1, Math.min(200, Number(input?.limit || 60)));
   const tenantId = cleanText(input?.tenantId, 140);
-  const automationDocs = tenantId
-    ? await listTenantAutomations(tenantId)
-    : (
-        await adminDb.collection("automations").limit(240).get()
-      ).docs.map((doc) => normalizeAutomationDoc(doc.id, doc.data() as Record<string, unknown>));
+  let query = adminDb.collection("automations").where("trigger", "==", "waiting_for_reply");
+  if (tenantId) query = query.where("tenantId", "==", tenantId);
+  const catalogue = query.orderBy(FieldPath.documentId()).limit(100);
+  const automationDocs: TenantAutomationDoc[] = [];
+  let cursor: FirebaseFirestore.QueryDocumentSnapshot | undefined;
+  for (;;) {
+    const page = await (cursor ? catalogue.startAfter(cursor) : catalogue).get();
+    automationDocs.push(...page.docs.map(doc => normalizeAutomationDoc(doc.id, doc.data())));
+    if (page.size < 100) break;
+    cursor = page.docs[page.docs.length - 1];
+  }
   const automations = automationDocs.filter(
     (item) => (!tenantId || item.tenantId === tenantId) && item.trigger === "waiting_for_reply"
   );
 
   if (automations.length === 0) {
-    return { scanned: 0, matched: 0, executed: 0, skipped: 0 };
+    return { scanned: 0, matched: 0, executed: 0, skipped: 0, failed: 0 };
   }
 
   const tenantIds = Array.from(new Set(automations.map((item) => item.tenantId)));
-  const chatDocs: AutomationChatRow[] = (
-    await Promise.all(
-      tenantIds.map(async (automationTenantId) => {
-        const snap = await adminDb
-          .collection("chats")
-          .where("tenantId", "==", automationTenantId)
-          .limit(600)
-          .get();
-
-        return snap.docs.map<AutomationChatRow>((doc) => ({
-          id: doc.id,
-          ...(doc.data() as Record<string, unknown>),
-        }));
-      })
-    )
-  )
-    .flat()
-    .sort((a, b) => toTime(a.lastClientMessageAt || a.updatedAt) - toTime(b.lastClientMessageAt || b.updatedAt))
-    .slice(0, limit);
+  const rejectedTenants = new Set<string>();
 
   let scanned = 0;
   let matched = 0;
   let executed = 0;
   let skipped = 0;
+  let failed = 0;
 
-  for (const chat of chatDocs) {
+  let admittedChats = 0;
+  for await (const chat of waitingChatCatalogue(tenantIds, rejectedTenants)) {
+    if (admittedChats >= limit) break;
     scanned += 1;
 
     const chatTenantId = cleanText(chat.tenantId, 140);
@@ -834,124 +960,108 @@ export async function processWaitingReplyAutomations(input?: { tenantId?: string
       continue;
     }
 
-    const lead: LeadSnapshot = {
-      id: leadId,
-      nome: cleanText(leadData.nome, 180) || "Lead",
-      origem: cleanText(leadData.origem, 80).toLowerCase(),
-      pipelineStage: normalizePipelineStageId(leadData.pipelineStage || leadData.stage || "captado"),
-      score: cleanNumber(leadData.score),
-      priority: cleanText(leadData.priority, 20).toLowerCase() || "medium",
-      tags: parseStringList(leadData.tags, 12, 32),
-    };
-
-    const dueAt = toDateValue(chat.slaDueAt);
-    const slaBreached = Boolean(dueAt && dueAt.getTime() <= Date.now());
     const waitingKey = String(lastClientAt.getTime());
-    const tenantAutomations = automations.filter((item) => item.tenantId === chatTenantId);
-
-    for (const automation of tenantAutomations) {
-      const context: LeadAutomationContext = {
-        tenantId: chatTenantId,
-        trigger: "waiting_for_reply",
-        leadId,
-        actorId: "automation_watchdog",
-        actorName: "Automation Watchdog",
-        chatId,
-        channel: cleanText(chat.channel, 60).toLowerCase() || null,
-        waitingSince: lastClientAt,
-        slaBreached,
-      };
-
-      if (!matchesConditions(automation, lead, context)) {
-        continue;
-      }
-
-      const claimedRuntimeRef = await claimWaitingReplyRuntime({
-        tenantId: chatTenantId,
-        automationId: automation.id,
-        chatId,
-        waitingKey,
-        leadId,
+    try {
+      const { admitWaitingReplyBatch, processWaitingReplyOccurrence } = await import("@/lib/server/crm/waiting-reply-occurrence");
+      const id = await admitWaitingReplyBatch({ tenantId: chatTenantId, chatId, leadId, waitingKey,
+        normalize: normalizeAutomationDoc,
+        matches: (current, data, currentChat) => matchesConditions(current, {
+          id: leadId, nome: cleanText(data.nome, 180) || "Lead", origem: cleanText(data.origem, 80).toLowerCase(),
+          pipelineStage: normalizePipelineStageId(data.pipelineStage || data.stage || "captado"), score: cleanNumber(data.score),
+          priority: cleanText(data.priority, 20).toLowerCase() || "medium", tags: parseStringList(data.tags, 12, 32),
+        }, { tenantId: chatTenantId, leadId, chatId, trigger: "waiting_for_reply", actorId: "automation_watchdog", actorName: "Automation Watchdog",
+          channel: cleanText(currentChat.channel, 60).toLowerCase() || null, waitingSince: toDateValue(currentChat.lastClientMessageAt),
+          slaBreached: Boolean(toDateValue(currentChat.slaDueAt) && toTime(currentChat.slaDueAt) <= Date.now()) }),
       });
-      if (!claimedRuntimeRef) {
-        skipped += 1;
-        continue;
-      }
-
-      matched += 1;
-
-      try {
-        const actionsExecuted = await executeActions(automation, leadRef, lead, context);
-        executed += actionsExecuted;
-
-        await claimedRuntimeRef.set(
-          {
-            status: "done",
-            actionsExecuted,
-            updatedAt: FieldValue.serverTimestamp(),
-            completedAt: FieldValue.serverTimestamp(),
-            detail: `Aguardando resposta desde ${lastClientAt.toISOString()}`,
-          },
-          { merge: true }
-        );
-
-        await createExecutionLog({
-          tenantId: chatTenantId,
-          automationId: automation.id,
-          automationName: automation.name,
-          trigger: "waiting_for_reply",
-          leadId,
-          chatId,
-          channel: cleanText(chat.channel, 60).toLowerCase() || null,
-          status: actionsExecuted > 0 ? "done" : "skipped",
-          matched: true,
-          actionsExecuted,
-          detail: `Aguardando resposta ha ${Number(
-            ((Date.now() - lastClientAt.getTime()) / 3600_000).toFixed(1)
-          )}h`,
-        });
-      } catch (error) {
-        await claimedRuntimeRef.set(
-          {
-            status: "error",
-            updatedAt: FieldValue.serverTimestamp(),
-            lastError: error instanceof Error ? error.message.slice(0, 280) : "Erro desconhecido.",
-          },
-          { merge: true }
-        );
-
-        await createExecutionLog({
-          tenantId: chatTenantId,
-          automationId: automation.id,
-          automationName: automation.name,
-          trigger: "waiting_for_reply",
-          leadId,
-          chatId,
-          channel: cleanText(chat.channel, 60).toLowerCase() || null,
-          status: "error",
-          matched: true,
-          actionsExecuted: 0,
-          detail: "Falha ao executar automacao de espera",
-          error: error instanceof Error ? error.message.slice(0, 280) : "Erro desconhecido.",
-        });
-      }
+      if (!id) { skipped += 1; continue; }
+      admittedChats += 1;
+      const result = await processWaitingReplyOccurrence(id, chatTenantId);
+      matched += result.matched;
+      executed += result.executed;
+    } catch (error) {
+      skipped += 1; failed += 1;
+      if (error instanceof Error && ["CRM_STAGE_WAITING_MODULE_REVOKED", "CRM_STAGE_WAITING_TENANT_BLOCKED"].includes(error.message)) rejectedTenants.add(chatTenantId);
+      await createExecutionLog({ tenantId: chatTenantId, automationId: null, automationName: "Espera de atendimento",
+        trigger: "waiting_for_reply", leadId, chatId, status: "error", matched: false, actionsExecuted: 0,
+        detail: "Falha ao preparar ou retomar intervalo de espera",
+        error: error instanceof Error && /^CRM_STAGE_WAITING_[A-Z_]+$/.test(error.message) ? error.message : "WAITING_OCCURRENCE_UNAVAILABLE",
+      }).catch(() => { /* The failure counter survives a logging outage. */ });
     }
   }
 
-  return { scanned, matched, executed, skipped };
+  return { scanned, matched, executed, skipped, failed };
+}
+
+export async function processInterruptedInboundAutomations(input?: { tenantId?: string; limit?: number }) {
+  const limit = Math.max(1, Math.min(20, Number(input?.limit || 10)));
+  let query = adminDb.collection("jobs").where("type", "==", "automation_inbound_execution").where("status", "==", "processing");
+  if (input?.tenantId) query = query.where("tenantId", "==", input.tenantId);
+  const snap = await query.where("leaseUntil", "<=", new Date()).orderBy("leaseUntil", "asc").limit(limit).get();
+  let resumed = 0, quarantined = 0, failed = 0;
+  for (const doc of snap.docs) {
+    const row = doc.data();
+    try {
+      const result = await runLeadAutomations({ tenantId: row.tenantId, leadId: row.leadId, chatId: row.chatId,
+        sourceMessageId: row.sourceMessageId, trigger: "message_received", recoveryAutomationId: row.automationId });
+      const current = (await doc.ref.get()).data();
+      if (result.executed > 0 && current?.status === "done") resumed += 1;
+      else if (current?.status === "reconciliation_required") quarantined += 1;
+      else if (current?.status === "processing" && toTime(current.leaseUntil) <= Date.now()) {
+        throw new Error("Ocorrencia sem consumidor/fonte elegivel para retomada.");
+      }
+    } catch {
+      failed += 1;
+      // Missing/revoked sources cannot strand an expired job forever. Never
+      // quarantine a newer claim that won while this worker was inspecting it.
+      await adminDb.runTransaction(async tx => {
+        const current = await tx.get(doc.ref), data = current.data();
+        if (data && data.tenantId === row.tenantId && data.type === "automation_inbound_execution" && data.status === "processing" &&
+            data.claimToken === row.claimToken && toTime(data.leaseUntil) <= Date.now()) {
+          tx.update(doc.ref, { status: "reconciliation_required", lastError: "Retomada exige fonte/plano valido e revisao dos recibos.", updatedAt: FieldValue.serverTimestamp() });
+        }
+      });
+    }
+  }
+  return { scanned: snap.size, resumed, quarantined, failed };
 }
 
 export async function processPendingAutomationActions(input?: { tenantId?: string; limit?: number }) {
+  const { processPendingWaitingReplyOccurrences } = await import("@/lib/server/crm/waiting-reply-occurrence");
+  const waitingRecovery = await processPendingWaitingReplyOccurrences(input);
+  const { processPendingSocialEventOccurrences } = await import("@/lib/server/crm/social-event-occurrence");
+  await processPendingSocialEventOccurrences(input);
+  const { processPendingAiSignalOccurrences } = await import("@/lib/server/crm/ai-signal-occurrence");
+  await processPendingAiSignalOccurrences(input);
+  const inboundRecovery = await processInterruptedInboundAutomations(input);
+  const { processPendingOrderPipelineTransitions } = await import("@/lib/server/crm/order-stage-transition");
+  const orderStageRecovery = await processPendingOrderPipelineTransitions(input);
+  const { processPendingManualStageTransitions } = await import("@/lib/server/crm/manual-stage-transition");
+  const manualStageRecovery = await processPendingManualStageTransitions(input);
+  const { processPendingConversationStageTransitions } = await import("@/lib/server/crm/conversation-stage-transition");
+  const conversationStageRecovery = await processPendingConversationStageTransitions(input);
+  const { processPendingIntakeCreations } = await import("@/lib/server/crm/intake-occurrence");
+  const intakeRecovery = await processPendingIntakeCreations(input);
+  const { processPendingFinanceStageTransitions } = await import("@/lib/server/crm/finance-stage-transition");
+  const financeStageRecovery = await processPendingFinanceStageTransitions(input);
+  const { processPendingFinancePaidOccurrences } = await import("@/lib/server/crm/finance-paid-occurrence");
+  const financeRecovery = await processPendingFinancePaidOccurrences(input);
+  const { processPendingProposalMutations } = await import("@/lib/server/crm/proposal-mutation");
+  const proposalRecovery = await processPendingProposalMutations(input);
+  const { processPendingShopifyOccurrences } = await import("@/lib/server/commerce/shopify-occurrence-recovery");
+  const shopifyRecovery = await processPendingShopifyOccurrences(input);
   const limit = Math.max(1, Math.min(100, Number(input?.limit || 30)));
-  const snap = await adminDb
+  let query = adminDb
     .collection("jobs")
     .where("type", "==", AUTOMATION_SCHEDULED_JOB_TYPE)
-    .limit(200)
-    .get();
+    .where("status", "in", ["pending", "retrying", "processing"]);
+  if (input?.tenantId) query = query.where("tenantId", "==", input.tenantId);
+  const snap = await query.orderBy("executeAfter", "asc").limit(200).get();
 
   const dueJobs = snap.docs
     .map<Record<string, unknown> & { id: string }>((doc) => ({ id: doc.id, ...(doc.data() as Record<string, unknown>) }))
     .filter((job) => !input?.tenantId || cleanText(job.tenantId, 140) === input.tenantId)
+    .filter(job => toTime(job.executeAfter) <= Date.now() && (job.status !== "processing" || toTime(job.leaseUntil) <= Date.now()))
+    .filter(job => toTime(job.retryAfter) <= Date.now())
     .sort((a, b) => toTime(a.executeAfter) - toTime(b.executeAfter))
     .slice(0, limit);
 
@@ -960,17 +1070,25 @@ export async function processPendingAutomationActions(input?: { tenantId?: strin
   let failed = 0;
 
   for (const job of dueJobs) {
-    const claimed = await claimScheduledJob(job.id);
+    let claimed: Awaited<ReturnType<typeof claimScheduledAutomationJob>>;
+    try { claimed = await claimScheduledAutomationJob(job.id, input?.tenantId); }
+    catch {
+      // No claim/effect was committed. Keep the original occurrence pending,
+      // count the failed read and let other eligible tenants/jobs progress.
+      failed += 1;
+      continue;
+    }
     if (!claimed) continue;
     processed += 1;
 
     try {
-      const tenantId = cleanText(claimed.tenantId, 140);
-      const leadId = cleanText(claimed.leadId, 140);
-      const automationId = cleanText(claimed.automationId, 140);
+      const proposalSchedule = isProposalAutomationSchedule(claimed.id, claimed), stageSchedule = isStageAutomationSchedule(claimed.id, claimed);
+      const tenantId = proposalSchedule || stageSchedule ? String(claimed.tenantId) : cleanText(claimed.tenantId, 140);
+      const leadId = proposalSchedule || stageSchedule ? String(claimed.leadId) : cleanText(claimed.leadId, 140);
+      const automationId = proposalSchedule || stageSchedule ? String(claimed.automationId) : cleanText(claimed.automationId, 140);
       const automationName = cleanText(claimed.automationName, 180) || "Automacao";
       const jobTrigger = normalizeTrigger(claimed.trigger);
-      const jobChatId = cleanText(claimed.chatId, 140);
+      const jobChatId = (claimed.inboundExecutionId || proposalSchedule || stageSchedule) && typeof claimed.chatId === "string" ? claimed.chatId : cleanText(claimed.chatId, 140);
       const jobChannel = cleanText(claimed.channel, 80).toLowerCase();
       const action =
         claimed.action && typeof claimed.action === "object"
@@ -981,17 +1099,17 @@ export async function processPendingAutomationActions(input?: { tenantId?: strin
         throw new Error("Job agendado sem contexto valido.");
       }
 
-      const usageReservation = await reserveTenantAutomationExecution(tenantId);
+      const usageReservation = await reserveTenantAutomationExecution(tenantId, { jobId: claimed.id, claimToken: claimed.claimToken });
       if (!usageReservation.allowed) {
-        await Promise.all([
-          claimed.ref.set({
+        const finished = await finishScheduledAutomationJob(claimed, {
             status: "done",
             actionsExecuted: 0,
             updatedAt: FieldValue.serverTimestamp(),
             completedAt: FieldValue.serverTimestamp(),
             lastError: "tenant_automation_limit_exceeded",
-          }, { merge: true }),
-          createExecutionLog({
+          });
+        if (!finished) { failed += 1; continue; }
+        await createExecutionLog({
             tenantId,
             automationId,
             automationName,
@@ -1003,8 +1121,7 @@ export async function processPendingAutomationActions(input?: { tenantId?: strin
             matched: true,
             actionsExecuted: 0,
             detail: `Limite mensal de automacoes atingido (${usageReservation.currentUsage}/${usageReservation.limit}).`,
-          }),
-        ]);
+          });
         completed += 1;
         continue;
       }
@@ -1020,10 +1137,6 @@ export async function processPendingAutomationActions(input?: { tenantId?: strin
         throw new Error("Lead fora do tenant do job agendado.");
       }
 
-      const tagSet = new Set(parseStringList(leadData.tags, 12, 32));
-      const leadPatch: Record<string, unknown> = {
-        updatedAt: FieldValue.serverTimestamp(),
-      };
       const lead: LeadSnapshot = {
         id: leadId,
         nome: cleanText(leadData.nome, 180) || "Lead",
@@ -1047,7 +1160,6 @@ export async function processPendingAutomationActions(input?: { tenantId?: strin
           conditions: {},
           actions: [action],
         },
-        leadRef,
         lead,
         {
           tenantId,
@@ -1057,19 +1169,13 @@ export async function processPendingAutomationActions(input?: { tenantId?: strin
           actorName: cleanText(claimed.actorName, 140) || automationName,
           chatId: jobChatId || null,
           channel: jobChannel || null,
+          schedulerClaimToken: claimed.claimToken,
         },
-        tagSet,
-        leadPatch
+        claimed.id
       );
 
-      if (tagSet.size !== lead.tags.length) {
-        leadPatch.tags = Array.from(tagSet).slice(0, 12);
-      }
-
-      await leadRef.set(leadPatch, { merge: true });
-
       if (result.event) {
-        await leadRef.collection("events").add({
+        const event = {
           ...result.event,
           actorId: "automation",
           actorName: automationName,
@@ -1077,19 +1183,30 @@ export async function processPendingAutomationActions(input?: { tenantId?: strin
           automationName,
           trigger: "scheduled_action",
           createdAt: FieldValue.serverTimestamp(),
-        });
+        };
+        if (result.event.type === "automation_message_queued" && "outboundJobId" in result.event) {
+          const eventRef = leadRef.collection("events").doc(`automation_${result.event.outboundJobId}`);
+          await adminDb.runTransaction(async tx => {
+            if (!(await tx.get(eventRef)).exists) tx.create(eventRef, event);
+          });
+        } else {
+          await leadRef.collection("events").add(event);
+        }
       }
 
-      await claimed.ref.set(
+      const finished = await finishScheduledAutomationJob(claimed,
         {
           status: "done",
           actionsExecuted: result.executed ? 1 : 0,
           updatedAt: FieldValue.serverTimestamp(),
           completedAt: FieldValue.serverTimestamp(),
           lastError: "",
-        },
-        { merge: true }
+          ...(result.event && "outboundJobId" in result.event ? {
+            outboundJobId: result.event.outboundJobId, messageId: result.event.messageId,
+          } : {}),
+        }
       );
+      if (!finished) { failed += 1; continue; }
 
       await createExecutionLog({
         tenantId,
@@ -1102,28 +1219,74 @@ export async function processPendingAutomationActions(input?: { tenantId?: strin
         status: result.executed ? "done" : "skipped",
         matched: true,
         actionsExecuted: result.executed ? 1 : 0,
-        detail: `Acao agendada executada: ${action.type}`,
+        detail: result.event?.type === "automation_message_queued"
+          ? "Mensagem registrada na fila; entrega acompanhada pela operacao de envio."
+          : result.executed ? `Acao agendada executada: ${action.type}` : `Acao agendada nao aplicada: ${action.type}; consultar recibo/conflito.`,
       });
 
       completed += 1;
     } catch (error) {
       const attempts = Number(claimed.attempts || 1);
-      await claimed.ref.set(
+      const preparing = error instanceof InboundAutomationPreparingError;
+      const safeRetry = !(error instanceof AutomationInternalEffectAuthorizationError) && !isProposalAutomationAuthorizationError(error) && !isStageAutomationAuthorizationError(error) && claimed.action && typeof claimed.action === "object" && "type" in claimed.action &&
+        (claimed.action.type === "send_message" || (claimed.internalEffectProtocolVersion === 1 && claimed.internalEffectExecutorVersion === 1 &&
+          claimed.internalEffectExecutorToken === claimed.claimToken &&
+          (typeof claimed.inboundExecutionId === "string" || claimed.proposalScheduleProtocol === 1 && typeof claimed.automationProposalSourceId === "string" ||
+            claimed.stageScheduleProtocol === 1 && typeof claimed.stageSourceId === "string") &&
+          supportsAtomicAutomationEffect(claimed.action as TenantAutomationAction)));
+      await finishScheduledAutomationJob(claimed,
         {
-          status: attempts >= 3 ? "dead_letter" : "retrying",
+          status: preparing ? "retrying" : !safeRetry ? "reconciliation_required" : attempts >= 3 ? "dead_letter" : "retrying",
+          ...(preparing ? { attempts: Math.max(0, attempts - 1), retryAfter: error.retryAt } : {}),
           updatedAt: FieldValue.serverTimestamp(),
           lastError: error instanceof Error ? error.message.slice(0, 280) : "Erro desconhecido.",
-        },
-        { merge: true }
+        }
       );
       failed += 1;
     }
   }
 
-  return { processed, completed, failed };
+  return { processed, completed, failed, waitingRecovery, inboundRecovery, orderStageRecovery, manualStageRecovery, conversationStageRecovery, intakeRecovery, financeStageRecovery, financeRecovery, proposalRecovery, shopifyRecovery };
+}
+
+/** Freeze approval eligibility against the current transactionally read CRM
+ * state, after stage actions and before unrelated hooks can be interrupted. */
+export async function prepareProposalApprovalAutomations(context: LeadAutomationContext) {
+  if (context.trigger !== "budget_approved" || !context.proposalClaim) throw new Error("Origem de proposta fora do gatilho autorizado.");
+  return freezeProposalAutomationPlans({ tenantId: context.tenantId, leadId: context.leadId, claim: context.proposalClaim, automations: [],
+    matches: (automation, data) => matchesConditions(automation, {
+      id: context.leadId, nome: cleanText(data.nome, 180) || "Lead", origem: cleanText(data.origem, 80).toLowerCase(),
+      pipelineStage: normalizePipelineStageId(data.pipelineStage || data.stage || "captado"), score: cleanNumber(data.score),
+      priority: cleanText(data.priority, 20).toLowerCase() || "medium", tags: parseStringList(data.tags, 12, 32),
+    }, context) });
 }
 
 export async function runLeadAutomations(context: LeadAutomationContext) {
+  if (context.socialClaim && !context.stageSource) {
+    if (context.trigger !== "message_received") throw new Error("CRM_STAGE_SOCIAL_TRIGGER_INVALID");
+    const { admitSocialEventOccurrence, processSocialEventOccurrence } = await import("@/lib/server/crm/social-event-occurrence");
+    const id = await admitSocialEventOccurrence({ tenantId: context.tenantId, leadId: context.leadId, chatId: context.chatId || "",
+      socialLogId: context.socialClaim.logId, claimToken: context.socialClaim.token, normalize: normalizeAutomationDoc,
+      matches: (automation, data, channel) => matchesConditions(automation, {
+        id: context.leadId, nome: cleanText(data.nome, 180) || "Lead", origem: cleanText(data.origem, 80).toLowerCase(),
+        pipelineStage: normalizePipelineStageId(data.pipelineStage || data.stage || "captado"), score: cleanNumber(data.score),
+        priority: cleanText(data.priority, 20).toLowerCase() || "medium", tags: parseStringList(data.tags, 12, 32),
+      }, { ...context, channel }) });
+    const result = await processSocialEventOccurrence(id, context.tenantId);
+    return { evaluated: result.evaluated, matched: result.matched, executed: result.executed };
+  }
+  if (context.trigger === "ai_next_action" && !context.stageSource) {
+    const { admitAiSignalOccurrence, processAiSignalOccurrence } = await import("@/lib/server/crm/ai-signal-occurrence");
+    const id = await admitAiSignalOccurrence({ tenantId: context.tenantId, leadId: context.leadId, chatId: context.chatId || "",
+      sourceMessageId: context.sourceMessageId || "", aiNextAction: cleanText(context.aiNextAction, 80).toLowerCase(), normalize: normalizeAutomationDoc,
+      matches: (automation, data, channel) => matchesConditions(automation, {
+        id: context.leadId, nome: cleanText(data.nome, 180) || "Lead", origem: cleanText(data.origem, 80).toLowerCase(),
+        pipelineStage: normalizePipelineStageId(data.pipelineStage || data.stage || "captado"), score: cleanNumber(data.score),
+        priority: cleanText(data.priority, 20).toLowerCase() || "medium", tags: parseStringList(data.tags, 12, 32),
+      }, { ...context, channel }) });
+    const result = await processAiSignalOccurrence(id, context.tenantId);
+    return { evaluated: result.evaluated, matched: result.matched, executed: result.executed };
+  }
   const leadRef = adminDb.collection("leads").doc(context.leadId);
   const leadSnap = await leadRef.get();
   if (!leadSnap.exists) {
@@ -1145,19 +1308,53 @@ export async function runLeadAutomations(context: LeadAutomationContext) {
     tags: parseStringList(leadData.tags, 12, 32),
   };
 
-  const automations = await listTenantAutomations(context.tenantId);
+  const admission = context.trigger === "message_received" && context.sourceMessageId !== undefined
+    ? await admitInboundAutomationEvent({ tenantId: context.tenantId, leadId: context.leadId, chatId: context.chatId || "",
+      sourceMessageId: context.sourceMessageId, normalize: normalizeAutomationDoc,
+      matches: (automation, data, channel) => matchesConditions(automation, {
+        id: context.leadId, nome: cleanText(data.nome, 180) || "Lead", origem: cleanText(data.origem, 80).toLowerCase(),
+        pipelineStage: normalizePipelineStageId(data.pipelineStage || data.stage || "captado"), score: cleanNumber(data.score),
+        priority: cleanText(data.priority, 20).toLowerCase() || "medium", tags: parseStringList(data.tags, 12, 32),
+      }, { ...context, channel }),
+    }) : null;
+  let automations = context.stageSource || context.proposalClaim ? [] : admission?.automations || await listTenantAutomations(context.tenantId);
+  if (context.stageSource) {
+    if (context.trigger !== businessAutomationTrigger(context.stageSource.kind) || context.proposalClaim || context.inboundClaim) throw new Error("Origem de automacao fora do gatilho autorizado.");
+    automations = await freezeStageAutomationPlans({ tenantId: context.tenantId, leadId: context.leadId, source: context.stageSource,
+      previousStage: context.previousStage || "captado", nextStage: context.nextStage || "", matches: (automation, data) => matchesConditions(automation, {
+        id: context.leadId, nome: cleanText(data.nome, 180) || "Lead", origem: cleanText(data.origem, 80).toLowerCase(),
+        pipelineStage: normalizePipelineStageId(data.pipelineStage || data.stage || "captado"), score: cleanNumber(data.score),
+        priority: cleanText(data.priority, 20).toLowerCase() || "medium", tags: parseStringList(data.tags, 12, 32),
+      }, context) });
+  }
+  if (context.proposalClaim) {
+    if (context.trigger !== "budget_approved") throw new Error("Origem de proposta fora do gatilho autorizado.");
+    automations = await prepareProposalApprovalAutomations(context);
+  }
   let matched = 0;
   let executed = 0;
 
   for (const automation of automations) {
-    if (!matchesConditions(automation, lead, context)) {
+    if (context.recoveryAutomationId && automation.id !== context.recoveryAutomationId) continue;
+    if (!admission && !context.proposalClaim && !context.stageSource && !matchesConditions(automation, lead, context)) {
       continue;
     }
 
     matched += 1;
 
-    const usageReservation = await reserveTenantAutomationExecution(context.tenantId);
+    const inboundClaim = context.trigger === "message_received" && context.sourceMessageId !== undefined
+      ? await claimInboundAutomationExecution({ tenantId: context.tenantId, leadId: context.leadId,
+        chatId: context.chatId || "", sourceMessageId: context.sourceMessageId, automation, normalize: normalizeAutomationDoc,
+        admissionId: admission?.id }) : null;
+    if (context.trigger === "message_received" && context.sourceMessageId !== undefined && !inboundClaim) continue;
+    const acceptedAutomation = inboundClaim?.plan || automation;
+    const usageReservation = await reserveTenantAutomationExecution(context.tenantId, inboundClaim
+      ? { jobId: inboundClaim.id, claimToken: inboundClaim.token, kind: "inbound" }
+      : context.proposalClaim ? { jobId: context.proposalClaim.id, claimToken: context.proposalClaim.token,
+        kind: "proposal", automationId: acceptedAutomation.id } : context.stageSource ? { jobId: context.stageSource.id,
+          claimToken: context.stageSource.token, kind: "stage", stageSourceKind: context.stageSource.kind, automationId: acceptedAutomation.id } : undefined);
     if (!usageReservation.allowed) {
+      if (inboundClaim && !(await finishInboundAutomationExecution(inboundClaim, "skipped"))) continue;
       await createExecutionLog({
         tenantId: context.tenantId,
         automationId: automation.id,
@@ -1174,8 +1371,19 @@ export async function runLeadAutomations(context: LeadAutomationContext) {
       continue;
     }
 
+    let stageRun: Awaited<ReturnType<typeof beginStageAutomationRun>> | null = null;
     try {
-      const actionsExecuted = await executeActions(automation, leadRef, lead, context);
+      if (context.stageSource) {
+        stageRun = await beginStageAutomationRun({ tenantId: context.tenantId, leadId: context.leadId, source: context.stageSource, automationId: acceptedAutomation.id });
+        if (stageRun.replayed) continue;
+      }
+      const actionsExecuted = await executeActions(acceptedAutomation, leadRef, lead, { ...context,
+        ...(inboundClaim ? { inboundClaim, sourceMessageId: inboundClaim.sourceMessageId || context.sourceMessageId } : {}) });
+      if (inboundClaim && !(await finishInboundAutomationExecution(inboundClaim, "done"))) {
+        throw new Error("Posse da execucao mudou antes da conclusao; efeitos precisam de conciliacao.");
+      }
+      if (context.stageSource && stageRun && !(await finishStageAutomationRun({ tenantId: context.tenantId, leadId: context.leadId,
+        source: context.stageSource, automationId: acceptedAutomation.id, run: stageRun }))) throw new Error("Posse da automacao de etapa mudou antes da conclusao.");
       executed += actionsExecuted;
       await createExecutionLog({
         tenantId: context.tenantId,
@@ -1202,6 +1410,9 @@ export async function runLeadAutomations(context: LeadAutomationContext) {
             : "Lead criado",
       });
     } catch (error) {
+      if (inboundClaim) await finishInboundAutomationExecution(inboundClaim, "reconciliation_required");
+      if (context.stageSource && stageRun && !stageRun.replayed) await finishStageAutomationRun({ tenantId: context.tenantId, leadId: context.leadId,
+        source: context.stageSource, automationId: acceptedAutomation.id, run: stageRun, failed: true });
       console.error("Erro ao executar automacao do tenant:", {
         tenantId: context.tenantId,
         automationId: automation.id,
@@ -1224,6 +1435,7 @@ export async function runLeadAutomations(context: LeadAutomationContext) {
         detail: "Falha ao executar automacao",
         error: error instanceof Error ? error.message.slice(0, 280) : "Erro desconhecido.",
       });
+      if (context.strictErrors) throw error;
     }
   }
 
@@ -1233,3 +1445,4 @@ export async function runLeadAutomations(context: LeadAutomationContext) {
     executed,
   };
 }
+import { businessAutomationTrigger } from "@/lib/server/crm/stage-source-contract";

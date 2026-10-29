@@ -1,5 +1,13 @@
-﻿import { FieldValue } from "firebase-admin/firestore";
+import { FieldValue } from "firebase-admin/firestore";
+import { qualificationEvidenceAllowsUpdate } from "@/lib/crm-qualification-policy";
+import { commercialFieldDefinitions, currentCommercialField, type CommercialField } from "@/lib/crm-current-facts";
 import { adminDb } from "@/app/lib/server/firebase-admin";
+import { getChatStateDocId } from "@/lib/server/chat-state-identity";
+import { assertChatStateScope } from "@/lib/chat-state-scope";
+import { writeScopedChatState } from "@/lib/server/chat-state-store";
+import { completeHandlerEffects, resumeHandlerEffects, HandlerContinuationReviewError, type HandlerEffect } from "@/lib/server/ai/handler-continuation";
+import { prepareAiExecutionAuthority } from "@/lib/server/ai/execution-authority";
+import { readConversationTurn } from "@/lib/server/ai/conversation-turn-store";
 import { normalizePhone } from "@/app/lib/server/phone";
 import { buildOutgoingChatOperationalPatch } from "@/lib/server/chat-operations";
 import {
@@ -13,49 +21,85 @@ import {
   type AltumAiTier,
 } from "@/lib/server/ai/operating-layer";
 import { runConversationAgent } from "@/lib/server/ai/router";
+import { deliverAiConversationText } from "@/lib/server/ai/text-delivery";
+import { deliverAiConversationTemplate } from "@/lib/server/ai/template-delivery";
+import { lookupConversationCatalog, saveConversationCatalogInterest } from "@/lib/server/commerce/conversation-catalog";
+import { exclusiveTestNeedsHumanFallback } from "@/lib/ai-exclusive-test-safety";
+import { handoffAcknowledgement, catalogSearchProposal } from "@/lib/shopify-conversation-catalog";
 import { resolveConversationalChoice } from "@/lib/server/ai/conversation-core";
-import { getAiMonthlyUsageSnapshot, logAiUsage } from "@/lib/server/ai/usage-ledger";
-import { trackAltumAgentLearning } from "@/lib/server/ai/learning-loop";
-import {
-  trackAppointmentOutcome,
-  trackProposalOutcome,
-} from "@/lib/server/ai/learning-outcomes";
+import { getAiMonthlyUsageSnapshot } from "@/lib/server/ai/usage-ledger";
 import { getTenantLearningHints, type AltumTenantLearningHints } from "@/lib/server/ai/tenant-learning";
+import { deriveDeterministicConversationFields } from "@/lib/server/ai/deterministic-field-extraction";
 import { upsertLeadCommercialDossier } from "@/lib/server/ai/lead-dossier";
 import { enrichInboundMessageForAgent, matchInboundImageToCatalog } from "@/lib/server/ai/multimodal";
 import { scoreAltumConversationQuality } from "@/lib/server/ai/quality-score";
-import { sendAltumVoiceReply } from "@/lib/server/ai/voice";
+import { deliverAiConversationVoice } from "@/lib/server/ai/voice-delivery";
+import { AiVoicePreparationError } from "@/lib/server/ai/voice-delivery-errors";
+import { deliverAiKnowledgeMedia } from "@/lib/server/ai/knowledge-media-delivery";
+import { AiKnowledgeMediaPreparationError } from "@/lib/server/ai/knowledge-media-outbox";
+import { deliverAiHandoffAcknowledgement, deliverAiHandoffAlert, HandoffAlertPendingError, HandoffPauseConflictError } from "@/lib/server/ai/handoff-delivery";
 import {
   getConversationRuntimeState,
   getLeadMemory,
-  upsertConversationRuntimeState,
-  upsertLeadMemory,
   type AltumLeadMemory,
 } from "@/lib/server/ai/runtime-state";
+import {
+  buildRelationshipIdentityKey,
+  enforceRelationshipPrivacyBoundary,
+  removeAnsweredRelationshipQuestions,
+  relationshipFactsForPrompt,
+} from "@/lib/server/ai/relationship-state";
 import { deriveOperationalPlan } from "@/lib/server/ai/operational-plan";
+import {
+  specialistSupervisorInstruction,
+  superviseAiSpecialist,
+} from "@/lib/server/ai/specialist-supervisor";
+import {
+  compileAiSpecialistExecutionContract,
+  validateAiSpecialistOutput,
+} from "@/lib/server/ai/specialist-execution";
+import {
+  actionPlanAllows,
+  compileAiActionPlan,
+  type AiActionPlan,
+} from "@/lib/server/ai/action-plan";
+import {
+  claimAiActionExecution,
+  completeAiActionExecution,
+  failAiActionExecution,
+  skipAiActionExecution,
+} from "@/lib/server/ai/action-execution";
+import { ensureAiActionApprovals } from "@/lib/server/ai/action-approval";
+import {
+  composeAiResponse,
+  type AiResponseValidationReceipt,
+} from "@/lib/server/ai/response-composer";
 import {
   getMetaChannelForTenant,
   isMetaConversationChannelType,
-  sendMetaConversationMedia,
-  sendMetaConversationText,
 } from "@/app/lib/server/meta-channel";
 import {
   getWhatsAppChannelForTenant,
   isOfficialWhatsAppProvider,
 } from "@/app/lib/server/whatsapp-channel";
-import { getWhatsAppMessagingProvider } from "@/lib/server/messaging/registry";
 import { getTenantSettings, isTenantBillingBlocked } from "@/lib/server/tenant";
 import {
   getBusinessProfile,
-  getBusinessProfilePipelineStages,
   normalizeBusinessProfileId,
   type BusinessProfileId,
   type BusinessProfilePlaybookOffer,
   type BusinessProfilePlaybookScript,
 } from "@/lib/business-profiles";
-import { runLeadAutomations } from "@/lib/server/automations";
 import { syncLeadCommercialState } from "@/lib/server/crm/operations";
-import { runPipelineStageSideEffects } from "@/lib/server/crm/stage-effects";
+import { getUnambiguousConversationLead, matchesConversationCommercialFence, type ConversationCommercialFence } from "@/lib/server/crm/conversation-commercial-context";
+import { commitAutomaticLeadPatch, isCrmFieldManuallyOwned } from "@/lib/server/crm/field-ownership";
+import { AgentCommercialContextChanged, ensureConversationAgentTask } from "@/lib/server/crm/agent-commercial-task";
+import {commitConversationAgentSignal, type ConversationAgentSignal} from "@/lib/server/crm/agent-commercial-signal";
+import {createConversationCommercialDraft} from "@/lib/server/crm/agent-commercial-draft";
+import { loadTenantPipelineConfig } from "@/lib/server/crm/pipeline";
+import { resolveAiPipelineProposal } from "@/lib/ai-pipeline-context";
+import { prepareConversationProjectionEffects } from "@/lib/server/crm/conversation-projection-effects";
+import { conversationStageTransitionId, processConversationStageTransition } from "@/lib/server/crm/conversation-stage-transition";
 import type { AltumPlannerDecision } from "@/lib/server/ai/altum-agent-v2";
 import type { AltumConversationRuntimeState } from "@/lib/server/ai/runtime-state";
 import { buildAiTaskPreset, suggestPipelineStageForAiAction } from "@/lib/ai-next-actions";
@@ -97,6 +141,7 @@ import {
 import {
   decideAiConversationRollout,
   normalizeAiConversationRollout,
+  isAiConversationInTestScope,
   type AiConversationRollout,
 } from "@/lib/ai-conversation-rollout";
 
@@ -209,6 +254,8 @@ type ConversationMessage = {
   sender: "agent" | "client" | "system";
   type?: string;
   mediaUrl?: string | null;
+  sourceMediaUrl?: string | null;
+  deliveryStatus?: string | null;
   mediaName?: string | null;
   mediaMimeType?: string | null;
   mediaDuration?: number | null;
@@ -485,6 +532,7 @@ function summarizeRuntimeStateForAgent(runtimeState: AltumConversationRuntimeSta
 
 function summarizeLeadMemoryForAgent(leadMemory: AltumLeadMemory | null) {
   if (!leadMemory) return "";
+  const relationshipEvidence = relationshipFactsForPrompt(leadMemory.relationshipState || null);
   const campaignOfferName = cleanLeadFacingCampaignText(leadMemory.campaignOfferName, 180);
   const campaignOfferSummary = cleanLeadFacingCampaignText(leadMemory.campaignOfferSummary, 500);
   const campaignExampleUrl = cleanLeadFacingCampaignText(leadMemory.campaignExampleUrl, 700);
@@ -494,6 +542,12 @@ function summarizeLeadMemoryForAgent(leadMemory: AltumLeadMemory | null) {
     .map((item) => cleanLeadFacingCampaignText(item, 80))
     .filter(Boolean);
   return [
+    relationshipEvidence.confirmed.length
+      ? `fatos confirmados pelo relacionamento: ${relationshipEvidence.confirmed.join("; ")}`
+      : "",
+    relationshipEvidence.hypotheses.length
+      ? `hipoteses ainda nao confirmadas (nao trate como fato): ${relationshipEvidence.hypotheses.join("; ")}`
+      : "",
     leadMemory.attributionSourceLabel || leadMemory.attributionSource || leadMemory.attributionChannel
       ? `origem do lead: ${[
           leadMemory.attributionSourceLabel,
@@ -705,9 +759,8 @@ export type ChatState = {
   responseFormatPreferenceAskCount?: number | null;
 };
 
-export function getChatStateDocId(tenantId: string, chatId: string) {
-  return `${tenantId.trim()}_${chatId.trim()}`;
-}
+// Preserve the legacy import path for consumers outside low-level delivery.
+export { getChatStateDocId };
 
 function toDate(value: unknown) {
   if (!value) return null;
@@ -1149,10 +1202,15 @@ async function isLatestCoordinatedConversationTurn(input: {
   chatId: string;
   messageId: string;
 }) {
-  const turnId = `${input.tenantId.trim()}_${input.chatId.trim()}`
-    .replace(/[^a-zA-Z0-9_-]/g, "_")
-    .slice(0, 440);
-  const snap = await adminDb.collection("ai_conversation_turns").doc(turnId).get();
+  await prepareAiExecutionAuthority(input.tenantId, input.chatId);
+  // A test/pause change also stops work that started before the setting changed.
+  const settings = await getTenantSettings(input.tenantId);
+  if (!settings) return false;
+  const config = parseAiConfig(settings);
+  if (!config.enabled || config.responsePaused || !isAiConversationInTestScope({
+    rollout: config.rollout, tenantId: input.tenantId, chatId: input.chatId,
+  })) return false;
+  const snap = await readConversationTurn(input.tenantId, input.chatId);
   if (!snap.exists) return true;
   const latestMessageId = sanitizeText(snap.data()?.latestMessageId, 220);
   return !latestMessageId || latestMessageId === input.messageId;
@@ -2184,6 +2242,8 @@ async function fetchConversation(chatId: string, tenantId: string) {
         sender,
         type: normalizeMessageType(data.type),
         mediaUrl: sanitizeText(data.mediaUrl, 800) || null,
+        sourceMediaUrl: sanitizeText(data.sourceMediaUrl, 1200) || null,
+        deliveryStatus: sanitizeText(data.deliveryStatus || data.status, 40) || null,
         mediaName: sanitizeText(data.mediaName, 160) || null,
         mediaMimeType: sanitizeText(data.mediaMimeType, 120) || null,
         mediaDuration: numericValue(data.mediaDuration),
@@ -2203,7 +2263,7 @@ async function fetchConversation(chatId: string, tenantId: string) {
   return messages;
 }
 
-export async function getChatState(tenantId: string, chatId: string): Promise<ChatState> {
+export async function getChatState(tenantId: string, chatId: string, allowAutoResume = true): Promise<ChatState> {
   const docId = getChatStateDocId(tenantId, chatId);
   const ref = adminDb.collection("chat_state").doc(docId);
   const snap = await ref.get();
@@ -2240,6 +2300,7 @@ export async function getChatState(tenantId: string, chatId: string): Promise<Ch
     };
   }
 
+  assertChatStateScope(snap.data(), tenantId, chatId);
   const data = snap.data() as ChatStateDoc;
   const pausedUntil = toDate(data.pausedUntil);
   const hasHumanOwner =
@@ -2250,8 +2311,8 @@ export async function getChatState(tenantId: string, chatId: string): Promise<Ch
     Boolean(pausedUntil && pausedUntil.getTime() <= Date.now()) &&
     (data.aiEnabled === false || Boolean(hasHumanOwner) || Boolean(data.pauseReason));
 
-  if (shouldAutoResume) {
-    await ref.set(
+  if (shouldAutoResume && allowAutoResume) {
+    const resumed = await writeScopedChatState(tenantId, chatId,
       {
         tenantId,
         chatId,
@@ -2261,8 +2322,9 @@ export async function getChatState(tenantId: string, chatId: string): Promise<Ch
         pauseReason: null,
         updatedAt: FieldValue.serverTimestamp(),
       },
-      { merge: true }
+      { expectedVersion: snap.updateTime }
     );
+    if (!resumed) return getChatState(tenantId, chatId, false);
 
     return {
       tenantId,
@@ -2403,7 +2465,7 @@ export async function getChatState(tenantId: string, chatId: string): Promise<Ch
   };
 }
 
-async function saveAiLog(input: {
+function buildAiLogData(input: {
   logDocId: string;
   tenantId: string;
   chatId: string;
@@ -2452,7 +2514,36 @@ async function saveAiLog(input: {
     mandatoryQuestionCount: number;
     escalationTopicCount: number;
     configuredCommercialBrainFields: number;
+    role?: AltumAssistantRole;
+    roleContractVersion?: string;
+    roleReadiness?: "ready" | "restricted";
+    missingRoleSignals?: string[];
   } | null;
+  relationshipTrace?: {
+    revision: number;
+    confirmedFactKeys: string[];
+    hypothesisFactKeys: string[];
+    ignoredUpdateReasons: string[];
+    identityBound: boolean;
+  } | null;
+  specialistTrace?: {
+    schemaVersion: string;
+    configuredRole: string;
+    selectedSpecialist: string | null;
+    mode: string;
+    reason: string;
+    confidence: number;
+    idempotencyKey: string;
+    previousSpecialist: string | null;
+    relationshipRevision: number | null;
+    executionVersion?: string;
+    taskKind?: string;
+    allowedTools?: string[];
+    outputStatus?: string;
+    blockedReasons?: string[];
+  } | null;
+  actionPlan?: AiActionPlan | null;
+  responseValidationTrace?: AiResponseValidationReceipt | null;
   rollout?: {
     mode: AiConversationRollout["mode"];
     percent: number;
@@ -2461,8 +2552,7 @@ async function saveAiLog(input: {
     reason: string;
   } | null;
 }) {
-  await adminDb.collection("ai_logs").doc(input.logDocId).set(
-    {
+  return {
       tenantId: input.tenantId,
       chatId: input.chatId,
       messageId: input.messageId,
@@ -2501,11 +2591,21 @@ async function saveAiLog(input: {
       qualityGateReason: input.qualityGateReason || null,
       tenantContextFingerprint: input.tenantContextFingerprint || null,
       tenantContextDiagnostics: input.tenantContextDiagnostics || null,
+      relationshipTrace: input.relationshipTrace || null,
+      specialistTrace: input.specialistTrace || null,
+      actionPlan: input.actionPlan || null,
+      responseValidationTrace: input.responseValidationTrace || null,
       rollout: input.rollout || null,
-      createdAt: FieldValue.serverTimestamp(),
-    },
-    { merge: true }
-  );
+    };
+}
+
+async function saveAiLog(input: Parameters<typeof buildAiLogData>[0]) {
+  const ref = adminDb.collection("ai_logs").doc(input.logDocId);
+  await adminDb.runTransaction(async tx => {
+    const previous = await tx.get(ref);
+    if (previous.exists && (previous.data()?.tenantId !== input.tenantId || previous.data()?.chatId !== input.chatId || previous.data()?.messageId !== input.messageId)) throw new HandlerContinuationReviewError();
+    tx.set(ref, { ...buildAiLogData(input), handlerCompletionVersion: 1, createdAt: FieldValue.serverTimestamp() }, { merge: true });
+  });
 }
 
 function addHours(base: Date, hours: number) {
@@ -2640,22 +2740,8 @@ function buildAiTaskKey(reasonCode: string, scope: string) {
   return `${reason}:${normalizedScope || "default"}`.slice(0, 180);
 }
 
-async function listPendingLeadTasks(tenantId: string, leadId: string) {
-  const snap = await adminDb
-    .collection("lead_tasks")
-    .where("tenantId", "==", tenantId)
-    .where("leadId", "==", leadId)
-    .where("status", "==", "pending")
-    .limit(30)
-    .get();
-
-  return snap.docs.map<{ id: string; taskKey?: unknown; reasonCode?: unknown }>((doc) => ({
-    id: doc.id,
-    ...(doc.data() as Record<string, unknown>),
-  }));
-}
-
 async function ensureAiLeadTask(input: {
+  conversationFence?: ConversationCommercialFence;
   tenantId: string;
   leadId: string;
   title: string;
@@ -2665,41 +2751,21 @@ async function ensureAiLeadTask(input: {
   reasonCode: string;
   taskKey: string;
 }) {
-  const existingTasks = await listPendingLeadTasks(input.tenantId, input.leadId);
   const normalizedReasonCode = normalizeReasonCode(input.reasonCode, "ai_task");
   const normalizedTaskKey = sanitizeText(input.taskKey, 180);
-  const alreadyExists = existingTasks.some((task) => {
-    const currentTaskKey = sanitizeText(task.taskKey, 180);
-    const currentReasonCode = normalizeReasonCode(sanitizeText(task.reasonCode, 120), "");
-    return (
-      (normalizedTaskKey && currentTaskKey === normalizedTaskKey) ||
-      (normalizedReasonCode && currentReasonCode === normalizedReasonCode)
-    );
-  });
-
-  if (alreadyExists) return null;
-
-  const ref = await adminDb.collection("lead_tasks").add({
-    tenantId: input.tenantId,
-    leadId: input.leadId,
+  return ensureConversationAgentTask({
+    ...input,
     title: sanitizeText(input.title, 220) || "Tarefa criada pela IA",
     type: sanitizeText(input.type, 40) || "follow_up",
     priority: sanitizeText(input.priority, 20) || "medium",
     dueAt: input.dueAt || null,
-    status: "pending",
-    source: "ai_sales_agent",
     reasonCode: normalizedReasonCode,
-    taskKey: normalizedTaskKey || null,
-    createdBy: "ai_sales_agent",
-    createdByName: "AI Sales Agent",
-    createdAt: FieldValue.serverTimestamp(),
-    updatedAt: FieldValue.serverTimestamp(),
+    taskKey: normalizedTaskKey,
   });
-
-  return ref.id;
 }
 
 async function createAiProposalDraft(input: {
+  conversationFence?: ConversationCommercialFence;
   tenantId: string;
   leadId: string;
   leadName?: string | null;
@@ -2708,92 +2774,13 @@ async function createAiProposalDraft(input: {
   summary?: string | null;
 }) {
   const titleBase = sanitizeText(input.recommendedOffer, 140) || "Proposta comercial ALTUM";
-  const ref = await adminDb.collection("orcamentos").add({
-    tenantId: input.tenantId,
-    clientId: input.tenantId,
-    clientName: "Cliente ALTUM",
-    leadId: input.leadId,
-    leadName: sanitizeText(input.leadName, 180) || "Lead",
-    leadCompany: sanitizeText(input.leadCompany, 180) || null,
-    titulo: titleBase,
-    tipo: "Proposta consultiva",
-    status: "Rascunho",
-    valorTotal: null,
-    validade: null,
-    resumo: sanitizeText(input.summary, 4000) || null,
-    ownerId: "ai_sales_agent",
-    owner: "AI Sales Agent",
-    createdBy: "ai_sales_agent",
-    createdByName: "AI Sales Agent",
-    createdAt: FieldValue.serverTimestamp(),
-    updatedAt: FieldValue.serverTimestamp(),
-    source: "altum_agent_v2",
-  });
-
-  await trackProposalOutcome({
-    tenantId: input.tenantId,
-    leadId: input.leadId,
-    budgetId: ref.id,
-    status: "Rascunho",
-  });
-
-  return ref.id;
-}
-
-function addMinutes(base: Date, minutes: number) {
-  return new Date(base.getTime() + minutes * 60 * 1000);
-}
-
-function appointmentRangesOverlap(startA: number, endA: number, startB: number, endB: number) {
-  return startA < endB && startB < endA;
-}
-
-async function findNextAvailableAiSlot(tenantId: string, ownerUserId?: string | null) {
-  const snap = await adminDb.collection("appointments").where("tenantId", "==", tenantId).limit(500).get();
-  const busy = snap.docs
-    .map((doc) => doc.data() as Record<string, unknown>)
-    .filter((item) => ["scheduled", "confirmed"].includes(sanitizeText(item.status, 40) || "scheduled"))
-    .filter((item) => {
-      const currentOwner = sanitizeText(item.ownerUserId, 140);
-      const targetOwner = sanitizeText(ownerUserId, 140);
-      return targetOwner ? currentOwner === targetOwner : !currentOwner;
-    })
-    .map((item) => {
-      const start = new Date(String(item.startAt || "")).getTime();
-      const end = item.endAt ? new Date(String(item.endAt)).getTime() : start + 60 * 60 * 1000;
-      return { start, end };
-    })
-    .filter((item) => Number.isFinite(item.start) && Number.isFinite(item.end));
-
-  const now = new Date();
-  const cursor = addMinutes(now, 120);
-  cursor.setMinutes(cursor.getMinutes() < 30 ? 30 : 0, 0, 0);
-  if (cursor.getMinutes() === 0 && cursor.getTime() < addMinutes(now, 120).getTime()) {
-    cursor.setHours(cursor.getHours() + 1);
-  }
-
-  for (let day = 0; day < 14; day += 1) {
-    for (let hour = 9; hour <= 17; hour += 1) {
-      for (const minute of [0, 30]) {
-        const candidate = new Date(cursor);
-        candidate.setDate(cursor.getDate() + day);
-        candidate.setHours(hour, minute, 0, 0);
-        if (candidate.getTime() < cursor.getTime()) continue;
-
-        const candidateEnd = addMinutes(candidate, 60);
-        const hasConflict = busy.some((item) =>
-          appointmentRangesOverlap(candidate.getTime(), candidateEnd.getTime(), item.start, item.end)
-        );
-        if (!hasConflict) return { startAt: candidate.toISOString(), endAt: candidateEnd.toISOString() };
-      }
-    }
-  }
-
-  const fallback = addHours(now, 24);
-  return { startAt: fallback.toISOString(), endAt: addMinutes(fallback, 60).toISOString() };
+  return createConversationCommercialDraft({tenantId: input.tenantId, leadId: input.leadId,
+    conversationFence: input.conversationFence, kind: "proposal", title: titleBase,
+    summary: sanitizeText(input.summary, 4000) || null});
 }
 
 async function createAiAppointmentDraft(input: {
+  conversationFence?: ConversationCommercialFence;
   tenantId: string;
   leadId: string;
   leadName?: string | null;
@@ -2801,37 +2788,10 @@ async function createAiAppointmentDraft(input: {
   summary?: string | null;
   ownerUserId?: string | null;
 }) {
-  const slot = await findNextAvailableAiSlot(input.tenantId, input.ownerUserId);
-  const ref = await adminDb.collection("appointments").add({
-    tenantId: input.tenantId,
-    leadId: input.leadId,
-    leadName: sanitizeText(input.leadName, 180) || "Lead",
-    leadCompany: sanitizeText(input.leadCompany, 180) || null,
-    title: `Diagnostico comercial com ${sanitizeText(input.leadName, 120) || "lead"}`,
-    type: "reuniao",
-    status: "draft",
-    startAt: slot.startAt,
-    endAt: slot.endAt,
-    location: null,
-    meetingUrl: null,
-    notes: sanitizeText(input.summary, 4000) || null,
-    ownerUserId: sanitizeText(input.ownerUserId, 140) || null,
-    ownerName: "AI Sales Agent",
-    createdBy: "ai_sales_agent",
-    createdByName: "AI Sales Agent",
-    createdAt: FieldValue.serverTimestamp(),
-    updatedAt: FieldValue.serverTimestamp(),
-    source: "altum_agent_v2",
-  });
-
-  await trackAppointmentOutcome({
-    tenantId: input.tenantId,
-    leadId: input.leadId,
-    appointmentId: ref.id,
-    status: "draft",
-  });
-
-  return ref.id;
+  return createConversationCommercialDraft({tenantId: input.tenantId, leadId: input.leadId,
+    conversationFence: input.conversationFence, kind: "appointment",
+    title: `Reunião com ${sanitizeText(input.leadName, 120) || "cliente"}`,
+    summary: sanitizeText(input.summary, 4000) || null});
 }
 
 function normalizeLeadTags(value: unknown) {
@@ -2885,11 +2845,14 @@ function hasMinimumClosingContext(input: {
   return confidenceOk && mappedCount >= 3;
 }
 
-async function executeAltumAgentActions(input: {
+type ExecuteAltumAgentActionsInput = {
+  conversationFence?: ConversationCommercialFence;
+  pipelineStageProposal?: unknown;
   tenantId: string;
   chatId: string;
   leadId?: string | null;
   plan: AltumPlannerDecision;
+  actionPlan: AiActionPlan;
   runtimeState: AltumConversationRuntimeState | null;
   extractedFields?: Record<string, string> | null;
   conversation?: ConversationMessage[] | null;
@@ -2901,23 +2864,42 @@ async function executeAltumAgentActions(input: {
   autonomyMode: AltumAiAutonomyMode;
   followUpStrategy?: string | null;
   proposalStyle?: string | null;
-}) {
+};
+
+async function executeAltumAgentActionsUnchecked(input: ExecuteAltumAgentActionsInput) {
   const leadId = sanitizeText(input.leadId, 160);
   if (!leadId) return [] as string[];
   const isCopilot = input.autonomyMode === "copilot";
-  const canAdvanceCommercialWorkflow = canAutonomouslyAdvanceCommercialWorkflow(input.autonomyMode);
+  const canWriteCrmContext = actionPlanAllows(input.actionPlan, "update_crm_context");
+  const canMovePipelineStage = actionPlanAllows(input.actionPlan, "move_pipeline_stage");
+  const canCreateFollowUp = actionPlanAllows(input.actionPlan, "create_follow_up");
+  const canPrepareProposal = actionPlanAllows(input.actionPlan, "prepare_proposal_draft");
+  const canCreateHandoff = actionPlanAllows(input.actionPlan, "create_handoff_task");
+  const canAdvanceCommercialWorkflow =
+    canAutonomouslyAdvanceCommercialWorkflow(input.autonomyMode) &&
+    (canMovePipelineStage || canCreateFollowUp || canPrepareProposal);
 
   const actions: string[] = [];
   const leadRef = adminDb.collection("leads").doc(leadId);
   const now = new Date();
+  const recordSignal = (signal: Pick<ConversationAgentSignal, "event" | "note" | "notification" | "evidenceKind">) => commitConversationAgentSignal({
+    tenantId: input.tenantId, leadId, chatId: input.chatId, conversationFence: input.conversationFence, ...signal,
+  });
+
+  if (!input.actionPlan.steps.some((step) => step.authorization === "ready")) {
+    return input.actionPlan.executionMode === "approval_required"
+      ? ["action_plan_approval_required"]
+      : ["action_plan_no_executable_steps"];
+  }
 
   // Copilot never updates commercial memory or advances the workflow. A handoff
   // is the one safety exception: without a task, pausing the bot can leave the
   // customer waiting with no accountable human owner.
   if (isCopilot) {
-    if (input.plan.decision !== "handoff") return ["copilot_actions_suppressed"];
+    if (input.plan.decision !== "handoff" || !canCreateHandoff) return ["copilot_actions_suppressed"];
 
     const handoffTaskId = await ensureAiLeadTask({
+      conversationFence: input.conversationFence,
       tenantId: input.tenantId,
       leadId,
       title: "Assumir handoff solicitado pela IA",
@@ -2930,31 +2912,29 @@ async function executeAltumAgentActions(input: {
 
     if (!handoffTaskId) return ["copilot_actions_suppressed", "handoff_task_already_pending"];
 
-    await Promise.all([
-      leadRef.collection("events").add({
+    await recordSignal({
+      evidenceKind: "operational_event",
+      event: {
         type: "ai_handoff_requested",
         title: "IA solicitou handoff",
         detail: sanitizeText(input.plan.reason, 220),
-        actorId: "ai_sales_agent",
-        actorName: "AI Sales Agent",
-        createdAt: FieldValue.serverTimestamp(),
-      }),
-      createAiInternalNotification({
-        tenantId: input.tenantId,
-        chatId: input.chatId,
-        leadId,
+      },
+      notification: {
         type: "handoff",
         severity: "high",
         title: "IA pediu handoff humano",
         detail: sanitizeText(input.plan.reason, 220),
-      }),
-    ]);
+      },
+    });
 
     return ["copilot_actions_suppressed", "handoff_to_human", "notify_internal_team"];
   }
 
+  if (!canWriteCrmContext && !canCreateHandoff) return ["action_plan_no_executable_steps"];
+
   const leadSnap = await leadRef.get();
   const leadData = leadSnap.exists ? (leadSnap.data() as Record<string, unknown>) : {};
+  if (!leadSnap.exists || leadData.tenantId !== input.tenantId) return ["crm_lead_unavailable"];
   const plannerConfidence = Number.isFinite(input.plan.confidence) ? Math.max(0, Math.min(1, input.plan.confidence)) : 0;
   const canWriteIdentity = plannerConfidence >= 0.66;
   const canWriteCompany = plannerConfidence >= 0.7;
@@ -3018,6 +2998,24 @@ async function executeAltumAgentActions(input: {
       sanitizeText(input.extractedFields?.proposalOutline || input.extractedFields?.propostaResumo, 520) ||
       null,
   };
+  // This writer does not carry a verified message occurrence. A human review
+  // (including a released field awaiting a new message) governs its projections.
+  const fieldEvidence = leadData.aiFieldEvidence && typeof leadData.aiFieldEvidence === "object"
+    ? leadData.aiFieldEvidence as Record<string, unknown> : {};
+  let protectedFactConflict = false;
+  for (const key of Object.keys(commercialFieldDefinitions) as CommercialField[]) {
+    const proof = fieldEvidence[`custom.${commercialFieldDefinitions[key].custom}`];
+    if (key in aiMemory && !qualificationEvidenceAllowsUpdate(proof)) {
+      const current = currentCommercialField(leadData, key).value || null;
+      const memory = aiMemory as Record<string, string | null>;
+      if (memory[key] && memory[key] !== current) protectedFactConflict = true;
+      memory[key] = current;
+    }
+  }
+  if (protectedFactConflict) {
+    aiMemory.diagnosis = null; aiMemory.personalizedPlan = null;
+    aiMemory.sellerNextMove = null; aiMemory.materialToSend = null; aiMemory.proposalOutline = null;
+  }
   const aiLeadSummary = buildPersistentConversationSummary({
     preferredName: aiMemory.preferredName,
     leadTone: aiMemory.leadTone,
@@ -3082,6 +3080,8 @@ async function executeAltumAgentActions(input: {
           : "";
     if (!normalizedKey || !normalizedValue) return;
 
+    if (!qualificationEvidenceAllowsUpdate(existingAiFieldEvidence[normalizedKey])) return;
+
     existingAiFieldEvidence[normalizedKey] = {
       value: normalizedValue,
       source,
@@ -3098,6 +3098,10 @@ async function executeAltumAgentActions(input: {
     const normalizedKey = sanitizeText(key, 60);
     const normalizedValue = sanitizeText(value, 200);
     if (!normalizedKey || !normalizedValue) return;
+    const priorEvidence = existingAiFieldEvidence[`custom.${normalizedKey}`] as { source?: string } | undefined;
+    // This memory-based writer has no verified message occurrence. Released
+    // fields remain with the evidence-aware conversation observer.
+    if (!qualificationEvidenceAllowsUpdate(priorEvidence)) return;
     if (existingCustomFields[normalizedKey] !== normalizedValue) {
       existingCustomFields[normalizedKey] = normalizedValue;
       customFieldsChanged = true;
@@ -3180,6 +3184,7 @@ async function executeAltumAgentActions(input: {
     aiMaterialToSend: aiMemory.materialToSend,
     aiProposalOutline: aiMemory.proposalOutline,
     aiLeadSummary,
+    aiCommercialAnalysisNeedsRefresh: protectedFactConflict || leadData.aiCommercialAnalysisNeedsRefresh === true && !canWriteCustomFields,
     aiLastInboundText: sanitizeText(input.inboundText, 500) || null,
     aiPlannerConfidence: plannerConfidence,
     aiCaptureChecklist: {
@@ -3258,7 +3263,7 @@ async function executeAltumAgentActions(input: {
     },
     score: qualificationScore,
     scoreSource: "ai",
-    tags: mergedTags,
+    ...(!isCrmFieldManuallyOwned(leadData, "tags") ? { tags: mergedTags } : {}),
     updatedAt: FieldValue.serverTimestamp(),
   };
 
@@ -3321,12 +3326,14 @@ async function executeAltumAgentActions(input: {
     actions.push("track_field_evidence");
   }
 
-  const pipelineStages = getBusinessProfilePipelineStages(input.businessProfileId).map((stage) => stage.id);
-  const suggestedStage = suggestPipelineStageForAiAction(input.plan.nextAction, pipelineStages);
+  const pipelineDefinitions = (await loadTenantPipelineConfig(input.tenantId)).stages;
+  const pipelineStages = pipelineDefinitions.map(stage => stage.id);
+  const suggestedStage = resolveAiPipelineProposal(input.pipelineStageProposal, pipelineDefinitions, input.inboundText)
+    || suggestPipelineStageForAiAction(input.plan.nextAction, pipelineDefinitions);
   const previousStage = sanitizeText(leadData.pipelineStage || leadData.stage, 80) || null;
   let appliedStage = previousStage;
   let aiMovedStage = false;
-  if (canAdvanceCommercialWorkflow && canAdvanceStage && suggestedStage && suggestedStage !== previousStage) {
+  if (!isCrmFieldManuallyOwned(leadData, "pipelineStage") && canMovePipelineStage && canAdvanceStage && suggestedStage && suggestedStage !== previousStage) {
     const previousIndex = previousStage ? pipelineStages.indexOf(previousStage) : -1;
     const suggestedIndex = pipelineStages.indexOf(suggestedStage);
     const shouldAdvance = suggestedIndex >= 0 && (previousIndex < 0 || suggestedIndex >= previousIndex);
@@ -3344,7 +3351,7 @@ async function executeAltumAgentActions(input: {
   qualificationPatch.recommendedStage = appliedStage || pipelineStages[0] || null;
 
   if (canAdvanceCommercialWorkflow && canFlagHotLead && input.plan.stateAfter === "recommendation") {
-    leadPatch.priority = "high";
+    if (!isCrmFieldManuallyOwned(leadData, "priority")) leadPatch.priority = "high";
     leadPatch.heat = "quente";
     leadPatch.aiSignalStrength = "high";
     leadPatch.aiLastRecommendedAt = FieldValue.serverTimestamp();
@@ -3352,7 +3359,7 @@ async function executeAltumAgentActions(input: {
   }
 
   if (canSetReadyHandoff && (input.plan.stateAfter === "handoff" || input.plan.decision === "handoff")) {
-    leadPatch.priority = "high";
+    if (!isCrmFieldManuallyOwned(leadData, "priority")) leadPatch.priority = "high";
     leadPatch.handoff = {
       status: "ready",
       reasonCode: "ai_handoff_requested",
@@ -3363,24 +3370,20 @@ async function executeAltumAgentActions(input: {
     actions.push("mark_handoff_ready");
   }
 
-  await leadRef.set(leadPatch, { merge: true });
+  if (!(await commitAutomaticLeadPatch({ tenantId: input.tenantId, leadId,
+    expectedVersion: leadSnap.updateTime!, patch: leadPatch,
+    verifyContext: input.conversationFence ? tx => matchesConversationCommercialFence(tx, input.conversationFence!) : undefined,
+    prepareEffects: aiMovedStage && previousStage && appliedStage && input.conversationFence
+      ? (tx, current) => prepareConversationProjectionEffects(tx, current, {
+        fence: input.conversationFence!, stages: pipelineDefinitions, tasks: [],
+        actorId: "ai_sales_agent", actorName: "AI Sales Agent",
+        stageChange: { previous: previousStage, next: appliedStage! },
+      }) : undefined,
+  }))) return ["crm_update_skipped_snapshot_conflict"];
   actions.push("update_lead_memory");
 
-  if (aiMovedStage && previousStage && appliedStage) {
-    await runPipelineStageSideEffects({
-      tenantId: input.tenantId,
-      leadId,
-      previousStage,
-      nextStage: appliedStage,
-      actorId: "ai_sales_agent",
-      actorName: "AI Sales Agent",
-      source: "ai_pipeline_stage_update",
-      metadata: {
-        nextAction: input.plan.nextAction || null,
-        confidence: plannerConfidence,
-        stateAfter: input.plan.stateAfter || null,
-      },
-    });
+  if (aiMovedStage && previousStage && appliedStage && input.conversationFence) {
+    await processConversationStageTransition(conversationStageTransitionId(input.conversationFence), input.tenantId);
   }
 
   const stageChanged = input.runtimeState?.stage !== input.plan.stateAfter;
@@ -3405,6 +3408,7 @@ async function executeAltumAgentActions(input: {
       .join(" ");
 
     await upsertLeadCommercialDossier({
+      conversationFence: input.conversationFence,
       tenantId: input.tenantId,
       leadId,
       trigger: "qualification_ready",
@@ -3418,40 +3422,26 @@ async function executeAltumAgentActions(input: {
       actorName: "AI Sales Agent",
     });
 
-    await Promise.all([
-      adminDb.collection("lead_notes").add({
-        tenantId: input.tenantId,
-        leadId,
-        text: note,
-        authorId: "ai_sales_agent",
-        authorName: "AI Sales Agent",
-        createdAt: FieldValue.serverTimestamp(),
-        updatedAt: FieldValue.serverTimestamp(),
-      }),
-      leadRef.collection("events").add({
+    await recordSignal({
+      note,
+      event: {
         type: "ai_recommendation",
         title: "IA sinalizou recomendacao comercial",
         detail: note.slice(0, 240),
-        actorId: "ai_sales_agent",
-        actorName: "AI Sales Agent",
-        createdAt: FieldValue.serverTimestamp(),
-      }),
-      createAiInternalNotification({
-        tenantId: input.tenantId,
-        chatId: input.chatId,
-        leadId,
-        type: "hot_lead",
-        severity: "high",
-        title: "Lead quente identificado pela IA",
+      },
+      notification: {
+        type: "commercial_recommendation",
+        severity: "info",
+        title: "Recomendação comercial disponível",
         detail: note.slice(0, 240),
-      }),
-    ]);
+      },
+    });
     actions.push("add_lead_note");
     actions.push("notify_internal_team");
   }
 
   if (
-    canAdvanceCommercialWorkflow &&
+    canCreateFollowUp &&
     nextActionChanged &&
     input.plan.nextAction &&
     (
@@ -3476,6 +3466,7 @@ async function executeAltumAgentActions(input: {
 
     if (isClosingStep && !hasClosingContext) {
       const contextGapTaskId = await ensureAiLeadTask({
+        conversationFence: input.conversationFence,
         tenantId: input.tenantId,
         leadId,
         title: "Coletar contexto minimo antes de proposta/reuniao",
@@ -3487,27 +3478,21 @@ async function executeAltumAgentActions(input: {
       });
 
       if (contextGapTaskId) {
-        await Promise.all([
-          leadRef.collection("events").add({
+        await recordSignal({
+          event: {
             type: "ai_closing_context_gap_task",
             title: "IA segurou fechamento por falta de contexto",
             detail:
               "Antes de proposta/reuniao, a IA abriu tarefa para coletar contexto comercial minimo com o lead.",
-            actorId: "ai_sales_agent",
-            actorName: "AI Sales Agent",
-            createdAt: FieldValue.serverTimestamp(),
-          }),
-          createAiInternalNotification({
-            tenantId: input.tenantId,
-            chatId: input.chatId,
-            leadId,
+          },
+          notification: {
             type: "closing_context_gap",
             severity: "warning",
             title: "IA segurou fechamento por falta de contexto",
             detail:
               "Faltou contexto minimo para proposta/reuniao. A IA abriu follow-up de qualificacao antes do fechamento.",
-          }),
-        ]);
+          },
+        });
         actions.push("create_context_gap_followup_task");
         actions.push("notify_internal_team");
       } else {
@@ -3519,6 +3504,7 @@ async function executeAltumAgentActions(input: {
     const defaultDueHours = getAiTaskDueHours(input.plan.nextAction, input.plan.commercialTemperature || null);
     const dueHours = resolveConfiguredFollowUpDelayHours(input.followUpStrategy, defaultDueHours);
     const followupTaskId = await ensureAiLeadTask({
+      conversationFence: input.conversationFence,
       tenantId: input.tenantId,
       leadId,
       title: taskPreset.title,
@@ -3531,6 +3517,7 @@ async function executeAltumAgentActions(input: {
 
     if (followupTaskId) {
       await recordCommercialAgentAction({
+        conversationFence: input.conversationFence,
         tenantId: input.tenantId,
         leadId,
         chatId: input.chatId,
@@ -3546,25 +3533,20 @@ async function executeAltumAgentActions(input: {
         },
         executed: true,
       });
-      await Promise.all([
-        leadRef.collection("events").add({
+      await recordSignal({
+        evidenceKind: "operational_event",
+        event: {
           type: "ai_followup_task_created",
           title: "IA criou tarefa de follow-up",
           detail: input.plan.nextAction.slice(0, 240),
-          actorId: "ai_sales_agent",
-          actorName: "AI Sales Agent",
-          createdAt: FieldValue.serverTimestamp(),
-        }),
-        createAiInternalNotification({
-          tenantId: input.tenantId,
-          chatId: input.chatId,
-          leadId,
+        },
+        notification: {
           type: "followup_task",
           severity: input.plan.commercialTemperature === "hot" ? "high" : "info",
           title: "IA criou proximo passo operacional",
           detail: input.plan.nextAction.slice(0, 240),
-        }),
-      ]);
+        },
+      });
       actions.push("create_followup_task");
       actions.push("notify_internal_team");
     } else {
@@ -3573,8 +3555,9 @@ async function executeAltumAgentActions(input: {
     }
   }
 
-  if (canAdvanceCommercialWorkflow && nextActionChanged && input.plan.nextAction === "preparar_proposta_comercial" && shouldSeedDraft) {
+  if (canPrepareProposal && nextActionChanged && input.plan.nextAction === "preparar_proposta_comercial" && shouldSeedDraft) {
     const proposalId = await createAiProposalDraft({
+      conversationFence: input.conversationFence,
       tenantId: input.tenantId,
       leadId,
       leadName: input.leadName || sanitizeText(leadData.nome, 180) || null,
@@ -3587,6 +3570,7 @@ async function executeAltumAgentActions(input: {
     });
 
     await recordCommercialAgentAction({
+      conversationFence: input.conversationFence,
       tenantId: input.tenantId,
       leadId,
       chatId: input.chatId,
@@ -3600,6 +3584,7 @@ async function executeAltumAgentActions(input: {
     });
 
     await upsertLeadCommercialDossier({
+      conversationFence: input.conversationFence,
       tenantId: input.tenantId,
       leadId,
       trigger: "proposal_draft",
@@ -3613,31 +3598,27 @@ async function executeAltumAgentActions(input: {
       actorName: "AI Sales Agent",
     });
 
-    await Promise.all([
-      leadRef.collection("events").add({
+    await recordSignal({
+      evidenceKind: "operational_event",
+      event: {
         type: "ai_proposal_draft_created",
         title: "IA abriu rascunho de proposta",
         detail: `Rascunho ${proposalId} criado para acelerar o fechamento comercial.`,
-        actorId: "ai_sales_agent",
-        actorName: "AI Sales Agent",
-        createdAt: FieldValue.serverTimestamp(),
-      }),
-      createAiInternalNotification({
-        tenantId: input.tenantId,
-        chatId: input.chatId,
-        leadId,
+      },
+      notification: {
         type: "proposal_draft",
         severity: "high",
         title: "IA abriu rascunho de proposta",
         detail: `Proposta em rascunho criada para ${sanitizeText(input.leadName, 120) || "lead"}.`,
-      }),
-    ]);
+      },
+    });
     actions.push("create_proposal_draft");
     actions.push("notify_internal_team");
   }
 
-  if (canAdvanceCommercialWorkflow && nextActionChanged && input.plan.nextAction === "agendar_proximo_passo" && shouldSeedDraft) {
+  if (canCreateFollowUp && nextActionChanged && input.plan.nextAction === "agendar_proximo_passo" && shouldSeedDraft) {
     const appointmentId = await createAiAppointmentDraft({
+      conversationFence: input.conversationFence,
       tenantId: input.tenantId,
       leadId,
       leadName: input.leadName || sanitizeText(leadData.nome, 180) || null,
@@ -3647,6 +3628,7 @@ async function executeAltumAgentActions(input: {
     });
 
     await recordCommercialAgentAction({
+      conversationFence: input.conversationFence,
       tenantId: input.tenantId,
       leadId,
       chatId: input.chatId,
@@ -3660,9 +3642,10 @@ async function executeAltumAgentActions(input: {
     });
 
     await upsertLeadCommercialDossier({
+      conversationFence: input.conversationFence,
       tenantId: input.tenantId,
       leadId,
-      trigger: "appointment_scheduled",
+      trigger: "appointment_draft",
       sourceId: appointmentId,
       appointmentId,
       chatId: input.chatId,
@@ -3674,31 +3657,26 @@ async function executeAltumAgentActions(input: {
       actorName: "AI Sales Agent",
     });
 
-    await Promise.all([
-      leadRef.collection("events").add({
+    await recordSignal({
+      evidenceKind: "operational_event",
+      event: {
         type: "ai_appointment_draft_created",
         title: "IA abriu rascunho de agendamento",
         detail: `Agendamento ${appointmentId} criado para acelerar o proximo passo comercial.`,
-        actorId: "ai_sales_agent",
-        actorName: "AI Sales Agent",
-        createdAt: FieldValue.serverTimestamp(),
-      }),
-      createAiInternalNotification({
-        tenantId: input.tenantId,
-        chatId: input.chatId,
-        leadId,
+      },
+      notification: {
         type: "appointment_draft",
         severity: "high",
         title: "IA abriu rascunho de reuniao",
         detail: `Agendamento em rascunho criado para ${sanitizeText(input.leadName, 120) || "lead"}.`,
-      }),
-    ]);
+      },
+    });
     actions.push("create_appointment_draft");
     actions.push("notify_internal_team");
   }
 
   if (
-    canAdvanceCommercialWorkflow &&
+    (canPrepareProposal || canCreateFollowUp) &&
     nextActionChanged &&
     (input.plan.nextAction === "preparar_proposta_comercial" || input.plan.nextAction === "agendar_proximo_passo") &&
     !shouldSeedDraft
@@ -3712,64 +3690,45 @@ async function executeAltumAgentActions(input: {
         ? "O lead demonstrou interesse, mas ainda faltou contexto comercial suficiente para abrir uma proposta com seguranca."
         : "O lead demonstrou abertura para o proximo passo, mas ainda faltou contexto comercial suficiente para abrir um agendamento com seguranca.";
 
-    await Promise.all([
-      leadRef.collection("events").add({
+    await recordSignal({
+      event: {
         type: "ai_closing_step_pending_context",
         title: pendingTitle,
         detail: pendingDetail,
-        actorId: "ai_sales_agent",
-        actorName: "AI Sales Agent",
-        createdAt: FieldValue.serverTimestamp(),
-      }),
-      createAiInternalNotification({
-        tenantId: input.tenantId,
-        chatId: input.chatId,
-        leadId,
+      },
+      notification: {
         type: "closing_pending_context",
         severity: "warning",
         title: pendingTitle,
         detail: pendingDetail,
-      }),
-    ]);
+      },
+    });
     actions.push("notify_internal_team");
   }
 
   if (input.plan.stateAfter === "objection_handling" && stageChanged) {
     const objection = sanitizeText(input.inboundText, 220);
-    await Promise.all([
-      adminDb.collection("lead_notes").add({
-        tenantId: input.tenantId,
-        leadId,
-        text: `IA registrou objecao/comentario do lead: ${objection}${input.plan.objectionType ? ` (tipo: ${input.plan.objectionType})` : ""}`,
-        authorId: "ai_sales_agent",
-        authorName: "AI Sales Agent",
-        createdAt: FieldValue.serverTimestamp(),
-        updatedAt: FieldValue.serverTimestamp(),
-      }),
-      leadRef.collection("events").add({
+    await recordSignal({
+      note: `Interpretação da IA para revisão: ${objection}${input.plan.objectionType ? ` (tipo sugerido: ${input.plan.objectionType})` : ""}`,
+      event: {
         type: "ai_objection_detected",
-        title: "IA detectou objecao",
+        title: "IA sinalizou possível objeção",
         detail: `${input.plan.objectionType ? `[${input.plan.objectionType}] ` : ""}${objection}`,
-        actorId: "ai_sales_agent",
-        actorName: "AI Sales Agent",
-        createdAt: FieldValue.serverTimestamp(),
-      }),
-      createAiInternalNotification({
-        tenantId: input.tenantId,
-        chatId: input.chatId,
-        leadId,
+      },
+      notification: {
         type: "objection",
         severity: "warning",
-        title: "IA detectou objecao comercial",
+        title: "Possível objeção para revisar",
         detail: `${input.plan.objectionType ? `[${input.plan.objectionType}] ` : ""}${objection}`.slice(0, 240),
-      }),
-    ]);
+      },
+    });
     actions.push("register_objection");
     actions.push("notify_internal_team");
   }
 
-  if (input.plan.decision === "handoff") {
+  if (input.plan.decision === "handoff" && canCreateHandoff) {
     const handoffTaskId = await ensureAiLeadTask({
+      conversationFence: input.conversationFence,
       tenantId: input.tenantId,
       leadId,
       title: "Assumir handoff solicitado pela IA",
@@ -3782,6 +3741,7 @@ async function executeAltumAgentActions(input: {
 
     if (handoffTaskId) {
       await upsertLeadCommercialDossier({
+        conversationFence: input.conversationFence,
         tenantId: input.tenantId,
         leadId,
         trigger: "handoff",
@@ -3795,25 +3755,20 @@ async function executeAltumAgentActions(input: {
         actorName: "AI Sales Agent",
       });
 
-      await Promise.all([
-        leadRef.collection("events").add({
+      await recordSignal({
+        evidenceKind: "operational_event",
+        event: {
           type: "ai_handoff_requested",
           title: "IA solicitou handoff",
           detail: sanitizeText(input.plan.reason, 220),
-          actorId: "ai_sales_agent",
-          actorName: "AI Sales Agent",
-          createdAt: FieldValue.serverTimestamp(),
-        }),
-        createAiInternalNotification({
-          tenantId: input.tenantId,
-          chatId: input.chatId,
-          leadId,
+        },
+        notification: {
           type: "handoff",
           severity: "high",
           title: "IA pediu handoff humano",
           detail: sanitizeText(input.plan.reason, 220),
-        }),
-      ]);
+        },
+      });
       actions.push("handoff_to_human");
       actions.push("notify_internal_team");
     } else {
@@ -3821,42 +3776,97 @@ async function executeAltumAgentActions(input: {
     }
   }
 
-  await syncLeadCommercialState({
-    tenantId: input.tenantId,
-    leadId,
-    actorId: "ai_sales_agent",
-    actorName: "AI Sales Agent",
-    allowStageAdvance: canAdvanceCommercialWorkflow && canAdvanceStage,
-    preserveManualScore: true,
-  });
-  actions.push("sync_crm_state");
+  if (canWriteCrmContext || canMovePipelineStage) {
+    const synced = await syncLeadCommercialState({
+      conversationFence: input.conversationFence,
+      tenantId: input.tenantId,
+      leadId,
+      actorId: "ai_sales_agent",
+      actorName: "AI Sales Agent",
+      // This message already owns its stage occurrence when the proposal moved
+      // the lead. The score sync must not commit a second transition for it.
+      allowStageAdvance: canMovePipelineStage && canAdvanceStage && !aiMovedStage,
+      preserveManualScore: true,
+    });
+    actions.push(synced ? "sync_crm_state" : "crm_sync_skipped_snapshot_conflict");
+  }
 
   return actions;
 }
 
-async function upsertChatState(input: {
-  tenantId: string;
-  chatId: string;
-  aiEnabled?: boolean;
-  pausedUntil?: Date | null;
-  humanOwnerUserId?: string | null;
-  updatedByName?: string | null;
-  pauseReason?: string | null;
-}) {
-  const docId = getChatStateDocId(input.tenantId, input.chatId);
-  await adminDb.collection("chat_state").doc(docId).set(
-    {
+export async function executeAltumAgentActions(input: ExecuteAltumAgentActionsInput) {
+  if (input.leadId) {
+    const fence = input.conversationFence;
+    if (!fence || fence.tenantId !== input.tenantId || fence.chatId !== input.chatId || fence.leadId !== input.leadId ||
+        !await adminDb.runTransaction(tx => matchesConversationCommercialFence(tx, fence), {readOnly: true})) {
+      return ["crm_actions_skipped_context_changed"];
+    }
+  }
+  const approvalKinds = await ensureAiActionApprovals(input.actionPlan);
+  const readySteps = input.actionPlan.steps.filter((step) => step.authorization === "ready");
+  if (!readySteps.length) {
+    const actions = await executeAltumAgentActionsUnchecked(input);
+    return [...actions, ...approvalKinds.map((kind) => `approval_requested:${kind}`)];
+  }
+
+  const claimed: Array<{ step: (typeof readySteps)[number]; token: string }> = [];
+  for (const step of readySteps) {
+    const claim = await claimAiActionExecution({
       tenantId: input.tenantId,
       chatId: input.chatId,
-      aiEnabled: input.aiEnabled,
-      pausedUntil: input.pausedUntil || null,
-      humanOwnerUserId: input.humanOwnerUserId || null,
-      updatedByName: input.updatedByName || null,
-      pauseReason: input.pauseReason || null,
-      updatedAt: FieldValue.serverTimestamp(),
-    },
-    { merge: true }
-  );
+      messageId: input.actionPlan.messageId,
+      leadId: input.leadId,
+      planFingerprint: input.actionPlan.fingerprint,
+      step,
+    });
+    if (claim.status === "claimed") claimed.push({ step, token: claim.token });
+  }
+  if (!claimed.length) return ["action_plan_already_claimed_or_completed"];
+
+  const claimedKeys = new Set(claimed.map((item) => item.step.idempotencyKey));
+  const executablePlan: AiActionPlan = {
+    ...input.actionPlan,
+    steps: input.actionPlan.steps.map((step) =>
+      step.authorization === "ready" && !claimedKeys.has(step.idempotencyKey)
+        ? { ...step, authorization: "blocked", authorizationReason: "execution_claim_not_acquired" }
+        : step
+    ),
+  };
+  try {
+    const actions = await executeAltumAgentActionsUnchecked({ ...input, actionPlan: executablePlan });
+    const evidenceByKind: Record<AiActionPlan["steps"][number]["kind"], string[]> = {
+      update_crm_context: ["update_lead_memory", "sync_crm_state"],
+      move_pipeline_stage: ["move_pipeline_stage"],
+      create_follow_up: ["create_followup_task", "followup_task_already_pending", "create_appointment_draft", "create_context_gap_followup_task", "context_gap_followup_task_already_pending"],
+      prepare_proposal_draft: ["create_proposal_draft"],
+      prepare_checkout: ["prepare_checkout"],
+      create_handoff_task: ["handoff_to_human", "handoff_task_already_pending"],
+    };
+    await Promise.all(claimed.map((item) => {
+      const evidence = evidenceByKind[item.step.kind];
+      const satisfied = evidence.some((value) => actions.includes(value));
+      return satisfied
+        ? completeAiActionExecution({ tenantId: input.tenantId, idempotencyKey: item.step.idempotencyKey, token: item.token, evidence: actions })
+        : skipAiActionExecution({ tenantId: input.tenantId, idempotencyKey: item.step.idempotencyKey, token: item.token, reason: "runtime_precondition_not_met", evidence: actions });
+    }));
+    return [...actions, ...approvalKinds.map((kind) => `approval_requested:${kind}`)];
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "action_execution_failed";
+    if (error instanceof AgentCommercialContextChanged) {
+      await Promise.all(claimed.map(item => skipAiActionExecution({ tenantId: input.tenantId,
+        idempotencyKey: item.step.idempotencyKey, token: item.token, reason: "commercial_context_changed", evidence: [] })));
+      return ["crm_actions_skipped_context_changed"];
+    }
+    await Promise.all(claimed.map((item) => failAiActionExecution({
+      tenantId: input.tenantId,
+      idempotencyKey: item.step.idempotencyKey,
+      token: item.token,
+      error: message,
+      retryable: true,
+      compensationStatus: "pending",
+    })));
+    throw error;
+  }
 }
 
 async function addMessage(input: {
@@ -3881,15 +3891,19 @@ async function addMessage(input: {
   voiceReplyVoice?: string | null;
   voiceReplyTranscript?: string | null;
 }) {
-  const cleanText = sanitizeText(input.text, 1800);
-  if (!cleanText && !["audio", "image", "video", "document"].includes(String(input.type || ""))) return;
+  // This is the delivery record, not prompt context or a compact preview.
+  // Keep the actual sent text, including Shopify menus, links and line breaks.
+  const cleanText = typeof input.text === "string" ? input.text : "";
+  if (!cleanText.trim() && !["audio", "image", "video", "document"].includes(String(input.type || ""))) return;
+  const messageRef = adminDb.collection("messages").doc();
 
   await Promise.all([
-    adminDb.collection("messages").add({
+    messageRef.set({
       chatId: input.chatId,
       tenantId: input.tenantId,
       text: cleanText,
       sender: input.sender,
+      aiGenerated: input.sender === "agent",
       senderId: input.senderId || null,
       senderName: input.senderName || (input.sender === "agent" ? "AI Sales Agent" : null),
       type: input.type || "text",
@@ -3923,7 +3937,24 @@ async function addMessage(input: {
       { merge: true }
     ),
   ]);
+  if (input.sender === "agent") {
+    const crmQueue = await import("@/lib/server/crm/conversation-observation-queue");
+    const queued = await crmQueue.enqueueConversationCommercialObservation({
+      tenantId: input.tenantId,
+      chatId: input.chatId,
+      messageId: messageRef.id,
+      actorId: input.senderId || "altum_ai",
+      actorName: input.senderName || "Assistente Altum",
+      source: "ai_outbound",
+    });
+    await crmQueue.processConversationCommercialObservationJobs({ jobId: queued.jobId, limit: 1 }).catch((error) => {
+      console.error("Falha ao processar observacao da resposta da IA para CRM:", error);
+    });
+  }
+  return messageRef.id;
 }
+
+export { addMessage as recordAiConversationMessage };
 
 function decide(input: {
   inboundText: string;
@@ -4123,8 +4154,8 @@ export function selectMediaDocForLead(input: {
 
   const alreadySent = new Set(
     input.conversation
-      .filter((item) => item.sender === "agent")
-      .map((item) => sanitizeText(item.mediaUrl, 1200))
+      .filter((item) => item.sender === "agent" && item.deliveryStatus !== "failed")
+      .flatMap((item) => [sanitizeText(item.mediaUrl, 1200), sanitizeText(item.sourceMediaUrl, 1200)])
       .filter(Boolean)
   );
   const inboundWords = new Set(normalizeWords(input.inboundText));
@@ -4188,7 +4219,7 @@ export function selectMediaDocForLead(input: {
             catalogBoost,
         };
       })
-      .filter(({ doc, offerMatch, productOverlap }) => {
+      .filter(({ offerMatch, productOverlap }) => {
         // Em pedido generico ("me manda um video"), primeiro a IA precisa
         // descobrir de qual oferta o cliente esta falando. Nunca escolhemos
         // um item arbitrario apenas porque ele tem uma midia cadastrada.
@@ -4338,6 +4369,16 @@ export function normalizeExtractedFieldsForCrm(extracted?: Record<string, string
   }, {});
 
   return Object.keys(normalized).length ? normalized : null;
+}
+
+export function mergeExtractedFieldsForCrm(
+  heuristic?: Record<string, string> | null,
+  model?: Record<string, string> | null
+) {
+  const deterministic = normalizeExtractedFieldsForCrm(heuristic) || {};
+  const inferred = normalizeExtractedFieldsForCrm(model) || {};
+  const merged = { ...deterministic, ...inferred };
+  return Object.keys(merged).length ? merged : null;
 }
 
 function normalizeComparable(value: string) {
@@ -4537,7 +4578,6 @@ export function recommendCommercialOffers(input: {
     return null;
   };
 
-  const incompatibleIds = new Set(primary.incompatibleOfferIds || []);
   // Related offers are commercial policy. Never infer an upsell from price,
   // category or retrieval proximity: that turns unrelated catalog entries into
   // a sales recommendation. Legacy text keys remain exact-match only.
@@ -4778,32 +4818,8 @@ export function extractBusinessFields(inboundText: string, tenantAi: TenantAiCon
   const normalizedText = sanitizeText(inboundText, 1000);
   if (!normalizedText) return undefined;
 
-  const extracted: Record<string, string> = {};
+  const extracted: Record<string, string> = deriveDeterministicConversationFields(normalizedText);
   const lowerText = normalizedText.toLowerCase();
-  const normalizedCorpus = normalizeWords(normalizedText).join(" ");
-  const nichePatterns = [
-    "imobiliaria",
-    "clinica",
-    "clinica odontologica",
-    "clinica medica",
-    "agencia",
-    "advocacia",
-    "consultoria",
-    "construtora",
-    "ecommerce",
-    "loja",
-    "escola",
-    "restaurante",
-    "hotel",
-    "industria",
-  ];
-  const primaryGoals = [
-    { terms: ["vender mais", "mais vendas", "aumentar vendas", "converter mais"], value: "aumentar vendas" },
-    { terms: ["captar mais", "gerar mais leads", "mais leads", "mais demanda"], value: "gerar mais leads qualificados" },
-    { terms: ["organizar atendimento", "organizar comercial", "crm", "pipeline"], value: "organizar a operacao comercial" },
-    { terms: ["responder mais rapido", "atendimento mais rapido", "whatsapp"], value: "ganhar velocidade no atendimento" },
-  ];
-  const channelTerms = ["whatsapp", "instagram", "facebook", "google", "meta", "site", "landing page", "crm"];
 
   for (const field of tenantAi.playbookOffers.length ? tenantAi.playbookOffers : []) {
     if (textHasAny(normalizedText, [field.category, field.title])) {
@@ -4812,19 +4828,6 @@ export function extractBusinessFields(inboundText: string, tenantAi: TenantAiCon
     }
   }
 
-  for (const niche of nichePatterns) {
-    if (normalizedCorpus.includes(normalizeWords(niche).join(" "))) {
-      extracted.businessType = niche;
-      break;
-    }
-  }
-
-  for (const goal of primaryGoals) {
-    if (textHasAny(normalizedText, goal.terms)) {
-      extracted.primaryGoal = goal.value;
-      break;
-    }
-  }
 
   if (/\b\d{3,}\s?(k|mil)?\b/i.test(normalizedText) || textHasAny(normalizedText, ["orcamento", "budget", "valor", "preco"])) {
     const budgetMatch = normalizedText.match(/(\d[\d\.\,]*\s?(?:k|mil)?)/i);
@@ -4856,10 +4859,6 @@ export function extractBusinessFields(inboundText: string, tenantAi: TenantAiCon
     extracted.digitalMaturity = "operacao comercial em fase mais madura";
   }
 
-  const channels = channelTerms.filter((term) => textHasAny(normalizedText, [term]));
-  if (channels.length) {
-    extracted.currentChannels = Array.from(new Set(channels)).join(", ");
-  }
 
   const emailMatch = normalizedText.match(/\b([A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,})\b/i);
   if (emailMatch?.[1]) {
@@ -4915,6 +4914,7 @@ async function resolveHandoffNotifyRecipients(input: {
   chatData: Record<string, unknown>;
   tenantSettings: Awaited<ReturnType<typeof getTenantSettings>>;
   leadId?: string | null;
+  preferConfiguredOnly?: boolean;
 }) {
   if (!input.aiConfig.handoffNotifyEnabled) {
     return [] as Array<{ phone: string; source: string }>;
@@ -4933,6 +4933,7 @@ async function resolveHandoffNotifyRecipients(input: {
   for (const phone of input.aiConfig.handoffNotifyPhones) {
     addRecipient(phone, "ai_handoff_notify_phone");
   }
+  if (input.preferConfiguredOnly && recipients.size) return Array.from(recipients.entries()).slice(0, 6).map(([phone, source]) => ({ phone, source }));
 
   const tenantSettingsRecord =
     input.tenantSettings && typeof input.tenantSettings === "object"
@@ -5019,17 +5020,20 @@ export async function handleIncomingMessage(
     return { decision: "skip", reason: "tenant_billing_blocked" };
   }
 
+  const resumed = await resumeHandlerEffects({ tenantId, chatId, messageId });
+  if (resumed) return resumed;
   const logDocId = safeLogDocId(tenantId, chatId, messageId);
   const existingLog = await adminDb.collection("ai_logs").doc(logDocId).get();
   if (existingLog.exists) {
+    const recorded = existingLog.data();
+    if (recorded?.tenantId !== tenantId || recorded.chatId !== chatId || recorded.messageId !== messageId || recorded.handlerCompletionVersion !== 1) throw new HandlerContinuationReviewError();
     return { decision: "skip", reason: "already_processed" };
   }
 
-  const [chatSnap, messageSnap, tenantSettings, chatState] = await Promise.all([
+  const [chatSnap, messageSnap, tenantSettings] = await Promise.all([
     adminDb.collection("chats").doc(chatId).get(),
     adminDb.collection("messages").doc(messageId).get(),
     getTenantSettings(tenantId),
-    getChatState(tenantId, chatId),
   ]);
 
   if (!chatSnap.exists || !messageSnap.exists) {
@@ -5041,11 +5045,43 @@ export async function handleIncomingMessage(
     return { decision: "skip", reason: "chat_tenant_mismatch" };
   }
 
+  // Validate the source record before state restoration, enrichment, retrieval or
+  // model calls. A later send/turn fence cannot undo a cross-tenant disclosure.
+  const incomingMessage = messageSnap.data() as Record<string, unknown>;
+  if (incomingMessage.tenantId !== tenantId) {
+    return { decision: "skip", reason: "message_tenant_mismatch" };
+  }
+  if (incomingMessage.chatId !== chatId) {
+    return { decision: "skip", reason: "message_chat_mismatch" };
+  }
+
   if (chatData.isGroup === true || /@g\.us$/i.test(String(chatData.groupJid || chatData.contactPhone || ""))) {
     return { decision: "skip", reason: "whatsapp_group_ai_disabled" };
   }
 
-  const incomingMessage = messageSnap.data() as Record<string, unknown>;
+  let conversationFence: ConversationCommercialFence | undefined;
+  if (sanitizeText(chatData.leadId, 180)) {
+    const target = await getUnambiguousConversationLead({ tenantId, chatId });
+    if (!target.ok) return { decision: "skip", reason: target.reason };
+    // Do not restore another purchase's chat memory or spend on an answer until
+    // the answering agent has a selection-scoped memory contract.
+    if (target.selectionId) return { decision: "skip", reason: "selected_commercial_context_agent_pending" };
+    if (target.leadId !== chatData.leadId || (incomingMessage.leadId && incomingMessage.leadId !== target.leadId)) {
+      return { decision: "skip", reason: "conversation_commercial_context_changed" };
+    }
+    conversationFence = { tenantId, chatId, leadId: target.leadId, leadGeneration: target.generation,
+      chatGeneration: target.chatGeneration, contactId: target.contactId, contactGeneration: target.contactGeneration,
+      messageId, messageVersion: messageSnap.updateTime! };
+  }
+
+  if (!tenantSettings) return { decision: "skip", reason: "tenant_ai_settings_unavailable" };
+  const aiConfig = parseAiConfig(tenantSettings);
+  // Restrict before state restoration, transcription, catalog/model calls or CRM actions.
+  if (!isAiConversationInTestScope({ rollout: aiConfig.rollout, tenantId, chatId })) {
+    return { decision: "skip", reason: "conversation_rollout_outside_test_scope" };
+  }
+  const chatState = await getChatState(tenantId, chatId);
+
   const inboundReceivedAt = toDate(incomingMessage.createdAt || incomingMessage.receivedAt || incomingMessage.timestamp);
   const inboundToStartLatencyMs = inboundReceivedAt
     ? Math.max(0, startedAt - inboundReceivedAt.getTime())
@@ -5062,7 +5098,13 @@ export async function handleIncomingMessage(
     chatId,
     messageId,
     message: incomingMessage,
+    conversationFence,
   });
+  if (conversationFence) {
+    if (!multimodal.conversationFence) return { decision: "skip", reason: "conversation_commercial_context_changed" };
+    conversationFence = multimodal.conversationFence;
+    if (!await adminDb.runTransaction(tx => matchesConversationCommercialFence(tx, conversationFence!), { readOnly: true })) return { decision: "skip", reason: "conversation_commercial_context_changed" };
+  }
   const messageType = sanitizeText(incomingMessage.type, 40);
   const explicitInboundText = sanitizeText(
     incomingMessage.text || incomingMessage.message || incomingMessage.body || incomingMessage.content || incomingMessage.caption,
@@ -5077,7 +5119,6 @@ export async function handleIncomingMessage(
   }
   const inboundText = sanitizeText(normalizedInboundText || summarizeMessageForAgent(incomingMessage), 1400);
 
-  const aiConfig = parseAiConfig(tenantSettings);
   const agentDisplayName = sanitizeText(aiConfig.agentName, 80) || "Agente IA";
   const runtimeProvider = aiConfig.runtimePolicy.primaryProvider;
   const runtimeModel = aiConfig.runtimePolicy.conversationModel;
@@ -5100,6 +5141,21 @@ export async function handleIncomingMessage(
   const shouldUseProviderLlm = runtimeProvider !== "altum_rules" && !usageGuardTriggered;
   const chatChannel = String(chatData.channel || "whatsapp").trim().toLowerCase() || "whatsapp";
   const isMetaConversation = isMetaConversationChannelType(chatChannel);
+  const relationshipIdentityKey = (() => {
+    const phone = normalizePhone(String(chatData.contactPhone || chatData.phone || ""));
+    if (phone) return buildRelationshipIdentityKey({ tenantId, kind: "phone", value: phone });
+    const email = normalizeEmail(chatData.contactEmail || chatData.email);
+    if (email) return buildRelationshipIdentityKey({ tenantId, kind: "email", value: email });
+    const providerIdentity = sanitizeText(
+      chatData.senderId || chatData.contactId || chatData.externalContactId || chatData.remoteJid,
+      220
+    );
+    const providerAccount = sanitizeText(chatData.channelId || chatData.pageId || chatData.phoneNumberId, 180);
+    return providerIdentity
+      ? buildRelationshipIdentityKey({ tenantId, kind: "provider", value: `${chatChannel}:${providerAccount}:${providerIdentity}` })
+      : null;
+  })();
+  const relationshipOccurredAtMs = inboundReceivedAt?.getTime() || startedAt;
 
   if (usageGuardTriggered && leadId) {
     await createAiInternalNotificationOnce({
@@ -5253,8 +5309,8 @@ export async function handleIncomingMessage(
       messageType.toLowerCase() === "image",
       turnPolicy
     ),
-    getConversationRuntimeState(tenantId, chatId),
-    leadId ? getLeadMemory(tenantId, leadId) : Promise.resolve(null),
+    getConversationRuntimeState(tenantId, chatId, conversationFence),
+    leadId ? getLeadMemory(tenantId, leadId, relationshipIdentityKey) : Promise.resolve(null),
     getTenantLearningHints(tenantId),
   ]);
   let visualCatalogDecision = decideCommercialVisualMatches([], []);
@@ -5301,13 +5357,53 @@ export async function handleIncomingMessage(
   };
 
   const effectiveLeadMemory = turnPolicy.resetCommercialTopic ? null : leadMemory;
+  const relationshipTrace = effectiveLeadMemory?.relationshipState
+    ? {
+        revision: effectiveLeadMemory.relationshipState.revision,
+        confirmedFactKeys: Object.values(effectiveLeadMemory.relationshipState.facts)
+          .filter((fact) => fact.status === "confirmed")
+          .map((fact) => fact.key)
+          .slice(0, 20),
+        hypothesisFactKeys: Object.values(effectiveLeadMemory.relationshipState.facts)
+          .filter((fact) => fact.status === "hypothesis")
+          .map((fact) => fact.key)
+          .slice(0, 12),
+        ignoredUpdateReasons: effectiveLeadMemory.relationshipState.ignoredUpdates
+          .map((item) => item.reason)
+          .slice(-8),
+        identityBound: effectiveLeadMemory.relationshipState.identityKeys.length > 0,
+      }
+    : null;
   const runtimeStateSummary = turnPolicy.resetCommercialTopic ? "" : summarizeRuntimeStateForAgent(runtimeState);
   const leadMemorySummary = summarizeLeadMemoryForAgent(effectiveLeadMemory);
   const commercialBrainSummary = summarizeCommercialBrainForAgent(aiConfig.commercialBrain);
+  const specialistDecision = superviseAiSpecialist({
+    tenantId,
+    chatId,
+    messageId,
+    configuredRole: aiConfig.assistantRole,
+    inboundText,
+    runtimeState,
+    leadMemory: effectiveLeadMemory,
+    extractedFields: extractBusinessFields(inboundText, aiConfig) || null,
+  });
+  const effectiveAssistantRole = specialistDecision.selectedSpecialist || aiConfig.assistantRole;
+  const specialistRoutingTrace = {
+    schemaVersion: specialistDecision.schemaVersion,
+    configuredRole: specialistDecision.configuredRole,
+    selectedSpecialist: specialistDecision.selectedSpecialist,
+    mode: specialistDecision.mode,
+    reason: specialistDecision.reason,
+    confidence: specialistDecision.confidence,
+    idempotencyKey: specialistDecision.idempotencyKey,
+    previousSpecialist: specialistDecision.continuity.previousSpecialist,
+    relationshipRevision: specialistDecision.continuity.relationshipRevision,
+  };
   const tenantContext = compileTenantAiContext({
+    pipelineStages: (await loadTenantPipelineConfig(tenantId)).stages,
     tenantId,
     agentName: aiConfig.agentName,
-    assistantRole: aiConfig.assistantRole,
+    assistantRole: effectiveAssistantRole,
     businessSummary: aiConfig.businessSummary,
     objective: aiConfig.objective,
     toneOfVoice: aiConfig.toneOfVoice,
@@ -5316,12 +5412,27 @@ export async function handleIncomingMessage(
     mandatoryQuestions: aiConfig.mandatoryQuestions,
     escalationTopics: aiConfig.escalationTopics,
     salesMotionInstruction: salesMotionInstruction(aiConfig.salesMotion),
+    hasVerifiedOffers: kbDocs.some((doc) => doc.type === "catalog"),
+  });
+  const specialistExecution = compileAiSpecialistExecutionContract({
+    supervisor: specialistDecision,
+    roleContract: tenantContext.roleContract,
+    autonomyMode: aiConfig.autonomyMode,
+    tenantContextConfigured,
   });
   const preferredContactName =
     sanitizeText(leadMemory?.preferredName, 80) ||
     sanitizeText(runtimeState?.preferredName, 80) ||
     (looksLikeHumanName(chatData.contactName) ? sanitizeText(chatData.contactName, 120) : "") ||
     undefined;
+  let liveCatalogTurn = await lookupConversationCatalog({
+    tenantId, chatId, inboundText, context: chatData.commerceConversationContext, rollout: aiConfig.rollout,
+    hasReplied: conversation.some((item) => item.sender === "agent"),
+    allowSemanticRetry: shouldUseProviderLlm,
+    campaignOffer: effectiveLeadMemory?.campaignOfferName,
+    resetTopic: turnPolicy.resetCommercialTopic,
+    allowedTools: specialistExecution.taskKind === "human_handoff" ? [] : specialistExecution.allowedTools,
+  });
   const plannedResponsePreference = inferResponseFormatPreference({
     inboundText,
     messageType,
@@ -5336,18 +5447,23 @@ export async function handleIncomingMessage(
 
   let llmRun: Awaited<ReturnType<typeof runConversationAgent>> | null = null;
   let unexpectedProviderError = "";
-  if (shouldUseProviderLlm) {
+  if (shouldUseProviderLlm && (!liveCatalogTurn || liveCatalogTurn.needsInterpretation)) {
     try {
       llmRun = await runConversationAgent(
         {
           tenantId,
           chatId,
           inboundText,
+          inboundMessageId: messageId,
           multimodalSummary: multimodalSummaryForAgent || undefined,
           messageType,
           channel: chatChannel,
           agentName: aiConfig.agentName,
-          assistantRole: aiConfig.assistantRole,
+          assistantRole: effectiveAssistantRole,
+          supervisorInstruction: [
+            specialistSupervisorInstruction(specialistDecision),
+            specialistExecution.prompt,
+          ].join("\n"),
           tenantContext,
           contactName: preferredContactName,
           runtimeStateSummary: runtimeStateSummary || undefined,
@@ -5379,9 +5495,31 @@ export async function handleIncomingMessage(
         error instanceof Error ? sanitizeText(error.message, 280) : "conversation_router_unexpected_error";
     }
   }
-  const llmResult = llmRun?.result || null;
+  const rawLlmResult = llmRun?.result || null;
+  const specialistOutputValidation = validateAiSpecialistOutput({
+    contract: specialistExecution,
+    result: rawLlmResult,
+  });
+  const llmResult = specialistOutputValidation.accepted ? rawLlmResult : null;
+  const proposedCatalogSearch = catalogSearchProposal(llmResult, inboundText);
+  if ((!liveCatalogTurn && proposedCatalogSearch) || liveCatalogTurn?.needsInterpretation) {
+    liveCatalogTurn = await lookupConversationCatalog({
+      tenantId, chatId, inboundText, context: chatData.commerceConversationContext, rollout: aiConfig.rollout,
+      hasReplied: conversation.some((item) => item.sender === "agent"),
+      resetTopic: turnPolicy.resetCommercialTopic, interpretation: proposedCatalogSearch, finalAttempt: true,
+      allowedTools: specialistExecution.taskKind === "human_handoff" ? [] : specialistExecution.allowedTools,
+    }) || liveCatalogTurn;
+  }
+  const specialistTrace = {
+    ...specialistRoutingTrace,
+    executionVersion: specialistExecution.schemaVersion,
+    taskKind: specialistExecution.taskKind,
+    allowedTools: specialistExecution.allowedTools,
+    outputStatus: specialistOutputValidation.status,
+    blockedReasons: specialistOutputValidation.blockedReasons,
+  };
   const providerChainError = llmRun?.providerChainError || unexpectedProviderError || null;
-  const providerFallbackTriggered = Boolean(llmRun?.providerFallbackTriggered || llmResult?.fallbackUsed);
+  const providerFallbackTriggered = Boolean(llmRun?.providerFallbackTriggered || rawLlmResult?.fallbackUsed);
   const fallbackChoice = tenantContextConfigured
     ? decide({ inboundText, kbDocs, tenantAi: aiConfig })
     : {
@@ -5396,7 +5534,7 @@ export async function handleIncomingMessage(
   const conversationalChoice = tenantContextConfigured
     ? resolveConversationalChoice({
         fallbackChoice,
-        llmDecision: llmResult?.decision,
+        llmDecision: llmResult?.decision || specialistOutputValidation.decision,
         llmReason: llmResult?.reason || null,
         llmConfidence: llmResult?.confidence ?? null,
         llmNextAction: llmResult?.nextAction || null,
@@ -5425,7 +5563,14 @@ export async function handleIncomingMessage(
     });
   const missingVerifiedCommercialFact =
     Boolean(verifiedFactKind) && !hasVerifiedCommercialFactSource(verifiedFactKind, kbDocs);
-  const choice = needsOfferSelection
+  const safeTestFallback = exclusiveTestNeedsHumanFallback({
+    rollout: aiConfig.rollout, tenantId, chatId, inboundText,
+    hasModelResponse: Boolean(llmResult?.responseText?.trim()), hasCatalogResponse: Boolean(liveCatalogTurn),
+  });
+  const choice = liveCatalogTurn || (safeTestFallback ? {
+    decision: "handoff" as const, reason: "exclusive_test_no_verified_response", confidence: 0.99,
+    nextAction: "confirmar_pedido_com_vendedor", ledBy: "fallback" as const, responseText: null,
+  } : needsOfferSelection
     ? {
         decision: "ask_more" as const,
         reason: `offer_selection_required_${verifiedFactKind}`,
@@ -5443,14 +5588,16 @@ export async function handleIncomingMessage(
         ledBy: "fallback" as const,
         responseText: null,
       }
-    : conversationalChoice;
+    : conversationalChoice);
   const heuristicExtractedFields = extractBusinessFields(inboundText, aiConfig) || null;
-  const extractedFields = normalizeExtractedFieldsForCrm(llmResult?.extractedFields || heuristicExtractedFields) || null;
+  const extractedFields = mergeExtractedFieldsForCrm(heuristicExtractedFields, liveCatalogTurn ? undefined : llmResult?.extractedFields) || null;
   const plannerDecision = deriveOperationalPlan({
     inboundText,
     messageType: sanitizeText(incomingMessage.type, 40) || null,
     choice,
-    llmDecision: choice.decision === "handoff" ? "handoff" : llmResult?.decision,
+    llmDecision: liveCatalogTurn ? liveCatalogTurn.decision : choice.decision === "handoff"
+      ? "handoff"
+      : llmResult?.decision || specialistOutputValidation.decision,
     llmReason: choice.reason || llmResult?.reason || null,
     llmConfidence: choice.confidence ?? llmResult?.confidence ?? null,
     llmTurnGoal: llmResult?.turnGoal || null,
@@ -5464,7 +5611,8 @@ export async function handleIncomingMessage(
       playbookOffers: aiConfig.playbookOffers,
       learningHints: tenantAiWithLearning.learningHints,
       salesMotion: aiConfig.salesMotion,
-      assistantRole: aiConfig.assistantRole,
+      assistantRole: effectiveAssistantRole,
+      roleContract: tenantContext.roleContract,
     },
   });
   const commercialOfferBundle = recommendCommercialOffers({
@@ -5476,14 +5624,34 @@ export async function handleIncomingMessage(
     commercialTemperature: plannerDecision.commercialTemperature || null,
     stageAfter: plannerDecision.stateAfter || null,
   });
-  const recommendedOfferResolved = turnPolicy.resetCommercialTopic
+  const recommendedOfferResolved = liveCatalogTurn ? liveCatalogTurn.context?.productName || null : turnPolicy.resetCommercialTopic
     ? null
     : commercialOfferBundle.primaryOffer;
   const checkoutAction = resolveCommercialCheckoutAction({
-    offer: commercialOfferBundle.primaryOfferData,
+    offer: liveCatalogTurn ? null : commercialOfferBundle.primaryOfferData,
     inboundText,
   });
-  const nextAction = plannerDecision.nextAction || choice.nextAction;
+  const actionPlan = compileAiActionPlan({
+    tenantId,
+    chatId,
+    messageId,
+    leadId,
+    autonomyMode: aiConfig.autonomyMode,
+    specialist: specialistExecution,
+    planner: plannerDecision,
+    tenantContextConfigured,
+    shadowMode: rolloutDecision.reason === "shadow_only",
+    extractedFieldKeys: Object.keys(extractedFields || {}),
+    confirmedFactKeys: relationshipTrace?.confirmedFactKeys || [],
+    verifiedOffer: Boolean(commercialOfferBundle.primaryOfferData),
+    explicitPurchaseIntent:
+      plannerDecision.intent === "purchase_interest" ||
+      /\b(quero\s+(comprar|fechar|contratar)|pode\s+(fechar|gerar|mandar)|vou\s+fechar|finalizar\s+(a\s+)?compra)\b/i.test(inboundText),
+    sensitiveDataDetected:
+      /\b(senha|cvv|codigo\s+de\s+seguranca|numero\s+completo\s+do\s+cartao|cartao\s+completo)\b/i.test(inboundText),
+  });
+  const checkoutActionAuthorized = actionPlanAllows(actionPlan, "prepare_checkout");
+  const nextAction = liveCatalogTurn ? choice.nextAction : plannerDecision.nextAction || choice.nextAction;
   const effectiveProvider = llmResult?.provider || runtimeProvider;
   const effectiveModel = llmResult?.model || runtimeModel;
   const decisionReasonForQueue =
@@ -5492,7 +5660,7 @@ export async function handleIncomingMessage(
       : providerChainError && choice.reason
       ? `provider_fallback_contingency:${sanitizeText(choice.reason, 140)}`
       : choice.reason;
-  const controlledReply = choice.reason.startsWith("offer_selection_required_")
+  const controlledReply = liveCatalogTurn ? liveCatalogTurn.responseText : choice.reason.startsWith("offer_selection_required_")
     ? choice.responseText || ""
     : "";
   const providerFallbackToolCalls = [
@@ -5504,19 +5672,38 @@ export async function handleIncomingMessage(
   // before every notification, channel lookup, CRM write, automation or outbound
   // message. It gives managers a real candidate response without touching a lead.
   if (rolloutDecision.reason === "shadow_only") {
-    const shadowOutboundText =
+    const shadowDraftText =
       sanitizeLeadFacingAiText({
         text: controlledReply || llmResult?.responseText || choice.responseText || "",
         inboundText,
         leadMemory,
       }) || "Sem resposta candidata gerada para este turno.";
+    const shadowComposition = composeAiResponse({
+      inboundText,
+      draftText: shadowDraftText,
+      channel: chatChannel,
+      messageType,
+      decision: choice.decision,
+      responseGoal: plannerDecision.responseGoal,
+      relationshipState: effectiveLeadMemory?.relationshipState || null,
+      previousOutboundText: runtimeState?.lastOutboundText || null,
+      allowUrls: checkoutActionAuthorized,
+      verifiedUrls: liveCatalogTurn?.verifiedUrls,
+      preserveLineBreaks: Boolean(liveCatalogTurn),
+      verifiedPrice: liveCatalogTurn ? liveCatalogTurn.verifiedPrice : hasVerifiedCommercialFactSource("price", kbDocs),
+      verifiedInventory: liveCatalogTurn ? liveCatalogTurn.verifiedInventory : hasVerifiedCommercialFactSource("inventory", kbDocs),
+      verifiedPayment: hasVerifiedCommercialFactSource("payment", kbDocs),
+      verifiedDelivery: hasVerifiedCommercialFactSource("delivery", kbDocs),
+    });
+    const shadowOutboundText = shadowComposition.text;
     const shadowQuality = scoreAltumConversationQuality({
       inboundText,
       outboundText: shadowOutboundText,
       plan: plannerDecision,
       runtimeState,
     });
-    await saveAiLog({
+const handlerEffects: HandlerEffect[] = [];
+        handlerEffects.push({ kind: "log", input: { logDocId, data: buildAiLogData({
       logDocId,
       tenantId,
       chatId,
@@ -5553,6 +5740,10 @@ export async function handleIncomingMessage(
       qualityNotes: ["Modo sombra: resposta calculada, sem envio ou acao externa.", ...shadowQuality.notes],
       tenantContextFingerprint: tenantContext.fingerprint,
       tenantContextDiagnostics: tenantContext.diagnostics,
+      relationshipTrace,
+      specialistTrace,
+      actionPlan,
+      responseValidationTrace: shadowComposition.receipt,
       rollout: {
         mode: aiConfig.rollout.mode,
         percent: aiConfig.rollout.rolloutPercent,
@@ -5560,8 +5751,8 @@ export async function handleIncomingMessage(
         agentVersion: rolloutDecision.assignedVersion,
         reason: rolloutDecision.reason,
       },
-    });
-    await logAiUsage({
+    }) } });
+    handlerEffects.push({ kind: "usage", input: {
       tenantId,
       scope: "conversation",
       provider: effectiveProvider,
@@ -5593,6 +5784,8 @@ export async function handleIncomingMessage(
         qualityNotes: shadowQuality.notes,
         tenantContextFingerprint: tenantContext.fingerprint,
         tenantContextDiagnostics: tenantContext.diagnostics,
+        relationshipTrace,
+        specialistTrace,
         rollout: {
           mode: aiConfig.rollout.mode,
           percent: aiConfig.rollout.rolloutPercent,
@@ -5600,8 +5793,9 @@ export async function handleIncomingMessage(
           agentVersion: rolloutDecision.assignedVersion,
         },
       },
-    });
-    return { decision: "skip", reason: "conversation_rollout_shadow_only" };
+    } });
+await completeHandlerEffects({ tenantId, chatId, messageId, result: { decision: "skip", reason: "conversation_rollout_shadow_only" }, effects: handlerEffects });
+        return { decision: "skip", reason: "conversation_rollout_shadow_only" };
   }
 
   if (providerChainError && leadId) {
@@ -5755,10 +5949,7 @@ export async function handleIncomingMessage(
     inferredResponsePreference.preference &&
     inferredResponsePreference.preference !== chatState.responseFormatPreference
   ) {
-    await adminDb
-      .collection("chat_state")
-      .doc(getChatStateDocId(tenantId, chatId))
-      .set(
+    await writeScopedChatState(tenantId, chatId,
         {
           tenantId,
           chatId,
@@ -5766,7 +5957,7 @@ export async function handleIncomingMessage(
           responseFormatPreferenceUpdatedAt: FieldValue.serverTimestamp(),
           updatedAt: FieldValue.serverTimestamp(),
         },
-        { merge: true }
+        { expectedChatGeneration: chatSnap.createTime }
       );
   }
 
@@ -5794,7 +5985,8 @@ export async function handleIncomingMessage(
       nextAction,
     });
 
-    await saveAiLog({
+const handlerEffects: HandlerEffect[] = [];
+        handlerEffects.push({ kind: "log", input: { logDocId, data: buildAiLogData({
       logDocId,
       tenantId,
       chatId,
@@ -5834,8 +6026,8 @@ export async function handleIncomingMessage(
       conversationLedBy: choice.ledBy,
       qualityScore: quality.score,
       qualityNotes: ["Resposta automatica pausada no tenant.", ...quality.notes],
-    });
-    await logAiUsage({
+    }) } });
+    handlerEffects.push({ kind: "usage", input: {
       tenantId,
       scope: "conversation",
       provider: effectiveProvider,
@@ -5872,8 +6064,8 @@ export async function handleIncomingMessage(
         recommendedOffer: recommendedOfferResolved,
         executedActions,
       },
-    });
-    await trackAltumAgentLearning({
+    } });
+    handlerEffects.push({ kind: "learning", input: {
       tenantId,
       chatId,
       leadId,
@@ -5888,8 +6080,9 @@ export async function handleIncomingMessage(
       confidence: choice.confidence,
       commercialTemperature: plannerDecision.commercialTemperature || null,
       qualityScore: quality.score,
-    });
-    await upsertConversationRuntimeState({
+    } });
+    handlerEffects.push({ kind: "runtime", input: {
+      conversationFence,
       tenantId,
       chatId,
       leadId,
@@ -5908,12 +6101,19 @@ export async function handleIncomingMessage(
       memorySummary: llmResult?.memorySummary || null,
       summary: pausedSummary,
       extractedFields,
-    });
+      sourceOccurredAtMs: relationshipOccurredAtMs,
+      sourceMessageId: messageId,
+      activeSpecialist: specialistDecision.selectedSpecialist,
+      specialistSupervisorVersion: specialistDecision.schemaVersion,
+      specialistTransferReason: specialistDecision.reason,
+      specialistDecisionKey: specialistDecision.idempotencyKey,
+    } });
 
     if (leadId) {
-      await upsertLeadMemory({
+      handlerEffects.push({ kind: "memory", input: {
         tenantId,
         leadId,
+        conversationFence,
         extractedFields,
         nextAction,
         recommendedOffer: recommendedOfferResolved,
@@ -5926,10 +6126,15 @@ export async function handleIncomingMessage(
         conversationMaturity: plannerDecision.stateAfter,
         memorySummary: llmResult?.memorySummary || null,
         summary: pausedSummary,
-      });
+        inboundText,
+        sourceOccurredAtMs: relationshipOccurredAtMs,
+        sourceMessageId: messageId,
+        identityKey: relationshipIdentityKey,
+      } });
     }
 
-    return { decision: "skip", reason: "tenant_ai_response_paused" };
+await completeHandlerEffects({ tenantId, chatId, messageId, result: { decision: "skip", reason: "tenant_ai_response_paused" }, effects: handlerEffects });
+        return { decision: "skip", reason: "tenant_ai_response_paused" };
   }
 
   if (choice.decision === "handoff" || plannerDecision.decision === "handoff") {
@@ -5939,52 +6144,8 @@ export async function handleIncomingMessage(
     const conversationLink = buildConversationLink(tenantId, chatId);
     const summaryBullets = summarizeForResponsible(conversation);
 
-    const leadAck = choice.reason.startsWith("missing_verified_")
-      ? "Quero te passar essa informaÃ§Ã£o com seguranÃ§a. NÃ£o encontrei uma confirmaÃ§Ã£o atualizada agora, entÃ£o vou pedir para uma pessoa da equipe validar e continuar com vocÃª."
-      : "Perfeito, vou acionar um especialista humano agora e priorizar seu atendimento.";
-    const quality = scoreAltumConversationQuality({
-      inboundText,
-      outboundText: leadAck,
-      plan: plannerDecision,
-      runtimeState,
-    });
-
-    let leadAckMessageId: string | null = null;
-    if (shouldUseWhatsApp && whatsappChannel && leadPhone) {
-      const sent = await getWhatsAppMessagingProvider(whatsappChannel).sendText({
-        to: leadPhone,
-        text: leadAck,
-      });
-      leadAckMessageId = sent.externalMessageId;
-    } else if (isMetaConversation && metaChannel && metaRecipientId) {
-      await sendMetaConversationText({
-        channel: metaChannel,
-        recipientId: metaRecipientId,
-        text: leadAck,
-      });
-    }
-
-    await addMessage({
-      chatId,
-      tenantId,
-      text: leadAck,
-      sender: "agent",
-      channel: chatChannel,
-      channelPhoneNumberId: whatsappChannel?.phoneNumberId,
-      senderName: agentDisplayName,
-      metaMessageId: leadAckMessageId,
-    });
-
-    const systemEventText =
-      "IA solicitou handoff para humano. Conversa sinalizada para atendimento prioritario.";
-
-    await addMessage({
-      chatId,
-      tenantId,
-      text: systemEventText,
-      sender: "system",
-      channel: chatChannel,
-      channelPhoneNumberId: whatsappChannel?.phoneNumberId,
+    if (liveCatalogTurn) await saveConversationCatalogInterest({ tenantId, chatId, leadId, messageId, turn: liveCatalogTurn,
+      allowCrmWrite: specialistExecution.allowedTools.includes("crm_write") && actionPlanAllows(actionPlan, "update_crm_context"),
     });
 
     const handoffRecipients = whatsappChannel
@@ -5994,6 +6155,7 @@ export async function handleIncomingMessage(
           chatData,
           tenantSettings,
           leadId,
+          preferConfiguredOnly: Boolean(liveCatalogTurn),
         })
       : [];
 
@@ -6008,10 +6170,12 @@ export async function handleIncomingMessage(
         "skipped_no_channel",
         "skipped_no_recipients",
         "skipped_disabled",
+        "skipped_duplicate",
       ].includes(previousHandoffNotifyStatus);
 
     let handoffNotifySuccessCount = 0;
     let handoffNotifyFailureCount = 0;
+    let handoffNotifyPendingCount = 0;
     let handoffNotifyStatus = "pending";
     if (handoffNotifyAlreadyHandled) {
       handoffNotifyStatus = "skipped_duplicate";
@@ -6037,15 +6201,18 @@ export async function handleIncomingMessage(
       const nextActionLabel = sanitizeText(nextAction, 160) || "nao definido";
 
       const notification = [
-        `Handoff solicitado para tenant ${tenantId}.`,
+        liveCatalogTurn ? "Cliente precisa de ajuda para encontrar um produto." : `Handoff solicitado para tenant ${tenantId}.`,
         `Conversa: ${chatId}`,
         `Lead: ${leadName} (${leadPhoneLabel})`,
         `Motivo: ${sanitizeText(plannerDecision.reason || choice.reason, 180) || "avaliacao da IA"}`,
         `Temperatura: ${temperature}`,
         `Proximo passo: ${nextActionLabel}`,
-        `Negocio: ${businessType}`,
-        `Objetivo: ${primaryGoal}`,
-        `Orcamento: ${budgetBand}`,
+        ...(liveCatalogTurn ? [
+          `Pedido original: ${inboundText}`,
+          `Busca na loja: ${liveCatalogTurn.recoveryQuery || liveCatalogTurn.context?.productName || "a confirmar"}`,
+          `Verificacao: ${liveCatalogTurn.status === "lookup_unavailable" ? "a consulta a loja falhou; nao significa produto ausente" : liveCatalogTurn.status === "out_of_stock" ? "variante consultada sem estoque online" : "a consulta nao confirmou uma opcao adequada"}`,
+          "Confira opcoes compativeis com o cliente. Nao prometer reposicao ou prazo sem confirmar.",
+        ] : [`Negocio: ${businessType}`, `Objetivo: ${primaryGoal}`, `Orcamento: ${budgetBand}`]),
         `Inbox: ${conversationLink}`,
         "Resumo:",
         ...summaryBullets,
@@ -6053,17 +6220,16 @@ export async function handleIncomingMessage(
 
       const notifyResults = await Promise.allSettled(
         handoffRecipients.map((recipient) =>
-          getWhatsAppMessagingProvider(whatsappChannel).sendText({
-            to: recipient.phone,
-            text: notification,
-          })
+          deliverAiHandoffAlert({ tenantId, chatId, sourceMessageId: messageId, channelId: whatsappChannel.id,
+            phoneNumberId: whatsappChannel.phoneNumberId, recipientPhone: recipient.phone, text: notification })
         )
       );
 
       handoffNotifySuccessCount = notifyResults.filter((result) => result.status === "fulfilled").length;
-      handoffNotifyFailureCount = Math.max(0, notifyResults.length - handoffNotifySuccessCount);
+      handoffNotifyPendingCount = notifyResults.filter(result => result.status === "rejected" && result.reason instanceof HandoffAlertPendingError).length;
+      handoffNotifyFailureCount = Math.max(0, notifyResults.length - handoffNotifySuccessCount - handoffNotifyPendingCount);
       handoffNotifyStatus =
-        handoffNotifyFailureCount === 0
+        handoffNotifyPendingCount > 0 ? "pending_confirmation" : handoffNotifyFailureCount === 0
           ? "success"
           : handoffNotifySuccessCount > 0
             ? "partial_failure"
@@ -6124,10 +6290,7 @@ export async function handleIncomingMessage(
       });
     }
 
-    await adminDb
-      .collection("chat_state")
-      .doc(getChatStateDocId(tenantId, chatId))
-      .set(
+    await writeScopedChatState(tenantId, chatId,
         {
           tenantId,
           chatId,
@@ -6137,22 +6300,15 @@ export async function handleIncomingMessage(
           lastHandoffNotifyRecipients: handoffRecipients.length,
           lastHandoffNotifySuccessCount: handoffNotifySuccessCount,
           lastHandoffNotifyFailureCount: handoffNotifyFailureCount,
+          lastHandoffNotifyPendingCount: handoffNotifyPendingCount,
           updatedAt: FieldValue.serverTimestamp(),
         },
-        { merge: true }
+        { expectedChatGeneration: chatSnap.createTime }
       );
 
-    await upsertChatState({
-      tenantId,
-      chatId,
-      aiEnabled: false,
-      pausedUntil: new Date(Date.now() + 30 * 60 * 1000),
-      humanOwnerUserId: String(chatData.ownerId || "") || null,
-      updatedByName: "AI Sales Agent",
-      pauseReason: "handoff_requested",
-    });
-
     const executedActions = await executeAltumAgentActions({
+      conversationFence,
+      pipelineStageProposal: llmResult?.pipelineStage,
       tenantId,
       chatId,
       leadId,
@@ -6162,6 +6318,7 @@ export async function handleIncomingMessage(
         stateAfter: "handoff",
         reason: plannerDecision.reason || choice.reason,
       },
+      actionPlan,
       runtimeState,
       extractedFields,
       conversation,
@@ -6175,7 +6332,30 @@ export async function handleIncomingMessage(
       proposalStyle: aiConfig.commercialBrain.proposalStyle,
     });
 
-    await saveAiLog({
+    const handoffTaskRecorded = executedActions.some((action) => ["handoff_to_human", "handoff_task_already_pending"].includes(action));
+    // Do not silence the assistant when neither an alert nor an internal task
+    // exists. Otherwise a failed escalation would strand the conversation.
+    if (!(await isLatestCoordinatedConversationTurn({ tenantId, chatId, messageId }))) return { decision: "skip", reason: "superseded_after_handoff_execution" };
+    const handoffComposition = composeAiResponse({
+      inboundText,
+      draftText: handoffAcknowledgement({ recovery: Boolean(liveCatalogTurn), notified: handoffNotifySuccessCount > 0,
+        taskRecorded: handoffTaskRecorded }),
+      channel: chatChannel, messageType, decision: "handoff", responseGoal: "handoff",
+      relationshipState: effectiveLeadMemory?.relationshipState || null,
+      previousOutboundText: runtimeState?.lastOutboundText || null, verifiedExecution: handoffNotifySuccessCount > 0,
+    });
+    const leadAck = handoffComposition.text;
+    const quality = scoreAltumConversationQuality({ inboundText, outboundText: leadAck, plan: plannerDecision, runtimeState });
+    try {
+      await deliverAiHandoffAcknowledgement({ tenantId, chatId, sourceMessageId: messageId, agentName: agentDisplayName,
+        text: leadAck, authorizePause: handoffNotifySuccessCount > 0 || handoffTaskRecorded });
+    } catch (error) {
+      if (error instanceof HandoffPauseConflictError) return { decision: "skip", reason: "handoff_pause_owned_elsewhere_or_superseded" };
+      throw error;
+    }
+
+const handlerEffects: HandlerEffect[] = [];
+        handlerEffects.push({ kind: "log", input: { logDocId, data: buildAiLogData({
       logDocId,
       tenantId,
       chatId,
@@ -6217,8 +6397,10 @@ export async function handleIncomingMessage(
       conversationLedBy: choice.ledBy,
       qualityScore: quality.score,
       qualityNotes: quality.notes,
-    });
-    await logAiUsage({
+      actionPlan,
+      responseValidationTrace: handoffComposition.receipt,
+    }) } });
+    handlerEffects.push({ kind: "usage", input: {
       tenantId,
       scope: "conversation",
       provider: effectiveProvider,
@@ -6275,9 +6457,9 @@ export async function handleIncomingMessage(
         handoffNotifyFailureCount,
         executedActions,
       },
-    });
+    } });
 
-    await trackAltumAgentLearning({
+    handlerEffects.push({ kind: "learning", input: {
       tenantId,
       chatId,
       leadId,
@@ -6292,12 +6474,13 @@ export async function handleIncomingMessage(
       confidence: Math.max(choice.confidence, plannerDecision.confidence || 0),
       commercialTemperature: plannerDecision.commercialTemperature || null,
       qualityScore: quality.score,
-    });
+    } });
 
     if (leadId && nextAction) {
-      await runLeadAutomations({
+      handlerEffects.push({ kind: "automation", input: {
         tenantId,
         trigger: "ai_next_action",
+        sourceMessageId: messageId,
         leadId,
         actorId: "ai_sales_agent",
         actorName: "AI Sales Agent",
@@ -6305,7 +6488,7 @@ export async function handleIncomingMessage(
         channel: chatChannel,
         messageText: inboundText,
         aiNextAction: nextAction,
-      });
+      } });
     }
     const handoffSummary = buildPersistentConversationSummary({
       llmMemorySummary: llmResult?.memorySummary || null,
@@ -6322,7 +6505,8 @@ export async function handleIncomingMessage(
       nextAction,
     });
 
-    await upsertConversationRuntimeState({
+    handlerEffects.push({ kind: "runtime", input: {
+      conversationFence,
       tenantId,
       chatId,
       leadId,
@@ -6341,12 +6525,19 @@ export async function handleIncomingMessage(
       memorySummary: llmResult?.memorySummary || null,
       summary: handoffSummary,
       extractedFields,
-    });
+      sourceOccurredAtMs: relationshipOccurredAtMs,
+      sourceMessageId: messageId,
+      activeSpecialist: specialistDecision.selectedSpecialist,
+      specialistSupervisorVersion: specialistDecision.schemaVersion,
+      specialistTransferReason: specialistDecision.reason,
+      specialistDecisionKey: specialistDecision.idempotencyKey,
+    } });
 
     if (leadId) {
-      await upsertLeadMemory({
+      handlerEffects.push({ kind: "memory", input: {
         tenantId,
         leadId,
+        conversationFence,
         extractedFields,
         nextAction,
         recommendedOffer: recommendedOfferResolved,
@@ -6359,10 +6550,15 @@ export async function handleIncomingMessage(
         conversationMaturity: plannerDecision.stateAfter,
         memorySummary: llmResult?.memorySummary || null,
         summary: handoffSummary,
-      });
+        inboundText,
+        sourceOccurredAtMs: relationshipOccurredAtMs,
+        sourceMessageId: messageId,
+        identityKey: relationshipIdentityKey,
+      } });
     }
 
-    return { decision: "handoff", reason: decisionReasonForQueue };
+await completeHandlerEffects({ tenantId, chatId, messageId, result: { decision: "handoff", reason: decisionReasonForQueue }, effects: handlerEffects });
+        return { decision: "handoff", reason: decisionReasonForQueue };
   }
 
   let responseText =
@@ -6440,7 +6636,7 @@ export async function handleIncomingMessage(
       : voiceReplyDecision.reason;
   const shouldAskResponseFormatNow =
     !["greeting", "relational", "correction", "conversation_request"].includes(turnPolicy.kind) &&
-    !checkoutAction.shouldSend && !shouldSendVoiceReply && shouldOfferResponseFormatChoice({
+    !(checkoutAction.shouldSend && checkoutActionAuthorized) && !shouldSendVoiceReply && shouldOfferResponseFormatChoice({
     chatState,
     messageType,
     inboundText,
@@ -6583,7 +6779,7 @@ export async function handleIncomingMessage(
     recommendedOffer: recommendedOfferResolved,
     nextAction,
   });
-  const checkoutFollowUpText = checkoutAction.shouldSend && checkoutAction.url
+  const checkoutFollowUpText = checkoutAction.shouldSend && checkoutActionAuthorized && checkoutAction.url
     ? `Para concluir com seguranca, use o link oficial desta oferta: ${checkoutAction.url}`
     : "";
   let checkoutStandaloneText = "";
@@ -6601,6 +6797,29 @@ export async function handleIncomingMessage(
     outboundText: finalOutboundText,
     messageType,
   });
+  const relationshipPrivacyGuard = enforceRelationshipPrivacyBoundary({
+    inboundText,
+    responseText: finalOutboundText,
+  });
+  finalOutboundText = relationshipPrivacyGuard.text;
+  if (relationshipPrivacyGuard.applied) {
+    qualityGateApplied = true;
+    qualityGateReason = [qualityGateReason, `relationship_privacy:${relationshipPrivacyGuard.reason}`]
+      .filter(Boolean)
+      .join(",");
+  }
+  const answeredQuestionGuard = removeAnsweredRelationshipQuestions(
+    finalOutboundText,
+    effectiveLeadMemory?.relationshipState || null
+  );
+  finalOutboundText = answeredQuestionGuard.text;
+  if (answeredQuestionGuard.removedFactKeys.length) {
+    qualityGateApplied = true;
+    qualityGateReason = [
+      qualityGateReason,
+      `relationship_question_already_answered:${answeredQuestionGuard.removedFactKeys.join("+")}`,
+    ].filter(Boolean).join(",");
+  }
   if (["greeting", "relational", "correction", "conversation_request"].includes(turnPolicy.kind)) {
     secondaryResponseText = "";
   }
@@ -6612,6 +6831,37 @@ export async function handleIncomingMessage(
     qualityGateApplied = true;
     qualityGateReason = [qualityGateReason, `turn_policy:${turnPolicy.kind}`].filter(Boolean).join(",");
   }
+  if (liveCatalogTurn?.checkedAt && Date.now() - Date.parse(liveCatalogTurn.checkedAt) > 30_000) {
+    liveCatalogTurn = { ...liveCatalogTurn, verifiedPrice: false, verifiedInventory: false,
+      responseText: "Preciso verificar o estoque novamente antes de confirmar a disponibilidade. Posso pedir à equipe para conferir?" };
+  }
+  const responseComposition = composeAiResponse({
+    inboundText,
+    draftText: liveCatalogTurn ? liveCatalogTurn.responseText : secondaryResponseText ? `${responseText}\n${secondaryResponseText}` : finalOutboundText,
+    channel: chatChannel,
+    messageType,
+    decision: choice.decision,
+    responseGoal: plannerDecision.responseGoal,
+    relationshipState: effectiveLeadMemory?.relationshipState || null,
+    previousOutboundText: runtimeState?.lastOutboundText || null,
+    allowUrls: checkoutActionAuthorized,
+    verifiedUrls: liveCatalogTurn?.verifiedUrls,
+    preserveLineBreaks: Boolean(liveCatalogTurn),
+    verifiedPrice: liveCatalogTurn ? liveCatalogTurn.verifiedPrice : hasVerifiedCommercialFactSource("price", kbDocs),
+    verifiedInventory: liveCatalogTurn ? liveCatalogTurn.verifiedInventory : hasVerifiedCommercialFactSource("inventory", kbDocs),
+    verifiedPayment: hasVerifiedCommercialFactSource("payment", kbDocs),
+    verifiedDelivery: hasVerifiedCommercialFactSource("delivery", kbDocs),
+    audioDelivery: shouldSendVoiceReply,
+  });
+  finalOutboundText = responseComposition.text;
+  responseText = responseComposition.messages[0] || finalOutboundText;
+  secondaryResponseText = responseComposition.messages[1] || null;
+  if (responseComposition.receipt.status !== "accepted") {
+    qualityGateApplied = true;
+    qualityGateReason = [qualityGateReason, ...responseComposition.receipt.blockedReasons, ...responseComposition.receipt.transformations]
+      .filter(Boolean)
+      .join(",");
+  }
   quality = scoreAltumConversationQuality({
     inboundText,
     outboundText: finalOutboundText,
@@ -6622,6 +6872,13 @@ export async function handleIncomingMessage(
     return { decision: "skip", reason: "superseded_before_send" };
   }
   const primaryTextToSend = secondaryResponseText ? responseText : finalOutboundText;
+  const catalogDeliveryFreshUntil = liveCatalogTurn?.checkedAt && (liveCatalogTurn.verifiedPrice || liveCatalogTurn.verifiedInventory)
+    ? new Date(Date.parse(liveCatalogTurn.checkedAt) + 30_000) : undefined;
+  if (liveCatalogTurn) {
+    await saveConversationCatalogInterest({ tenantId, chatId, leadId, messageId, turn: liveCatalogTurn,
+      allowCrmWrite: specialistExecution.allowedTools.includes("crm_write") && actionPlanAllows(actionPlan, "update_crm_context"),
+    });
+  }
 
   let sentAsTemplate = false;
   let sentTemplateName: string | null = null;
@@ -6629,6 +6886,7 @@ export async function handleIncomingMessage(
   let sentTemplateParams: string[] = [];
   let sentTemplateMetaMessageId: string | null = null;
   let sentOutboundMessageId: string | null = null;
+  let queuedPrimaryTextMessageId: string | null = null;
   let voiceReplySent = false;
   let voiceReplyError: string | null = null;
   let voiceReplyDurationMs: number | null = null;
@@ -6656,13 +6914,14 @@ export async function handleIncomingMessage(
       });
       let templateMessageId: string | null = null;
       try {
-        const templatePayload = await getWhatsAppMessagingProvider(whatsappChannel).sendTemplate({
-          to: leadPhone,
+        const templatePayload = await deliverAiConversationTemplate({
+          tenantId, chatId, sourceMessageId: messageId, agentName: agentDisplayName,
           templateName: sentTemplateName,
           languageCode: sentTemplateLanguage,
           bodyParams: sentTemplateParams,
         });
         templateMessageId = templatePayload.externalMessageId;
+        queuedPrimaryTextMessageId = templatePayload.messageId;
       } catch (error) {
         if (leadId) {
           await createAiInternalNotificationOnce({
@@ -6689,41 +6948,25 @@ export async function handleIncomingMessage(
     } else {
       if (shouldSendVoiceReply) {
         try {
-          const voiceSent = await sendAltumVoiceReply({
-            channel: whatsappChannel,
-            to: leadPhone,
+          const voiceSent = await deliverAiConversationVoice({
             text: finalOutboundText,
             tenantId,
             chatId,
             voice: aiConfig.voiceReplyVoice,
             maxChars: aiConfig.voiceReplyMaxChars,
+            sourceMessageId: messageId, agentName: agentDisplayName, freshUntil: catalogDeliveryFreshUntil,
           });
-
-          await addMessage({
-            chatId,
-            tenantId,
-            text: voiceSent.text || finalOutboundText,
-            sender: "agent",
-            type: "audio",
-            channel: chatChannel,
-            channelPhoneNumberId: whatsappChannel.phoneNumberId,
-            senderName: agentDisplayName,
-            mediaUrl: voiceSent.signedUrl,
-            mediaName: "Resposta em audio ALTUM",
-            mediaMimeType: voiceSent.contentType,
-            mediaSize: voiceSent.size,
-            metaMessageId: voiceSent.metaMessageId,
-            voiceReply: true,
-            voiceReplyVoice: voiceSent.voice,
-            voiceReplyTranscript: voiceSent.text,
-          });
+          sentOutboundMessageId = voiceSent.externalMessageId;
           voiceReplySent = true;
           voiceReplyDurationMs = voiceSent.durationMs;
           voiceReplyDurationSource = voiceSent.durationSource;
         } catch (error) {
+          // Outbox owns pending/uncertain delivery. Only verified preparation
+          // failure before any provider attempt may produce a text fallback.
+          if (!(error instanceof AiVoicePreparationError)) throw error;
           voiceReplyError =
             error instanceof Error ? sanitizeText(error.message, 220) : "voice_reply_send_failed";
-          finalOutboundText = `Tentei enviar em audio, mas o envio falhou agora. Para nao te deixar esperando: ${prepareOutboundTextForAudioDelivery(finalOutboundText, inboundText)}`;
+          finalOutboundText = `Nao consegui preparar o audio agora. Vou continuar por texto: ${prepareOutboundTextForAudioDelivery(finalOutboundText, inboundText)}`;
           console.error("Falha ao enviar resposta em voz da IA:", error);
           if (leadId) {
             await createAiInternalNotificationOnce({
@@ -6732,8 +6975,8 @@ export async function handleIncomingMessage(
               leadId,
               type: "voice_reply_send_failed",
               severity: "high",
-              title: "Falha ao enviar resposta em audio",
-              detail: `A IA tentou responder com audio e falhou. Motivo: ${voiceReplyError}.`,
+              title: "Falha ao preparar resposta em audio",
+              detail: `A IA nao conseguiu preparar o audio; nenhum envio de voz foi iniciado. Motivo: ${voiceReplyError}.`,
               dedupeWindowMinutes: 180,
             });
           }
@@ -6741,22 +6984,22 @@ export async function handleIncomingMessage(
       }
 
       if (!voiceReplySent) {
-        const sent = await getWhatsAppMessagingProvider(whatsappChannel).sendText({
-          to: leadPhone,
-          text: shouldSendVoiceReply || voiceRequestedThisTurn ? finalOutboundText : primaryTextToSend,
-        });
+        const sent = await deliverAiConversationText({ tenantId, chatId, sourceMessageId: messageId,
+          slot: "primary", text: shouldSendVoiceReply || voiceRequestedThisTurn ? finalOutboundText : primaryTextToSend,
+          agentName: agentDisplayName, freshUntil: catalogDeliveryFreshUntil });
+        queuedPrimaryTextMessageId = sent.messageId;
         sentOutboundMessageId = sent.externalMessageId;
       }
     }
-  } else if (isMetaConversation && metaChannel && metaRecipientId) {
-    await sendMetaConversationText({
-      channel: metaChannel,
-      recipientId: metaRecipientId,
-      text: voiceRequestedThisTurn ? finalOutboundText : primaryTextToSend,
-    });
+  } else if ((isMetaConversation && metaChannel && metaRecipientId) || chatChannel === "site_chat") {
+    const sent = await deliverAiConversationText({ tenantId, chatId, sourceMessageId: messageId,
+      slot: "primary", text: voiceRequestedThisTurn ? finalOutboundText : primaryTextToSend,
+      agentName: agentDisplayName, freshUntil: catalogDeliveryFreshUntil });
+    queuedPrimaryTextMessageId = sent.messageId;
+    sentOutboundMessageId = sent.externalMessageId;
   }
 
-  if (sentAsTemplate || !voiceReplySent) {
+  if ((sentAsTemplate || !voiceReplySent) && !queuedPrimaryTextMessageId) {
     await addMessage({
       chatId,
       tenantId,
@@ -6774,62 +7017,16 @@ export async function handleIncomingMessage(
   }
 
   if (secondaryResponseText && !sentAsTemplate && !voiceReplySent) {
-    let secondaryMessageId: string | null = null;
-    if (shouldUseWhatsApp && whatsappChannel && leadPhone) {
-      const sent = await getWhatsAppMessagingProvider(whatsappChannel).sendText({
-        to: leadPhone,
-        text: secondaryResponseText,
-      });
-      secondaryMessageId = sent.externalMessageId;
-    } else if (isMetaConversation && metaChannel && metaRecipientId) {
-      await sendMetaConversationText({
-        channel: metaChannel,
-        recipientId: metaRecipientId,
-        text: secondaryResponseText,
-      });
-    }
-
-    await addMessage({
-      chatId,
-      tenantId,
-      text: secondaryResponseText,
-      sender: "agent",
-      channel: chatChannel,
-      channelPhoneNumberId: whatsappChannel?.phoneNumberId,
-      senderName: agentDisplayName,
-      metaMessageId: secondaryMessageId,
-    });
+    await deliverAiConversationText({ tenantId, chatId, sourceMessageId: messageId,
+      slot: "secondary", text: secondaryResponseText, agentName: agentDisplayName, freshUntil: catalogDeliveryFreshUntil });
   }
 
   if (checkoutStandaloneText && !sentAsTemplate && !whatsappServiceWindowClosed) {
-    let checkoutMessageId: string | null = null;
-    if (shouldUseWhatsApp && whatsappChannel && leadPhone) {
-      const sent = await getWhatsAppMessagingProvider(whatsappChannel).sendText({
-        to: leadPhone,
-        text: checkoutStandaloneText,
-      });
-      checkoutMessageId = sent.externalMessageId;
-    } else if (isMetaConversation && metaChannel && metaRecipientId) {
-      await sendMetaConversationText({
-        channel: metaChannel,
-        recipientId: metaRecipientId,
-        text: checkoutStandaloneText,
-      });
-    }
-
-    await addMessage({
-      chatId,
-      tenantId,
-      text: checkoutStandaloneText,
-      sender: "agent",
-      channel: chatChannel,
-      channelPhoneNumberId: whatsappChannel?.phoneNumberId,
-      senderName: agentDisplayName,
-      metaMessageId: checkoutMessageId,
-    });
+    await deliverAiConversationText({ tenantId, chatId, sourceMessageId: messageId,
+      slot: "checkout", text: checkoutStandaloneText, agentName: agentDisplayName, freshUntil: catalogDeliveryFreshUntil });
   }
 
-  const mediaDoc = selectMediaDocForLead({
+  const mediaDoc = liveCatalogTurn ? null : selectMediaDocForLead({
     inboundText,
     kbDocs,
     conversation,
@@ -6844,76 +7041,18 @@ export async function handleIncomingMessage(
       sanitizeText(mediaDoc.content, 180) ||
       "Material relacionado ao que voce pediu.";
     try {
-      let mediaMessageId: string | null = null;
-      if (shouldUseWhatsApp && whatsappChannel && leadPhone) {
-        const sent = await getWhatsAppMessagingProvider(whatsappChannel).sendMedia({
-          to: leadPhone,
-          mediaUrl: mediaDoc.mediaUrl,
-          mediaType: mediaDoc.mediaType,
-          caption: mediaCaption,
-          filename: mediaDoc.mediaTitle || "material",
-        });
-        mediaMessageId = sent.externalMessageId;
-      } else if (isMetaConversation && metaChannel && metaRecipientId) {
-        await sendMetaConversationText({
-          channel: metaChannel,
-          recipientId: metaRecipientId,
-          text: mediaCaption,
-        });
-        const sent = await sendMetaConversationMedia({
-          channel: metaChannel,
-          recipientId: metaRecipientId,
-          mediaUrl: mediaDoc.mediaUrl,
-          mediaType: mediaDoc.mediaType,
-        });
-        mediaMessageId = sanitizeText(sent?.message_id, 240) || null;
-      }
-
-      await addMessage({
-        chatId,
-        tenantId,
-        text: mediaCaption,
-        sender: "agent",
-        type: mediaDoc.mediaType,
-        channel: chatChannel,
-        channelPhoneNumberId: whatsappChannel?.phoneNumberId,
-        senderName: agentDisplayName,
-        mediaUrl: mediaDoc.mediaUrl,
-        mediaName: mediaDoc.mediaTitle || mediaDoc.serviceKey || "Material enviado pela IA",
-        mediaMimeType: mediaDoc.mediaMimeType || undefined,
-        mediaSize: mediaDoc.mediaSize || undefined,
-        metaMessageId: mediaMessageId,
-      });
+      await deliverAiKnowledgeMedia({ tenantId, chatId, sourceMessageId: messageId, agentName: agentDisplayName,
+        kbDocId: mediaDoc.id, mediaUrl: mediaDoc.mediaUrl, mediaStoragePath: mediaDoc.mediaStoragePath || "",
+        mediaType: mediaDoc.mediaType, caption: mediaCaption, filename: mediaDoc.mediaTitle || mediaDoc.serviceKey || "Material enviado pela IA" });
       mediaAssetSent = true;
     } catch (error) {
+      if (!(error instanceof AiKnowledgeMediaPreparationError)) throw error;
       mediaAssetError = error instanceof Error ? sanitizeText(error.message, 220) : "media_send_failed";
       console.error("Falha ao enviar midia da base pela IA:", error);
-      const mediaFailureText = "Nao consegui carregar esse material agora. Vou deixar a equipe avisada para te enviar a opcao correta sem voce precisar repetir o pedido.";
+      const mediaFailureText = "Nao consegui carregar esse material agora. Posso pedir ajuda da equipe para conferir?";
       try {
-        let failureMessageId: string | null = null;
-        if (shouldUseWhatsApp && whatsappChannel && leadPhone) {
-          const sent = await getWhatsAppMessagingProvider(whatsappChannel).sendText({
-            to: leadPhone,
-            text: mediaFailureText,
-          });
-          failureMessageId = sent.externalMessageId;
-        } else if (isMetaConversation && metaChannel && metaRecipientId) {
-          await sendMetaConversationText({
-            channel: metaChannel,
-            recipientId: metaRecipientId,
-            text: mediaFailureText,
-          });
-        }
-        await addMessage({
-          chatId,
-          tenantId,
-          text: mediaFailureText,
-          sender: "agent",
-          channel: chatChannel,
-          channelPhoneNumberId: whatsappChannel?.phoneNumberId,
-          senderName: agentDisplayName,
-          metaMessageId: failureMessageId,
-        });
+        await deliverAiConversationText({ tenantId, chatId, sourceMessageId: messageId,
+          slot: "asset_failure", text: mediaFailureText, agentName: agentDisplayName });
       } catch (fallbackError) {
         console.error("Falha ao avisar o cliente sobre a midia indisponivel:", fallbackError);
       }
@@ -6933,10 +7072,7 @@ export async function handleIncomingMessage(
   }
 
   if (responseFormatPromptSent) {
-    await adminDb
-      .collection("chat_state")
-      .doc(getChatStateDocId(tenantId, chatId))
-      .set(
+    await writeScopedChatState(tenantId, chatId,
         {
           tenantId,
           chatId,
@@ -6944,15 +7080,18 @@ export async function handleIncomingMessage(
           responseFormatPreferenceAskCount: FieldValue.increment(1),
           updatedAt: FieldValue.serverTimestamp(),
         },
-        { merge: true }
+        { expectedChatGeneration: chatSnap.createTime }
       );
   }
 
   const executedActions = await executeAltumAgentActions({
+    conversationFence,
+    pipelineStageProposal: llmResult?.pipelineStage,
     tenantId,
     chatId,
     leadId,
     plan: plannerDecision,
+    actionPlan,
     runtimeState,
     extractedFields,
     conversation,
@@ -6966,7 +7105,8 @@ export async function handleIncomingMessage(
     proposalStyle: aiConfig.commercialBrain.proposalStyle,
   });
 
-  await saveAiLog({
+const handlerEffects: HandlerEffect[] = [];
+      handlerEffects.push({ kind: "log", input: { logDocId, data: buildAiLogData({
     logDocId,
       tenantId,
       chatId,
@@ -6982,7 +7122,8 @@ export async function handleIncomingMessage(
       "chat_state",
       "tenant_settings.ai",
       shouldUseWhatsApp ? "whatsapp_send" : isMetaConversation ? "meta_send" : "site_chat_reply",
-      ...(checkoutAction.shouldSend ? ["catalog_checkout"] : []),
+      ...(checkoutAction.shouldSend && checkoutActionAuthorized ? ["catalog_checkout"] : []),
+      ...(checkoutAction.shouldSend && !checkoutActionAuthorized ? ["catalog_checkout_approval_required"] : []),
       ...(messageType.toLowerCase() === "image" ? ["catalog_visual_match"] : []),
       ...providerFallbackToolCalls,
     ],
@@ -7033,6 +7174,10 @@ export async function handleIncomingMessage(
     qualityGateReason,
     tenantContextFingerprint: tenantContext.fingerprint,
     tenantContextDiagnostics: tenantContext.diagnostics,
+    relationshipTrace,
+    specialistTrace,
+    actionPlan,
+    responseValidationTrace: responseComposition.receipt,
     rollout: {
       mode: aiConfig.rollout.mode,
       percent: aiConfig.rollout.rolloutPercent,
@@ -7040,8 +7185,8 @@ export async function handleIncomingMessage(
       agentVersion: rolloutDecision.assignedVersion,
       reason: rolloutDecision.reason,
     },
-  });
-  await logAiUsage({
+  }) } });
+  handlerEffects.push({ kind: "usage", input: {
     tenantId,
     scope: "conversation",
     provider: effectiveProvider,
@@ -7087,7 +7232,8 @@ export async function handleIncomingMessage(
       offerBundlePrimaryDocId: commercialOfferBundle.primaryDocId,
       offerBundleRationale: commercialOfferBundle.rationale,
       checkoutActionReason: checkoutAction.reason,
-      checkoutLinkSent: checkoutAction.shouldSend,
+      checkoutLinkSent: checkoutAction.shouldSend && checkoutActionAuthorized,
+      checkoutApprovalRequired: checkoutAction.shouldSend && !checkoutActionAuthorized,
       visualCatalogMatchStatus: visualCatalogDecision.status,
       visualCatalogTopConfidence: visualCatalogDecision.topConfidence,
       visualCatalogMatchIds: visualCatalogDecision.matches.map((item) => item.id),
@@ -7100,6 +7246,8 @@ export async function handleIncomingMessage(
       qualityGateReason,
       tenantContextFingerprint: tenantContext.fingerprint,
       tenantContextDiagnostics: tenantContext.diagnostics,
+      relationshipTrace,
+      specialistTrace,
       rollout: {
         mode: aiConfig.rollout.mode,
         percent: aiConfig.rollout.rolloutPercent,
@@ -7125,9 +7273,9 @@ export async function handleIncomingMessage(
       inferredResponsePreferenceReason: inferredResponsePreference.reason,
       responseFormatPromptSent,
     },
-  });
+  } });
 
-  await trackAltumAgentLearning({
+  handlerEffects.push({ kind: "learning", input: {
     tenantId,
     chatId,
     leadId,
@@ -7142,12 +7290,13 @@ export async function handleIncomingMessage(
     confidence: choice.confidence,
     commercialTemperature: plannerDecision.commercialTemperature || null,
     qualityScore: quality.score,
-  });
+  } });
 
   if (leadId && nextAction) {
-    await runLeadAutomations({
+    handlerEffects.push({ kind: "automation", input: {
       tenantId,
       trigger: "ai_next_action",
+      sourceMessageId: messageId,
       leadId,
       actorId: "ai_sales_agent",
       actorName: "AI Sales Agent",
@@ -7155,10 +7304,11 @@ export async function handleIncomingMessage(
       channel: chatChannel,
       messageText: inboundText,
       aiNextAction: nextAction,
-    });
+    } });
   }
 
-  await upsertConversationRuntimeState({
+  handlerEffects.push({ kind: "runtime", input: {
+    conversationFence,
     tenantId,
     chatId,
     leadId,
@@ -7177,12 +7327,19 @@ export async function handleIncomingMessage(
     memorySummary: llmResult?.memorySummary || null,
     summary: conversationSummary,
     extractedFields,
-  });
+    sourceOccurredAtMs: relationshipOccurredAtMs,
+    sourceMessageId: messageId,
+    activeSpecialist: specialistDecision.selectedSpecialist,
+    specialistSupervisorVersion: specialistDecision.schemaVersion,
+    specialistTransferReason: specialistDecision.reason,
+    specialistDecisionKey: specialistDecision.idempotencyKey,
+  } });
 
   if (leadId) {
-    await upsertLeadMemory({
+    handlerEffects.push({ kind: "memory", input: {
       tenantId,
       leadId,
+      conversationFence,
       extractedFields,
       nextAction,
       recommendedOffer: recommendedOfferResolved,
@@ -7195,10 +7352,15 @@ export async function handleIncomingMessage(
       conversationMaturity: plannerDecision.stateAfter,
       memorySummary: llmResult?.memorySummary || null,
       summary: conversationSummary,
-    });
+      inboundText,
+      sourceOccurredAtMs: relationshipOccurredAtMs,
+      sourceMessageId: messageId,
+      identityKey: relationshipIdentityKey,
+    } });
   }
 
-  return {
+await completeHandlerEffects({ tenantId, chatId, messageId, result: { decision: choice.decision, reason: decisionReasonForQueue }, effects: handlerEffects });
+      return {
     decision: choice.decision,
     reason: decisionReasonForQueue,
   };

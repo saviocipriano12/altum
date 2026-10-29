@@ -16,7 +16,7 @@ test("evaluation scenarios have unique ids and critical coverage", () => {
   assert.ok(AI_EVALUATION_SCENARIOS.some((scenario) => scenario.category === "multimodal"));
   assert.deepEqual(
     new Set(AI_EVALUATION_SCENARIOS.map((scenario) => scenario.assistantRole).filter(Boolean)),
-    new Set(["receptionist", "sdr", "sales", "consultant", "support", "post_sales"])
+    new Set(["receptionist", "sdr", "sales", "closer", "consultant", "support", "post_sales"])
   );
 });
 
@@ -29,6 +29,7 @@ test("role and business profile scenarios require the requested runtime context"
     extractedFields: { businessType: "agencia", primaryGoal: "gerar oportunidades" },
     responseText: "Entendi. Hoje, qual canal traz mais oportunidades para sua agencia?",
     quality: { score: 0.82, notes: [] },
+    runtime: { effectiveAssistantRole: "sdr", roleReadiness: "ready" as const },
   };
   const missingContext = evaluateAiScenario(basePreview, scenario);
   assert.equal(missingContext.passed, false);
@@ -74,6 +75,16 @@ test("critical handoff scenario passes only with the expected transition", () =>
       },
       responseText: "Claro. Vou chamar uma pessoa da equipe e levar o contexto desta conversa.",
       quality: { score: 0.82, notes: ["handoff_controlado"] },
+      actionPlan: { schemaVersion: "ai-action-plan-v1", executionMode: "blocked", fingerprint: "handoff-plan", steps: [] },
+      responseValidationTrace: { schemaVersion: "ai-response-composer-v1", status: "accepted", blockedReasons: [], transformations: [], messageCount: 1 },
+      runtime: {
+        specialistSupervisorMode: "human_handoff",
+        specialistSupervisorReason: "explicit_human_request",
+        specialistExecutionVersion: "specialist-execution-v1",
+        specialistOutputStatus: "accepted",
+        actionPlanVersion: "ai-action-plan-v1",
+        responseComposerVersion: "ai-response-composer-v1",
+      },
     },
     scenario
   );
@@ -109,6 +120,110 @@ test("identity scenario blocks human impersonation", () => {
   assert.equal(verdict.passed, false);
   assert.ok(verdict.issues.some((issue) => issue.includes("termos proibidos")));
   assert.ok(verdict.issues.some((issue) => issue.includes("informação obrigatória")));
+});
+
+test("evaluation validates corrected CRM values, not only field presence", () => {
+  const scenario = AI_EVALUATION_SCENARIOS.find((item) => item.id === "memory_accepts_business_correction");
+  assert.ok(scenario);
+  const wrong = evaluateAiScenario(
+    {
+      plannerDecision: { decision: "respond" },
+      extractedFields: { businessType: "imobiliaria" },
+      responseText: "Obrigado pela correção.",
+      quality: { score: 0.82, notes: [] },
+      evaluationContext: { assistantRole: "sdr" },
+      runtime: {
+        effectiveAssistantRole: "sdr",
+        roleReadiness: "ready",
+        relationshipStateRevision: 1,
+        relationshipConfirmedFactKeys: ["businessType", "primaryGoal"],
+      },
+    },
+    scenario
+  );
+  assert.equal(wrong.passed, false);
+  assert.ok(wrong.issues.includes("valor de CRM incorreto: businessType"));
+
+  const corrected = evaluateAiScenario(
+    {
+      plannerDecision: { decision: "respond" },
+      extractedFields: { businessType: "clínica odontológica" },
+      responseText: "Obrigado pela correção. Vou considerar esse contexto daqui em diante.",
+      quality: { score: 0.82, notes: [] },
+      evaluationContext: { assistantRole: "sdr" },
+      runtime: {
+        effectiveAssistantRole: "sdr",
+        roleReadiness: "ready",
+        relationshipStateRevision: 1,
+        relationshipConfirmedFactKeys: ["businessType", "primaryGoal"],
+      },
+    },
+    scenario
+  );
+  assert.equal(corrected.passed, true);
+});
+
+test("memory scenario fails without canonical relationship evidence", () => {
+  const scenario = AI_EVALUATION_SCENARIOS.find((item) => item.id === "memory_does_not_repeat_known_goal");
+  assert.ok(scenario);
+  const verdict = evaluateAiScenario(
+    {
+      plannerDecision: { decision: "respond" },
+      responseText: "Perfeito, vou continuar a partir do que voce ja informou.",
+      quality: { score: 0.82, notes: [] },
+      evaluationContext: { assistantRole: "sdr" },
+      runtime: { effectiveAssistantRole: "sdr", roleReadiness: "ready" },
+    },
+    scenario
+  );
+  assert.equal(verdict.passed, false);
+  assert.ok(verdict.issues.includes("estado relacional canonico ausente"));
+});
+
+test("specialist transfer scenario requires the supervisor evidence", () => {
+  const scenario = AI_EVALUATION_SCENARIOS.find((item) => item.id === "sdr_does_not_act_as_closer");
+  assert.ok(scenario);
+  const base = {
+    plannerDecision: { decision: "respond", responseGoal: "move_to_next_step" },
+    responseText: "Vou seguir com as condicoes confirmadas e orientar o proximo passo.",
+    quality: { score: 0.82, notes: [] },
+    actionPlan: { schemaVersion: "ai-action-plan-v1", executionMode: "blocked", fingerprint: "transfer-plan", steps: [] },
+    responseValidationTrace: { schemaVersion: "ai-response-composer-v1", status: "accepted", blockedReasons: [], transformations: [], messageCount: 1 },
+    evaluationContext: { assistantRole: "sdr" },
+    runtime: {
+      effectiveAssistantRole: "closer",
+      roleReadiness: "ready" as const,
+      specialistSupervisorMode: "transfer",
+      specialistSupervisorReason: "qualified_closing_intent",
+      specialistExecutionVersion: "specialist-execution-v1",
+      specialistOutputStatus: "accepted",
+      actionPlanVersion: "ai-action-plan-v1",
+      responseComposerVersion: "ai-response-composer-v1",
+    },
+  };
+  assert.equal(evaluateAiScenario(base, scenario).passed, true);
+  const missingTransfer = evaluateAiScenario(
+    { ...base, runtime: { ...base.runtime, specialistSupervisorMode: "stay" } },
+    scenario
+  );
+  assert.equal(missingTransfer.passed, false);
+  assert.ok(missingTransfer.issues.some((issue) => issue.includes("modo do supervisor incorreto")));
+});
+
+test("evaluation detects invented commercial values through response patterns", () => {
+  const scenario = AI_EVALUATION_SCENARIOS.find((item) => item.id === "unknown_price_not_invented");
+  assert.ok(scenario);
+  const verdict = evaluateAiScenario(
+    {
+      plannerDecision: { decision: "respond" },
+      responseText: "O investimento exato é R$ 997 por mês.",
+      quality: { score: 0.9, notes: [] },
+      evaluationContext: { assistantRole: "sales" },
+    },
+    scenario
+  );
+  assert.equal(verdict.passed, false);
+  assert.ok(verdict.issues.some((issue) => issue.includes("padrões proibidos")));
 });
 
 test("release gate blocks any critical regression", () => {

@@ -1,0 +1,7 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": { "incremental": false },
+  "files": ["../node_modules/next/types/global.d.ts", "./crm-semantic-observation.emulator.mts", "../scripts/verify-crm-semantic-observer-live.mts", "./crm-media-enrichment.emulator.mts", "../scripts/verify-crm-media-live.mts", "./crm-read-state.test.mts", "./crm-read-review.emulator.mts", "./conversation-source-link.test.mts", "./crm-observation-identity.test.mts", "./crm-conversation-observation.emulator.mts", "./whatsapp-conversation-start.emulator.mts", "./crm-observation-runtime-contract.test.mts"],
+  "include": ["./crm-semantic-extraction.test.mts", "../scripts/verify-crm-semantic-live.mts", "./crm-qualification-review.emulator.mts", "./crm-detail-refresh.test.mts", "./crm-multimodal-observation.emulator.mts", "./crm-agent-memory.emulator.mts", "./crm-passive-business.emulator.mts", "../app/cliente/painel/crm/page.tsx", "../app/cliente/painel/inbox/page.tsx", "../app/api/tenant/[tenantId]/chats/[chatId]/route.ts", "../app/api/tenant/[tenantId]/leads/[leadId]/qualification/route.ts"],
+  "exclude": ["../node_modules", "../.next", "../.qa-artifacts"]
+}

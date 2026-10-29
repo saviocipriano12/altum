@@ -47,20 +47,30 @@ export function buildIncomingChatOperationalPatch(input: {
   status?: string | null;
   assignedTo?: string | null;
   slaMinutes?: number;
+  lastClientMessageAt?: unknown;
+  lastAgentMessageAt?: unknown;
+  slaDueAt?: unknown;
 }) {
   const slaMinutes = Math.max(5, Math.min(24 * 60, Math.round(input.slaMinutes || DEFAULT_FIRST_RESPONSE_SLA_MINUTES)));
   const assignedTo = cleanString(input.assignedTo, 140) || null;
   const status = cleanString(input.status || "open", 40).toLowerCase() || "open";
+  const nextStatus = status === "resolved" || status === "archived" ? "open" : status;
+  const lastClient = toDate(input.lastClientMessageAt), lastAgent = toDate(input.lastAgentMessageAt);
+  const previousDue = toDate(input.slaDueAt);
+  const alreadyWaiting = nextStatus === status && lastClient && (!lastAgent || lastAgent < lastClient);
+  const dueAt = alreadyWaiting && previousDue && Number.isFinite(previousDue.getTime())
+    ? previousDue : new Date(Date.now() + slaMinutes * 60 * 1000);
 
   return {
-    status: status === "resolved" || status === "archived" ? "open" : status,
+    status: nextStatus,
     requiresTemplate: false,
     lastClientMessageAt: FieldValue.serverTimestamp(),
-    slaDueAt: new Date(Date.now() + slaMinutes * 60 * 1000),
+    slaDueAt: dueAt,
     queueStatus: computeQueueStatus({
-      status,
+      status: nextStatus,
       assignedTo,
       waitingForReply: true,
+      slaBreached: dueAt.getTime() <= Date.now(),
     }),
   };
 }

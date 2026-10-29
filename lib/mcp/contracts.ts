@@ -17,7 +17,7 @@ const aiCommercialProfilePatch = z.object({
   enabled: z.boolean().optional(),
   responsePaused: z.boolean().optional(),
   agentName: nullableText(80),
-  assistantRole: z.enum(["receptionist", "sdr", "sales", "consultant", "support", "post_sales"]).optional(),
+  assistantRole: z.enum(["receptionist", "sdr", "sales", "closer", "consultant", "support", "post_sales"]).optional(),
   toneOfVoice: nullableText(240),
   businessSummary: nullableText(2000),
   objective: nullableText(1000),

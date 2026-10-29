@@ -13,6 +13,7 @@ case "$job" in
   commerce) path='/api/internal/jobs/commerce/sync?connectionLimit=6&itemLimit=15&minimumIntervalMinutes=45' ;;
   commerce-actions) path='/api/internal/jobs/commerce/actions?tenantLimit=20&scanLimit=80' ;;
   commercial-agent) path='/api/internal/jobs/commercial-agent/actions?limit=500' ;;
+  ai-proactive) path='/api/internal/jobs/ai-proactive?tenantLimit=40&leadLimit=60' ;;
   reports) path='/api/internal/jobs/daily-reports/send?maxTenants=120' ;;
   billing) path='/api/internal/jobs/finance/contract-billing?maxContracts=160' ;;
   *) echo "unknown_job=$job" >&2; exit 64 ;;

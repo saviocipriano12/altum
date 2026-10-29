@@ -1,4 +1,11 @@
 /* Client-only rules: public pages and the admin retain their own styling. */
+.client-portal[data-client-style="v3"][data-client-area="inbox"] .inbox-refined .inbox-message-out[data-message-type="audio"] {
+  background: #d9fdd3 !important;
+  color: #111b21 !important;
+}
+.client-portal[data-client-area="inbox"] [data-message-type="audio"] {
+  padding: 7px 10px 5px;
+}
 .client-portal {
   min-height: 100dvh;
   background: var(--cliente-bg, #f4f6f9);
@@ -68,6 +75,24 @@
   }
 }
 @media (max-width: 639px) {
+  .client-portal[data-client-area="inbox"] .inbox-compose-row {
+    display: grid;
+    grid-template-columns: 44px 44px minmax(0, 1fr) 48px;
+    gap: 4px;
+    width: 100%;
+    min-width: 0;
+  }
+  .client-portal[data-client-area="inbox"] .inbox-send-button {
+    width: 48px;
+    min-width: 48px;
+    height: 48px;
+    padding: 0;
+  }
+  /* The wrapper already constrains the bubble; a second percentage narrowed
+     native media controls and pushed the message actions out of the viewport. */
+  .client-portal[data-client-style="v3"][data-client-area="inbox"] .inbox-refined :is(.inbox-message-in, .inbox-message-out) {
+    max-width: 100% !important;
+  }
   .client-portal[data-client-area="inbox"] :is(.inbox-thread-action, .inbox-toolbar-button) {
     min-height: 44px;
   }
@@ -92,9 +117,11 @@
   .client-portal[data-client-area="inbox"] .inbox-thread-shell {
     position: fixed;
     inset: 0;
+    top: var(--inbox-viewport-top, 0px);
+    bottom: auto;
     z-index: 60;
-    height: 100dvh;
-    max-height: 100dvh;
+    height: var(--inbox-viewport-height, 100dvh);
+    max-height: var(--inbox-viewport-height, 100dvh);
     min-height: 0;
   }
 }

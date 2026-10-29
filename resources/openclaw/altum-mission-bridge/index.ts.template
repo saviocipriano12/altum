@@ -39,6 +39,15 @@ type MissionEnvelope = {
     budgetBrl: number;
     constraints: string[];
   };
+  task: {
+    id: string;
+    title: string;
+    agent: string;
+    capability: string;
+    agentCandidateId: string | null;
+    agentCandidateSource: string | null;
+    agentCandidateStatus: "review_required" | "active" | "disabled" | "deprecated" | null;
+  } | null;
   policy: {
     externalActionsRequireApproval: true;
     secretHandling: "altum_vault_only";
@@ -168,6 +177,7 @@ async function emitEvent(envelope: MissionEnvelope, input: {
     dispatchId: envelope.dispatchId,
     missionId: envelope.mission.id,
     tenantId: envelope.mission.tenantId,
+    ...(envelope.task ? { taskId: envelope.task.id } : {}),
     type: input.type,
     occurredAt: new Date().toISOString(),
     message: input.message.slice(0, 4_000),
@@ -200,6 +210,13 @@ function buildAgentPrompt(envelope: MissionEnvelope): string {
     `Risk: ${envelope.mission.risk}`,
     `Budget ceiling: R$ ${envelope.mission.budgetBrl}`,
     `Constraints: ${envelope.mission.constraints.join(" | ") || "None"}`,
+    ...(envelope.task ? [
+      "Perform only the current task below. Do not complete, skip, or start a later task; Altum will dispatch it separately after the recorded result.",
+      `Current task: ${envelope.task.title}`,
+      `Assigned role: ${envelope.task.agent}`,
+      `Required capability: ${envelope.task.capability}`,
+      `Candidate profile: ${envelope.task.agentCandidateId || "Altum internal worker"} (${envelope.task.agentCandidateStatus || "internal"})`,
+    ] : []),
   ].join("\n");
 }
 
@@ -212,26 +229,27 @@ export default definePluginEntry({
 
     const runMission = (envelope: MissionEnvelope): void => {
       void (async () => {
+        let controller: AbortController | null = null;
         try {
           if (envelope.operation === "pause" || envelope.operation === "cancel") {
             const activeRun = activeRuns.get(envelope.mission.id);
             activeRun?.controller.abort(new Error(`altum_mission_${envelope.operation}`));
             await emitEvent(envelope, {
-              type: envelope.operation === "cancel" ? "mission.cancelled" : "mission.progress",
+              type: envelope.operation === "cancel" ? "mission.cancelled" : "mission.completed",
               message: envelope.operation === "cancel"
                 ? "Missão cancelada pela Altum. O executor recebeu o sinal de parada."
                 : "Missão pausada pela Altum. O executor recebeu o sinal de parada.",
               progress: 0,
             });
-            rememberDispatch(envelope.dispatchId, envelope.operation === "cancel" ? "cancelled" : "accepted");
+            rememberDispatch(envelope.dispatchId, envelope.operation === "cancel" ? "cancelled" : "completed");
             return;
           }
+          controller = new AbortController();
+          activeRuns.set(envelope.mission.id, { dispatchId: envelope.dispatchId, controller });
           await emitEvent(envelope, { type: "mission.progress", message: "Executor interno iniciou a missão.", progress: 5 });
           const config = api.runtime.config.current();
           const agentId = "main";
           await api.runtime.agent.ensureAgentWorkspace();
-          const controller = new AbortController();
-          activeRuns.set(envelope.mission.id, { dispatchId: envelope.dispatchId, controller });
           try {
             const result = await api.runtime.agent.runEmbeddedAgent({
               sessionId: `altum:mission:${envelope.mission.id}`,
@@ -251,7 +269,8 @@ export default definePluginEntry({
             if (current?.dispatchId === envelope.dispatchId) activeRuns.delete(envelope.mission.id);
           }
         } catch (error) {
-          const wasStoppedByAltum = error instanceof Error && error.message.startsWith("altum_mission_");
+          const wasStoppedByAltum = controller?.signal.aborted ||
+            (error instanceof Error && error.message.startsWith("altum_mission_"));
           if (!wasStoppedByAltum) {
             await emitEvent(envelope, {
               type: "mission.failed",
@@ -259,18 +278,22 @@ export default definePluginEntry({
             }).catch(() => undefined);
             rememberDispatch(envelope.dispatchId, "failed");
           }
+        } finally {
+          const current = activeRuns.get(envelope.mission.id);
+          if (current?.dispatchId === envelope.dispatchId) activeRuns.delete(envelope.mission.id);
         }
       })();
     };
 
     const pollAltumForMission = async (signal: AbortSignal): Promise<void> => {
-      if (pullingMission || activeRuns.size > 0) return;
+      if (pullingMission) return;
       const secret = sharedSecret();
       const baseUrl = process.env.ALTUM_PUBLIC_URL?.trim().replace(/\/$/, "");
       if (secret.length < 32 || !baseUrl) return;
       pullingMission = true;
       try {
-        const response = await fetch(`${baseUrl}/api/internal/agent-runtime/missions/next`, {
+        const controlQuery = activeRuns.size > 0 ? "?controlOnly=1" : "";
+        const response = await fetch(`${baseUrl}/api/internal/agent-runtime/missions/next${controlQuery}`, {
           headers: { authorization: `Bearer ${secret}`, accept: "application/json" },
           signal: AbortSignal.any([signal, AbortSignal.timeout(15_000)]),
         });

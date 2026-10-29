@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { FieldValue } from "firebase-admin/firestore";
+import { commercialRecordIdentity, commercialPotentialValue, commercialValueCoverage, type CommercialRecordIdentity } from "@/lib/crm-commercial-record";
 import { adminDb } from "@/app/lib/server/firebase-admin";
 import { requireRequestUser, RouteAuthError } from "@/app/lib/server/route-auth";
 import { assertTenantAccess, assertTenantCapability, assertTenantRole, TenantAccessError } from "@/lib/server/tenant";
@@ -7,9 +7,11 @@ import { assertTenantModule } from "@/lib/server/tenant-entitlements";
 import {
   normalizePipelineStageId,
   normalizePipelineStages,
+  validateCustomizedPipelineStages,
   type PipelineStageDefinition,
 } from "@/lib/pipeline";
-import { buildLeadStagePolicy, loadTenantPipelineConfig } from "@/lib/server/crm/pipeline";
+import { buildLeadStagePolicy, loadTenantPipelineConfig, saveTenantPipelineStages } from "@/lib/server/crm/pipeline";
+import { canAccessAssignedCommercialRecord, hasTeamWideCommercialAccess } from "@/lib/server/commercial-access";
 
 type PipelineCommercialState = {
   lastAiSignals: Array<{
@@ -24,7 +26,7 @@ type PipelineCommercialState = {
   } | null;
 };
 
-type PipelineLead = {
+type PipelineLead = CommercialRecordIdentity & {
   id: string;
   nome: string;
   empresa: string;
@@ -37,7 +39,7 @@ type PipelineLead = {
   score: number | null;
   heat: string;
   priority: string;
-  potentialValue: number;
+  potentialValue: number | null;
   tags: string[];
   source: string;
   status: string;
@@ -166,6 +168,7 @@ function toMillis(value: unknown) {
 function formatLead(docId: string, data: Record<string, unknown>): PipelineLead {
   return {
     id: docId,
+    ...commercialRecordIdentity(data),
     nome: cleanText(data.nome, 180) || "Lead",
     empresa: cleanText(data.empresa, 180),
     photoUrl: cleanText(data.photoUrl, 1000),
@@ -177,10 +180,7 @@ function formatLead(docId: string, data: Record<string, unknown>): PipelineLead 
     score: cleanNumber(data.score),
     heat: cleanText(data.heat, 20),
     priority: cleanText(data.priority, 20),
-    potentialValue:
-      cleanNumber(data.potentialValue) ??
-      cleanNumber(data.valorPotencial) ??
-      0,
+    potentialValue: commercialPotentialValue(data),
     tags: parseTags(data.tags),
     source: cleanText(data.origem || data.channel, 80),
     status: cleanText(data.status, 40) || "novo",
@@ -217,14 +217,18 @@ export async function GET(
     await assertTenantModule(tenantId, "crm");
     assertTenantRole(membership, "client_viewer");
 
+    const teamWideAccess = hasTeamWideCommercialAccess(membership);
+    const leadQuery = adminDb.collection("leads").where("tenantId", "==", tenantId);
     const [{ stages, owners }, leadsSnap] = await Promise.all([
       loadTenantPipelineConfig(tenantId),
-      adminDb.collection("leads").where("tenantId", "==", tenantId).limit(240).get(),
+      (teamWideAccess ? leadQuery : leadQuery.where("ownerId", "==", user.uid)).limit(241).get(),
     ]);
 
     const now = Date.now();
     const stageMap = new Map(stages.map((stage) => [stage.id, stage]));
     const leads = leadsSnap.docs
+      .slice(0, 240)
+      .filter(doc => canAccessAssignedCommercialRecord(membership, user.uid, doc.data()))
       .map((doc) => formatLead(doc.id, doc.data() as Record<string, unknown>))
       .sort((a, b) => getStageStartedAt(b) - getStageStartedAt(a));
 
@@ -252,7 +256,7 @@ export async function GET(
           };
         });
 
-      const value = items.reduce((sum, lead) => sum + Number(lead.potentialValue || 0), 0);
+      const valueCoverage = commercialValueCoverage(items);
       const avgScore =
         items.length > 0
           ? Math.round(
@@ -267,7 +271,7 @@ export async function GET(
       return {
         stage,
         count: items.length,
-        totalValue: value,
+        ...valueCoverage,
         avgScore,
         avgAgeDays,
         slaBreachedCount: items.filter((lead) => Boolean(lead.slaBreached)).length,
@@ -286,14 +290,20 @@ export async function GET(
       ok: true,
       tenantId,
       stages,
-      owners,
+      owners: teamWideAccess ? owners : owners.filter(owner => owner.userId === user.uid),
       columns,
+      coverage: { scope: "loaded_accessible_records", limit: 240, hasMore: leadsSnap.size > 240 },
       summary: {
         totalLeads: leads.length,
+        recordCount: leads.length,
+        explicitOpportunityCount: leads.filter(lead => lead.recordKind === "opportunity").length,
+        legacyRecordCount: leads.filter(lead => lead.recordKind === "legacy").length,
         openCount,
         wonCount,
         lostCount,
         totalValue,
+        knownValueCount: columns.reduce((sum, column) => sum + column.knownValueCount, 0),
+        unknownValueCount: columns.reduce((sum, column) => sum + column.unknownValueCount, 0),
         winRate: leads.length ? Number(((wonCount / leads.length) * 100).toFixed(1)) : 0,
       },
     });
@@ -321,18 +331,11 @@ export async function POST(
     assertTenantCapability(membership, "manage_pipeline");
 
     const body = (await req.json()) as Body;
+    const validationError = validateCustomizedPipelineStages(body.stages);
+    if (validationError) return NextResponse.json({ error: validationError }, { status: 400 });
     const stages = normalizePipelineStages(body.stages);
 
-    await adminDb.collection("pipeline").doc(tenantId).set(
-      {
-        tenantId,
-        stages,
-        updatedAt: FieldValue.serverTimestamp(),
-        updatedBy: user.uid,
-        updatedByName: user.name,
-      },
-      { merge: true }
-    );
+    await saveTenantPipelineStages({ tenantId, stages, actorId: user.uid, actorName: user.name });
 
     return NextResponse.json({ ok: true, tenantId, stages });
   } catch (error) {

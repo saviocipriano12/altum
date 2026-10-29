@@ -1,0 +1,88 @@
+.channelBadge {
+  display: inline-flex;
+  min-width: 0;
+  max-width: 230px;
+  align-items: center;
+  gap: 5px;
+  border: 1px solid var(--cliente-border);
+  border-radius: 999px;
+  padding: 3px 7px 3px 4px;
+  color: var(--cliente-card-text-soft);
+  background: var(--cliente-surface-muted);
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 16px;
+  vertical-align: middle;
+}
+.channelIcon {
+  width: 17px !important;
+  height: 17px !important;
+  border: 0 !important;
+  border-radius: 5px !important;
+  box-shadow: none !important;
+}
+.channelIcon svg { width: 74%; height: 74%; }
+.avatarMark { display: none; }
+
+/* More specific than the shared legacy Inbox !important rules, including mobile audio. */
+:global(.client-portal[data-client-style="v3"][data-client-area="inbox"]) .instagramThread.instagramThread :global(.inbox-chat-wall) {
+  background: var(--cliente-card) !important;
+  background-image: none !important;
+}
+:global(.client-portal[data-client-style="v3"][data-client-area="inbox"]) .instagramThread.instagramThread :global(.inbox-message-in),
+:global(.client-portal[data-client-style="v3"][data-client-area="inbox"]) .instagramThread.instagramThread :global(.inbox-message-out) {
+  max-width: 100% !important;
+  border: 0 !important;
+  border-radius: 21px !important;
+  padding: 10px 14px !important;
+  box-shadow: none !important;
+}
+:global(.client-portal[data-client-style="v3"][data-client-area="inbox"]) .instagramThread.instagramThread :global(.inbox-message-in) {
+  background: color-mix(in srgb, var(--cliente-surface-muted) 86%, var(--cliente-card)) !important;
+  color: var(--cliente-card-text) !important;
+}
+:global(.client-portal[data-client-style="v3"][data-client-area="inbox"]) .instagramThread.instagramThread :global(.inbox-message-out),
+:global(.client-portal[data-client-style="v3"][data-client-area="inbox"]) .instagramThread.instagramThread :global(.inbox-message-out[data-message-type="audio"]) {
+  background: linear-gradient(135deg, #7655ef, #6041d5) !important;
+  color: #fff !important;
+}
+:global(.client-portal[data-client-style="v3"][data-client-area="inbox"]) .instagramThread.instagramThread :global(.inbox-chat-input) {
+  border: 1px solid var(--cliente-border) !important;
+  background: var(--cliente-card) !important;
+  color: var(--cliente-card-text) !important;
+}
+:global(.client-portal[data-client-style="v3"][data-client-area="inbox"]) .instagramThread.instagramThread :global(.inbox-chat-input:focus) {
+  border-color: #8465ee !important;
+  box-shadow: 0 0 0 3px #8465ee18 !important;
+}
+:global(.client-portal[data-client-style="v3"][data-client-area="inbox"]) .instagramThread.instagramThread :global(.inbox-channel-send),
+:global(.client-portal[data-client-style="v3"][data-client-area="inbox"]) .instagramThread.instagramThread :global(.inbox-channel-record) {
+  background: #6945df !important;
+  color: #fff !important;
+}
+:global(.client-portal[data-client-style="v3"][data-client-area="inbox"]) .instagramThread.instagramThread :global(.inbox-quoted-message) { border-color: #a78bfa !important; }
+:global(.client-portal[data-client-style="v3"][data-client-area="inbox"]) .instagramThread.instagramThread :global(.inbox-message-actor) { color: #7953d8 !important; }
+:global(.client-portal[data-client-style="v3"][data-client-area="inbox"]) .instagramThread.instagramThread :global(.inbox-message-out .inbox-message-actor) { color: #f5f3ff !important; }
+:global(.client-portal[data-client-style="v3"][data-client-area="inbox"]) .instagramThread.instagramThread :global(.inbox-message-out .inbox-voice-player),
+:global(.client-portal[data-client-style="v3"][data-client-area="inbox"]) .instagramThread.instagramThread :global(.inbox-message-out .inbox-voice-player button) { color: #fff !important; }
+:global(.client-portal[data-client-style="v3"][data-client-area="inbox"]) .instagramThread.instagramThread :global(.inbox-message-out .inbox-voice-player svg g) { fill: #ffffff65; }
+:global(.client-portal[data-client-style="v3"][data-client-area="inbox"]) .instagramThread.instagramThread :global(.inbox-message-out .inbox-voice-player svg g[clip-path]),
+:global(.client-portal[data-client-style="v3"][data-client-area="inbox"]) .instagramThread.instagramThread :global(.inbox-message-out .inbox-voice-player svg circle) { fill: #fff; }
+:global(.client-portal[data-client-style="v3"][data-client-area="inbox"]) .instagramThread.instagramThread :global(.inbox-message-out .inbox-voice-player svg line) { stroke: #ffffff80; }
+:global(.client-portal[data-client-style="v3"][data-client-area="inbox"]) .instagramThread.instagramThread :global(.inbox-message-meta) { opacity: 1; }
+:global(.client-portal[data-client-style="v3"][data-client-area="inbox"]) .instagramThread.instagramThread :global(.inbox-message-out .inbox-delivery-failure) { color: #ffe4e6 !important; }
+:global(.client-portal[data-client-style="v3"][data-client-area="inbox"]) .instagramThread.instagramThread :global(.inbox-message-out .inbox-delivery-notice) { color: #fef3c7 !important; }
+:global(.client-portal[data-client-style="v3"][data-client-area="inbox"]) .instagramRow.instagramActive {
+  background: color-mix(in srgb, #8465ee 9%, var(--cliente-card)) !important;
+  border-color: color-mix(in srgb, #8465ee 30%, var(--cliente-border)) !important;
+}
+@media (max-width: 1279px) {
+  .avatarMark {
+    position: absolute;
+    right: -4px;
+    bottom: -3px;
+    display: inline-flex;
+    border: 2px solid var(--cliente-card);
+    border-radius: 7px;
+  }
+}

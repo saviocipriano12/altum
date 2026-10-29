@@ -2,12 +2,16 @@ import { NextResponse } from "next/server";
 import { createHash, timingSafeEqual } from "node:crypto";
 import { FieldValue } from "firebase-admin/firestore";
 import { adminDb } from "@/app/lib/server/firebase-admin";
-import { runLeadAutomations } from "@/lib/server/automations";
 import { reactivateTenantAfterBillingPayment } from "@/lib/server/contract-billing";
-import { setLeadPipelineStageWithEffects } from "@/lib/server/crm/stage-transition";
 import { applyPlatformPlanEntitlements } from "@/lib/server/platform-plan-entitlements";
 import { checkoutSubscriptionFields } from "@/lib/asaas-checkout-state";
 import { getBillingBlockAt } from "@/lib/platform-subscription-policy";
+import { asaasCommercialPaymentProof, commitAsaasFinanceMutation } from "@/lib/server/crm/asaas-finance-occurrence";
+import { processFinancePaidOccurrence } from "@/lib/server/crm/finance-paid-occurrence";
+import { processFinanceStageTransition } from "@/lib/server/crm/finance-stage-transition";
+import { commitAsaasLeadPayment } from "@/lib/server/crm/asaas-lead-payment";
+import { commitAsaasCommercialState } from "@/lib/server/crm/asaas-commercial-state";
+import { holdAsaasCommercialContentConflict } from "@/lib/server/crm/asaas-commercial-order";
 
 const ASAAS_WEBHOOK_TOKEN = process.env.ASAAS_WEBHOOK_TOKEN;
 
@@ -98,6 +102,7 @@ function mapWebhookStatus(event: string, payment: Record<string, unknown>): Fina
 
 export async function POST(req: Request) {
   let eventLedgerRef: FirebaseFirestore.DocumentReference | null = null;
+  let ledgerClaimed = false;
   try {
     if (!ASAAS_WEBHOOK_TOKEN) {
       return NextResponse.json(
@@ -135,21 +140,34 @@ export async function POST(req: Request) {
       .update(clean(body?.id, 180) || `${event}:${chargeId || checkoutId || webhookSubscriptionId}:${clean(payment.status, 80) || clean(checkout.status, 80) || clean(subscription.status, 80)}`)
       .digest("hex");
     eventLedgerRef = adminDb.collection("asaas_webhook_events_internal").doc(eventKey);
+    const commercialPayment = chargeId && event.startsWith("PAYMENT_") ? asaasCommercialPaymentProof(event, payment, body.dateCreated) : null;
     const duplicate = await adminDb.runTransaction(async (transaction) => {
       const snapshot = await transaction.get(eventLedgerRef!);
+      if (commercialPayment && snapshot.data()?.commercialPayment && snapshot.data()?.commercialPayment.protocol !== commercialPayment.protocol) {
+        await holdAsaasCommercialContentConflict(transaction, [chargeId, String(snapshot.data()?.chargeId || "")], eventKey, "legacy_proof_protocol_requires_review");
+        return "legacy_proof";
+      }
+      if (commercialPayment && snapshot.data()?.commercialPayment && snapshot.data()?.commercialPayment.fingerprint !== commercialPayment.fingerprint) {
+        await holdAsaasCommercialContentConflict(transaction, [chargeId, String(snapshot.data()?.chargeId || "")], eventKey);
+        return "content_changed";
+      }
       if (snapshot.exists && snapshot.data()?.status === "completed") return true;
       if (snapshot.data()?.status === "processing" && Number(snapshot.data()?.lockUntil) > Date.now()) return "busy";
       transaction.set(eventLedgerRef!, {
         event, chargeId: chargeId || null, checkoutId: checkoutId || null,
         subscriptionId: webhookSubscriptionId || null,
+        ...(commercialPayment ? { commercialPayment } : {}),
         status: "processing", attempts: FieldValue.increment(1),
         lockUntil: Date.now() + 120_000,
         receivedAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp(),
       }, { merge: true });
       return false;
     });
+    if (duplicate === "legacy_proof") throw new Error("ASAAS_PROOF_VERSION_REQUIRES_RECONCILIATION");
+    if (duplicate === "content_changed") throw new Error("ASAAS_EVENT_CONTENT_CHANGED");
     if (duplicate === "busy") return NextResponse.json({ error: "Evento em processamento. Tente novamente." }, { status: 503 });
     if (duplicate === true) return NextResponse.json({ received: true, duplicate: true });
+    ledgerClaimed = true;
 
     if (webhookSubscriptionId && event.startsWith("SUBSCRIPTION_")) {
       let reference = parseSelfServiceReference(subscription.externalReference);
@@ -297,9 +315,10 @@ export async function POST(req: Request) {
           tenantPatch.subscriptionStartedAt = FieldValue.serverTimestamp();
         }
         if (currentTenant.cancelAtPeriodEnd || currentTenant.billingStatus === "refund_pending" || currentTenant.billingStatus === "cancelled" || currentTenant.billingOperationPending) {
-          tenantPatch.billingStatus = currentTenant.billingStatus;
-          tenantPatch.status = currentTenant.status;
-          tenantPatch.platformPlan = currentTenant.platformPlan;
+          for (const key of ["billingStatus", "status", "platformPlan"]) {
+            if (currentTenant[key] === undefined) delete tenantPatch[key];
+            else tenantPatch[key] = currentTenant[key];
+          }
         }
       } else if (mapped.status === "atrasado" && !currentTenant.cancelAtPeriodEnd && !currentTenant.billingOperationPending && !["refund_pending", "cancelled"].includes(String(currentTenant.billingStatus))) {
         tenantPatch.billingStatus = "past_due";
@@ -346,6 +365,11 @@ export async function POST(req: Request) {
       .limit(20)
       .get();
 
+    const leadSnap = await adminDb.collection("leads").where("asaasChargeId", "==", chargeId).limit(2).get();
+    if (!leadSnap.empty && (typeof leadSnap.docs[0].data().tenantId !== "string" || !leadSnap.docs[0].data().tenantId.trim())) throw new Error("ASAAS_CUSTOMER_TENANT_MISSING");
+    if (leadSnap.size > 1 || !leadSnap.empty && financeSnap.size > 1) throw new Error("ASAAS_CUSTOMER_BINDING_AMBIGUOUS");
+    if (!leadSnap.empty && financeSnap.size === 1 && leadSnap.docs[0].data().tenantId !== financeSnap.docs[0].data().tenantId) throw new Error("ASAAS_CUSTOMER_BINDING_OUTSIDE_TENANT");
+
     if (financeSnap.empty && selfService?.tenantId && subscriptionId) {
       const tenant = await adminDb.collection("tenants").doc(selfService.tenantId).get();
       const tenantData = (tenant.data() || {}) as Record<string, unknown>;
@@ -364,15 +388,16 @@ export async function POST(req: Request) {
       }, { merge: true });
     }
 
-    const automationQueue: Array<{ tenantId: string; leadId: string }> = [];
-    const saleQueue: Array<{ tenantId: string; leadId: string; sourceId: string }> = [];
     const reactivationQueue: Array<{ tenantId: string; financeId: string }> = [];
+    const commercialRoots: Array<{ tenantId: string; paidId: string | null; stageId: string | null }> = [];
+    const handledCommercialLeads = new Set<string>();
 
     if (!financeSnap.empty) {
       const updates = financeSnap.docs.map(async (doc) => {
         const current = doc.data() as Record<string, unknown>;
-        const previousStatus = clean(current.status, 40).toLowerCase();
-        const leadId = clean(current.leadId, 140);
+        const projectionOnly = selfService && doc.id === `asaas_subscription_${chargeId}` && !current.leadId;
+        const linkLeadId = !current.leadId && !projectionOnly && leadSnap.size === 1 ? leadSnap.docs[0].id : undefined;
+        const leadId = clean(current.leadId, 140) || linkLeadId || "";
         const tenantId = clean(current.tenantId, 140);
 
         const patch: Record<string, unknown> = {
@@ -388,130 +413,54 @@ export async function POST(req: Request) {
           patch.paymentConfirmedAt = FieldValue.serverTimestamp();
         }
 
+        if (leadId && tenantId && mapped.isPaid) {
+          const billing = selfService || current.contractAutoBilling === true ? { platformTenantId: selfService?.tenantId, subscriptionId: subscriptionId || undefined } : undefined;
+          handledCommercialLeads.add(`${tenantId}:${leadId}`);
+          const result = await commitAsaasFinanceMutation({ financeId: doc.id, ledgerId: eventLedgerRef!.id, chargeId, patch, billing, linkLeadId });
+          handledCommercialLeads.add(`${result.tenantId}:${result.leadId}`);
+          if (result.financePaidOccurrenceId) commercialRoots.push({ tenantId: result.tenantId, paidId: result.financePaidOccurrenceId, stageId: result.financeStageTransitionId });
+          if (billing && !selfService && !("ignored" in result && result.ignored)) reactivationQueue.push({ tenantId, financeId: doc.id });
+          return;
+        }
+        if (leadId && tenantId) {
+          handledCommercialLeads.add(`${tenantId}:${leadId}`);
+          const billing = selfService || current.contractAutoBilling === true ? { platformTenantId: selfService?.tenantId, subscriptionId: subscriptionId || undefined } : undefined;
+          const result = await commitAsaasCommercialState({ financeId: doc.id, ledgerId: eventLedgerRef!.id, chargeId, billing, linkLeadId });
+          handledCommercialLeads.add(`${result.tenantId}:${result.leadId}`); return;
+        }
         await doc.ref.set(patch, { merge: true });
 
-        if (mapped.isPaid && leadId && tenantId && previousStatus !== "pago") {
-          automationQueue.push({ tenantId, leadId });
-          saleQueue.push({ tenantId, leadId, sourceId: doc.id });
-        }
 
-        if (mapped.isPaid && tenantId) {
+        if (mapped.isPaid && tenantId && !selfService) {
           reactivationQueue.push({ tenantId, financeId: doc.id });
         }
       });
       await Promise.all(updates);
     }
 
-    const leadSnap = await adminDb
-      .collection("leads")
-      .where("asaasChargeId", "==", chargeId)
-      .limit(5)
-      .get();
-
     if (!leadSnap.empty) {
       await Promise.all(
         leadSnap.docs.map(async (leadDoc) => {
-          const patch: Record<string, unknown> = {
-            paymentStatus: mapped.status,
-            paymentMethod: clean(payment.billingType, 40) || null,
-            paymentValue: Number(payment.value || 0) || null,
-            updatedAt: FieldValue.serverTimestamp(),
-          };
-
-          if (mapped.isPaid) {
-            patch.status = "qualificado";
-            patch.paidAt = FieldValue.serverTimestamp();
+          const boundTenantId = clean(leadDoc.data().tenantId, 140);
+          if (handledCommercialLeads.has(`${boundTenantId}:${leadDoc.id}`)) return;
+          const projectionOnly = selfService && financeSnap.size === 1 && financeSnap.docs[0].id === `asaas_subscription_${chargeId}` && !financeSnap.docs[0].data().leadId;
+          if (selfService && (financeSnap.empty || projectionOnly)) {
+            const billing = { platformTenantId: selfService.tenantId, subscriptionId: subscriptionId || undefined };
+            if (!mapped.isPaid) { await commitAsaasCommercialState({ leadId: leadDoc.id, ledgerId: eventLedgerRef!.id, chargeId, billing }); return; }
+            const result = await commitAsaasLeadPayment({ leadId: leadDoc.id, ledgerId: eventLedgerRef!.id, chargeId, billing });
+            if (result.financeStageTransitionId) commercialRoots.push({ tenantId: result.tenantId, paidId: null, stageId: result.financeStageTransitionId });
+            return;
           }
-
-          if (mapped.status === "atrasado") {
-            patch.paymentOverdueAt = FieldValue.serverTimestamp();
-          }
-
-          if (mapped.status === "cancelado") {
-            patch.paymentCanceledAt = FieldValue.serverTimestamp();
-          }
-
-          await leadDoc.ref.set(patch, { merge: true });
-          await leadDoc.ref.collection("events").add({
-            type: "system",
-            title: mapped.title,
-            detail: mapped.detail,
-            asaasEvent: event,
-            asaasChargeId: chargeId,
-            createdAt: FieldValue.serverTimestamp(),
-          });
-
-          if (mapped.isPaid) {
-            const lead = leadDoc.data() as Record<string, unknown>;
-            const tenantId = clean(lead.tenantId, 140);
-            if (tenantId) {
-              saleQueue.push({ tenantId, leadId: leadDoc.id, sourceId: chargeId });
+          if (!selfService && financeSnap.empty) {
+            if (!mapped.isPaid) {
+              await commitAsaasCommercialState({ leadId: leadDoc.id, ledgerId: eventLedgerRef!.id, chargeId }); return;
             }
+            const result = await commitAsaasLeadPayment({ leadId: leadDoc.id, ledgerId: eventLedgerRef!.id, chargeId });
+            if (result.paymentObservationId) handledCommercialLeads.add(`${result.tenantId}:${result.leadId}`);
+            if (result.financeStageTransitionId) commercialRoots.push({ tenantId: result.tenantId, paidId: null, stageId: result.financeStageTransitionId });
+            return;
           }
-        })
-      );
-    }
-
-    if (saleQueue.length > 0) {
-      const uniqueSaleQueue = Array.from(
-        new Map(saleQueue.map((item) => [`${item.tenantId}:${item.leadId}`, item])).values()
-      );
-
-      await Promise.all(
-        uniqueSaleQueue.map((item) =>
-          setLeadPipelineStageWithEffects({
-            tenantId: item.tenantId,
-            leadId: item.leadId,
-            nextStage: "ganho",
-            actorId: "asaas_webhook",
-            actorName: "Asaas Webhook",
-            source: "asaas_payment_confirmed",
-            metadata: {
-              asaasChargeId: chargeId,
-              sourceId: item.sourceId,
-              asaasEvent: event,
-              paymentValue: Number(payment.value || 0) || null,
-              paymentMethod: clean(payment.billingType, 40) || null,
-            },
-            patch: {
-              paymentStatus: mapped.status,
-              paidAt: FieldValue.serverTimestamp(),
-            },
-          }).catch((conversionError) => {
-            console.error("[Webhook Asaas] Falha ao marcar venda ganha apos pagamento:", {
-              tenantId: item.tenantId,
-              leadId: item.leadId,
-              error: conversionError,
-            });
-          })
-        )
-      );
-    }
-
-    if (automationQueue.length > 0) {
-      const uniqueAutomationQueue = Array.from(
-        new Map(
-          automationQueue.map((item) => [`${item.tenantId}:${item.leadId}`, item])
-        ).values()
-      );
-
-      await Promise.all(
-        uniqueAutomationQueue.map(async (item) => {
-          try {
-            await runLeadAutomations({
-              tenantId: item.tenantId,
-              trigger: "finance_paid",
-              leadId: item.leadId,
-              actorId: "asaas_webhook",
-              actorName: "Asaas Webhook",
-            });
-          } catch (automationError) {
-            console.error("[Webhook Asaas] Falha ao executar automacoes finance_paid:", {
-              tenantId: item.tenantId,
-              leadId: item.leadId,
-              error: automationError,
-            });
-          }
+          throw new Error("ASAAS_CUSTOMER_BINDING_REQUIRES_REVIEW");
         })
       );
     }
@@ -526,18 +475,26 @@ export async function POST(req: Request) {
             tenantId: item.tenantId,
             financeId: item.financeId,
             asaasChargeId: chargeId,
+            ledgerId: eventLedgerRef!.id,
           }).catch((reactivationError) => {
             console.error("[Webhook Asaas] Falha ao reativar tenant apos pagamento:", {
               tenantId: item.tenantId,
               financeId: item.financeId,
               error: reactivationError,
             });
+            throw reactivationError;
           })
         )
       );
     }
 
     await eventLedgerRef.set({ status: "completed", completedAt: FieldValue.serverTimestamp() }, { merge: true });
+    for (const source of commercialRoots) {
+      try {
+        if (source.stageId) await processFinanceStageTransition(source.stageId, source.tenantId);
+        if (source.paidId) await processFinancePaidOccurrence(source.paidId, source.tenantId);
+      } catch { console.warn("[Webhook Asaas] Ocorrencia comercial persistida; consumidor periodico retomara."); }
+    }
     return NextResponse.json({
       received: true,
       chargeId,
@@ -549,7 +506,7 @@ export async function POST(req: Request) {
     });
   } catch (error) {
     console.error("[Webhook Asaas] Erro critico:", error);
-    if (eventLedgerRef) {
+    if (eventLedgerRef && ledgerClaimed) {
       await eventLedgerRef.set({ status: "failed", error: error instanceof Error ? error.message.slice(0, 500) : "unknown", updatedAt: FieldValue.serverTimestamp() }, { merge: true }).catch(() => undefined);
     }
     return NextResponse.json({ error: "Erro no processamento do webhook" }, { status: 500 });

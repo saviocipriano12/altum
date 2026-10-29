@@ -23,7 +23,7 @@ test("Shopify callback validates HMAC, state and exact shop domain before token 
   assert.match(callback, /verifyShopifyOAuthHmac/);
   assert.match(callback, /consumeCommerceOAuthState/);
   assert.match(callback, /shop !== oauthState\.shopDomain/);
-  assert.match(oauth, /myshopify\\\.com\$\/\.test/);
+  assert.match(source("lib/shopify-connection.ts"), /myshopify\\\.com\$\/\.test/);
   assert.match(oauth, /timingSafeEqual/);
 });
 

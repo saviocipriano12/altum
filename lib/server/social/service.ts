@@ -1,7 +1,8 @@
 import { FieldValue, type DocumentReference } from "firebase-admin/firestore";
+import { randomUUID } from "node:crypto";
 import { adminDb } from "@/app/lib/server/firebase-admin";
+import { withCommercialTaskIndex } from "@/lib/crm-task-index";
 import type { MetaChannelConfig, MetaConversationChannelType } from "@/app/lib/server/meta-channel";
-import { sendMetaConversationText } from "@/app/lib/server/meta-channel";
 import { getMetaChannelForTenant } from "@/app/lib/server/meta-channel";
 import { runLeadAutomations } from "@/lib/server/automations";
 import { buildIncomingChatOperationalPatch, resolveFirstResponseSlaMinutes } from "@/lib/server/chat-operations";
@@ -16,6 +17,8 @@ import {
   type TenantSocialAutomationConfig,
 } from "@/lib/server/social/config";
 import type { ParsedMetaSocialEvent } from "@/lib/server/social/meta";
+import { deliverSocialReply, resumeSocialReply, resumeAcceptedSocialComment } from "./reply-delivery";
+import { createChatOutboundFingerprint } from "../chat-outbound-idempotency";
 
 const VERSION = process.env.META_GRAPH_VERSION || "v21.0";
 
@@ -30,6 +33,8 @@ export type SocialLogStatus =
   | "ignored_opt_out"
   | "ignored_unsupported"
   | "sent"
+  | "queued"
+  | "pending_confirmation"
   | "failed";
 
 type SocialContactState = {
@@ -385,6 +390,7 @@ export async function getTenantSocialAutomationSummary(tenantId: string) {
 
 async function claimSocialEvent(input: {
   tenantId: string;
+  channelId: string;
   channelType: string;
   eventId: string;
   eventType: string;
@@ -403,20 +409,28 @@ async function claimSocialEvent(input: {
     buildSocialLogId(input.tenantId, input.channelType, input.eventId)
   );
 
+  const claimToken = randomUUID();
   const result = await adminDb.runTransaction(async (tx) => {
     const snap = await tx.get(logRef);
     if (snap.exists) {
       const data = snap.data() as Record<string, unknown>;
       const status = cleanText(data.status, 80);
+      if (data.tenantId !== input.tenantId || data.channelType !== input.channelType || data.eventId !== input.eventId ||
+        data.actorId !== input.actorId || data.eventType !== input.eventType || String(data.commentId || "") !== String(input.commentId || "") ||
+        (data.channelId && data.channelId !== input.channelId)) throw new Error("Falha de integridade: evento social fora do escopo original.");
       if (status === "processed" || status === "sent" || status.startsWith("ignored_")) {
         return { shouldProcess: false };
       }
+      if (data.deliveryJobId) return { shouldProcess: false };
+      if (data.preparationProtocol !== 1 && data.preparationProtocol !== 2) throw new Error("Evento social legado sem prova de envio; revisao necessaria.");
+      if (toEpochMs(data.claimUntil) > Date.now()) return { shouldProcess: false };
     }
 
     tx.set(
       logRef,
       {
         tenantId: input.tenantId,
+        channelId: input.channelId,
         channelType: input.channelType,
         eventId: input.eventId,
         eventType: input.eventType,
@@ -431,8 +445,11 @@ async function claimSocialEvent(input: {
         timestamp: typeof input.timestamp === "number" && Number.isFinite(input.timestamp) ? input.timestamp : null,
         field: cleanText(input.field, 80) || null,
         status: "claimed",
+        preparationProtocol: snap.exists ? Number(snap.data()?.preparationProtocol) : 2,
+        claimToken,
+        claimUntil: new Date(Date.now() + 5 * 60000),
         updatedAt: FieldValue.serverTimestamp(),
-        createdAt: FieldValue.serverTimestamp(),
+        ...(!snap.exists ? { createdAt: FieldValue.serverTimestamp(), automationEventProtocol: 1 } : {}),
       },
       { merge: true }
     );
@@ -440,7 +457,7 @@ async function claimSocialEvent(input: {
     return { shouldProcess: true };
   });
 
-  return { logRef, shouldProcess: result.shouldProcess };
+  return { logRef, shouldProcess: result.shouldProcess, claimToken };
 }
 
 async function updateSocialLog(
@@ -543,6 +560,7 @@ async function ensureSocialChatContext(input: {
     .collection("chats")
     .where("tenantId", "==", input.tenantId)
     .where("channel", "==", input.event.channelType)
+    .where("channelId", "==", input.channel.id)
     .where("contactExternalId", "==", input.event.actorId)
     .limit(1)
     .get();
@@ -679,7 +697,7 @@ async function ensureHighIntentTask(input: {
   const created = await adminDb.runTransaction(async (tx) => {
     const snap = await tx.get(taskRef);
     if (snap.exists) return false;
-    tx.set(taskRef, {
+    tx.set(taskRef, withCommercialTaskIndex({
       tenantId: input.tenantId,
       leadId: input.leadId,
       title: "Responder comentario de alta intencao",
@@ -695,7 +713,7 @@ async function ensureHighIntentTask(input: {
       createdByName: "Social Automation",
       createdAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
-    });
+    }));
     return true;
   });
 
@@ -818,51 +836,6 @@ async function generateSocialReply(input: {
   );
 }
 
-async function sendMetaCommentReply(input: {
-  channel: MetaChannelConfig;
-  commentId: string;
-  text: string;
-}) {
-  const response = await fetch(`https://graph.facebook.com/${VERSION}/${input.commentId}/replies`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${input.channel.accessToken}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ message: input.text }),
-  });
-
-  const payload = (await response.json().catch(() => ({}))) as { error?: { message?: string } };
-  if (!response.ok) {
-    throw new Error(payload.error?.message || "Erro na API da Meta ao responder comentario.");
-  }
-
-  return payload;
-}
-
-async function sendInstagramPrivateCommentReply(input: {
-  channel: MetaChannelConfig;
-  commentId: string;
-  text: string;
-}) {
-  const accountId = cleanText(input.channel.externalAccountId, 180);
-  if (!accountId) throw new Error("Conta do Instagram sem identificador para resposta privada.");
-  const response = await fetch(`https://graph.facebook.com/${VERSION}/${accountId}/messages`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${input.channel.accessToken}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      recipient: { comment_id: input.commentId },
-      message: { text: input.text },
-    }),
-  });
-  const payload = (await response.json().catch(() => ({}))) as { error?: { message?: string } };
-  if (!response.ok) throw new Error(payload.error?.message || "Erro na API da Meta ao enviar resposta privada.");
-  return payload;
-}
-
 export async function listInstagramAutomationMedia(tenantId: string) {
   const channel = await getMetaChannelForTenant(tenantId, "instagram");
   if (!channel?.externalAccountId) return [];
@@ -954,9 +927,22 @@ export async function handleMetaSocialEvent(input: {
   event: ParsedMetaSocialEvent;
 }) {
   const { tenantId, channel, event } = input;
+  if (channel.tenantId !== tenantId || channel.type !== event.channelType ||
+    ![channel.externalAccountId, channel.pageId].includes(event.entryId)) throw new Error("Falha de integridade: conta social fora do evento recebido.");
+  const existingRef = adminDb.collection("social_automation_logs").doc(buildSocialLogId(tenantId, event.channelType, event.eventId));
+  const existing = await existingRef.get();
+  if (existing.exists && (existing.data()?.tenantId !== tenantId || existing.data()?.eventId !== event.eventId || existing.data()?.actorId !== event.actorId ||
+    existing.data()?.channelType !== event.channelType || existing.data()?.eventType !== event.eventType || String(existing.data()?.commentId || "") !== String(event.commentId || "") ||
+    (existing.data()?.channelId && existing.data()?.channelId !== channel.id))) throw new Error("Falha de integridade: evento social alterado.");
+  if (existing.data()?.deliveryJobId) return resumeSocialReply({ tenantId, logId: existingRef.id });
+  if (event.eventType === "comment" && event.commentId) {
+    const accepted = await resumeAcceptedSocialComment({ tenantId, channelId: channel.id, commentId: event.commentId });
+    if (accepted) return accepted;
+  }
   const config = await getTenantSocialAutomationConfig(tenantId);
   const claim = await claimSocialEvent({
     tenantId,
+    channelId: channel.id,
     channelType: event.channelType,
     eventId: event.eventId,
     eventType: event.eventType,
@@ -972,19 +958,25 @@ export async function handleMetaSocialEvent(input: {
     field: event.field,
   });
 
+  const updateClaim = async (_ref: DocumentReference, patch: Record<string, unknown>) => adminDb.runTransaction(async tx => {
+    const current = await tx.get(claim.logRef);
+    if (current.data()?.claimToken !== claim.claimToken || current.data()?.deliveryJobId) throw new Error("Posse do preparo social perdida.");
+    tx.update(claim.logRef, { ...patch, updatedAt: FieldValue.serverTimestamp() });
+  });
+
   if (!claim.shouldProcess) {
     return { status: "ignored_duplicate" as const };
   }
 
   const loopGuardIds = buildLoopGuardIds(channel);
   if (loopGuardIds.has(cleanText(event.actorId, 180))) {
-    await updateSocialLog(claim.logRef, { status: "ignored_loop", reason: "Evento originado pela propria conta." });
+    await updateClaim(claim.logRef, { status: "ignored_loop", reason: "Evento originado pela propria conta." });
     return { status: "ignored_loop" as const };
   }
 
   const contactState = await getSocialAutomationContactState(tenantId, event.channelType, event.actorId);
   if (contactState.optedOut) {
-    await updateSocialLog(claim.logRef, { status: "ignored_opt_out", reason: "Contato com opt-out ativo." });
+    await updateClaim(claim.logRef, { status: "ignored_opt_out", reason: "Contato com opt-out ativo." });
     return { status: "ignored_opt_out" as const };
   }
 
@@ -997,17 +989,17 @@ export async function handleMetaSocialEvent(input: {
       optedOut: true,
       reason: event.text,
     });
-    await updateSocialLog(claim.logRef, { status: "ignored_opt_out", reason: "Texto acionou opt-out." });
+    await updateClaim(claim.logRef, { status: "ignored_opt_out", reason: "Texto acionou opt-out." });
     return { status: "ignored_opt_out" as const };
   }
 
   if (!config.enabled) {
-    await updateSocialLog(claim.logRef, { status: "ignored_disabled", reason: "Automacoes sociais desativadas." });
+    await updateClaim(claim.logRef, { status: "ignored_disabled", reason: "Automacoes sociais desativadas." });
     return { status: "ignored_disabled" as const };
   }
 
   if (!isWithinSocialActiveHours(config.activeHours)) {
-    await updateSocialLog(claim.logRef, { status: "ignored_inactive_hours", reason: "Fora da janela ativa configurada." });
+    await updateClaim(claim.logRef, { status: "ignored_inactive_hours", reason: "Fora da janela ativa configurada." });
     return { status: "ignored_inactive_hours" as const };
   }
 
@@ -1041,6 +1033,7 @@ export async function handleMetaSocialEvent(input: {
     await runLeadAutomations({
       tenantId,
       trigger: "message_received",
+      socialClaim: { logId: claim.logRef.id, token: claim.claimToken },
       leadId: match.leadId,
       chatId: match.chatId,
       channel: event.channelType,
@@ -1060,7 +1053,7 @@ export async function handleMetaSocialEvent(input: {
   }
 
   if (!shouldReply) {
-    await updateSocialLog(claim.logRef, {
+    await updateClaim(claim.logRef, {
       status: "processed",
       reason: "Evento persistido sem resposta automatica pela configuracao.",
       leadId: match.leadId,
@@ -1083,46 +1076,22 @@ export async function handleMetaSocialEvent(input: {
       intentHint: intent.reasonLabel,
         });
 
-    if (event.eventType === "comment") {
-      if (!event.commentId) {
-        throw new Error("Comentario sem identificador para reply.");
-      }
-      if (event.channelType === "instagram" && matchingRule?.privateReply) {
-        await sendInstagramPrivateCommentReply({ channel, commentId: event.commentId, text: replyText });
-      } else {
-        await sendMetaCommentReply({ channel, commentId: event.commentId, text: replyText });
-      }
-    } else {
-      await sendMetaConversationText({
-        channel,
-        recipientId: event.actorId,
-        text: replyText,
-      });
-    }
-
-    await updateSocialLog(claim.logRef, {
-      status: "sent",
-      responseText: replyText,
-      leadId: match.leadId,
-      chatId: match.chatId,
-      respondedAt: FieldValue.serverTimestamp(),
-      commercialIntent: intent.reasonLabel,
-      automationRuleId: matchingRule?.id || null,
-      automationRuleName: matchingRule?.name || null,
-    });
-
-    return {
-      status: "sent" as const,
-      responseText: replyText,
-      leadId: match.leadId,
-      chatId: match.chatId,
-    };
+    // Following alone never authorizes a DM; the config keeps that feature disabled.
+    if (event.eventType !== "comment" || !event.commentId || !match.chatId) throw new Error("Resposta social sem comentario ou conversa valida.");
+    return { ...await deliverSocialReply({ tenantId, chatId: match.chatId, claimToken: claim.claimToken, reply: {
+      logId: claim.logRef.id, eventId: event.eventId, channelId: channel.id, channelType: event.channelType,
+      accountId: channel.externalAccountId || channel.pageId || "", pageId: channel.pageId || "", actorId: event.actorId,
+      commentId: event.commentId, postId: event.postId || "", text: replyText,
+      mode: event.channelType === "instagram" && matchingRule?.privateReply ? "private_comment" : "public_comment",
+      ruleId: matchingRule?.id || "", ruleFingerprint: matchingRule ? createChatOutboundFingerprint([matchingRule]) : "",
+    } }), leadId: match.leadId };
   } catch (error) {
-    await updateSocialLog(claim.logRef, {
-      status: "failed",
-      leadId: match.leadId,
-      chatId: match.chatId,
-      error: error instanceof Error ? error.message.slice(0, 280) : "Erro desconhecido.",
+    await adminDb.runTransaction(async tx => {
+      const current = await tx.get(claim.logRef);
+      // An accepted or newer operation owns its own state; never overwrite its receipt.
+      if (current.data()?.claimToken !== claim.claimToken || current.data()?.deliveryJobId) return;
+      tx.update(claim.logRef, { status: "failed", leadId: match.leadId, chatId: match.chatId, claimUntil: new Date(0),
+        error: error instanceof Error ? error.message.slice(0, 280) : "Erro desconhecido.", updatedAt: FieldValue.serverTimestamp() });
     });
     throw error;
   }
@@ -1144,6 +1113,11 @@ export async function retrySocialAutomationLog(input: {
   if (cleanText(logData.tenantId, 180) !== input.tenantId) {
     throw new Error("social_log_tenant_mismatch");
   }
+  if (logData.deliveryJobId) return resumeSocialReply({ tenantId: input.tenantId, logId: logRef.id, retryActor: { id: input.actorId, name: input.actorName } });
+  if (logData.status === "sent" || logData.status === "processed" || String(logData.status).startsWith("ignored_")) {
+    return { status: logData.status as SocialLogStatus, chatId: logData.chatId || null };
+  }
+  if (logData.preparationProtocol !== 1 && logData.preparationProtocol !== 2) throw new Error("Evento social legado sem prova de envio; revisao necessaria.");
 
   const channelType = cleanText(logData.channelType, 40).toLowerCase() as MetaConversationChannelType;
   if (channelType !== "instagram" && channelType !== "messenger") {
@@ -1184,15 +1158,6 @@ export async function retrySocialAutomationLog(input: {
     throw new Error("social_channel_not_found");
   }
 
-  await updateSocialLog(logRef, {
-    status: "retrying",
-    retriedAt: FieldValue.serverTimestamp(),
-    retriedBy: input.actorId,
-    retriedByName: input.actorName,
-    retryCount: FieldValue.increment(1),
-    retryReason: "manual_retry",
-  });
-
   const result = await handleMetaSocialEvent({
     tenantId: input.tenantId,
     channel,
@@ -1211,11 +1176,6 @@ export async function retrySocialAutomationLog(input: {
       timestamp,
       field,
     },
-  });
-
-  await updateSocialLog(logRef, {
-    retriedResult: result.status,
-    retriedCompletedAt: FieldValue.serverTimestamp(),
   });
 
   return result;

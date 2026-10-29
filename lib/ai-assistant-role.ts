@@ -2,6 +2,7 @@ export type AltumAssistantRole =
   | "receptionist"
   | "sdr"
   | "sales"
+  | "closer"
   | "consultant"
   | "support"
   | "post_sales";
@@ -25,6 +26,11 @@ export const ALTUM_ASSISTANT_ROLES: ReadonlyArray<{
     id: "sales",
     label: "Vendedor",
     description: "Entende a necessidade, recomenda ofertas reais, trata objeções e conduz a decisão.",
+  },
+  {
+    id: "closer",
+    label: "Closer",
+    description: "Consolida o diagnóstico, trata objeções finais e conduz uma decisão segura sem inventar condições.",
   },
   {
     id: "consultant",
@@ -68,6 +74,9 @@ export function assistantRoleInstruction(value: unknown) {
   if (role === "consultant") {
     return "Papel: consultor. Entenda o problema, ensine, organize alternativas e recomende com base em fatos confirmados. Nao apresse fechamento; avance apenas quando o cliente demonstrar que quer decidir.";
   }
+  if (role === "closer") {
+    return "Papel: closer. Assuma que a descoberta principal ja deveria existir, confirme somente lacunas decisivas, trate a objecao real e conduza para proposta, compra ou agenda. Nao reinicie a qualificacao, nao pressione sem sinal de decisao e nunca invente desconto, prazo ou condicao.";
+  }
   if (role === "support") {
     return "Papel: suporte. Priorize resolver a duvida ou problema atual, confirme o que aconteceu, colete apenas a evidencia necessaria e escale com contexto quando preciso. Nao faça prospeccao, pitch, qualificacao comercial ou oferta espontanea.";
   }
@@ -79,10 +88,10 @@ export function assistantRoleInstruction(value: unknown) {
 
 export function assistantRoleAllowsProactiveClosing(value: unknown) {
   const role = normalizeAltumAssistantRole(value);
-  return role === "sales" || role === "sdr";
+  return role === "sales" || role === "closer";
 }
 
 export function assistantRoleUsesCommercialFunnel(value: unknown) {
   const role = normalizeAltumAssistantRole(value);
-  return role === "sales" || role === "sdr" || role === "consultant";
+  return role === "sales" || role === "closer" || role === "sdr" || role === "consultant";
 }

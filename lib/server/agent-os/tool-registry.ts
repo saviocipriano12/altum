@@ -68,6 +68,7 @@ export const toolConnectionCreateSchema = z.object({
   baseUrl: z.string().trim().url().max(500).optional().or(z.literal("")),
   credential: z.string().trim().min(4).max(12000).optional().or(z.literal("")),
   chatModel: z.string().trim().max(180).optional().or(z.literal("")),
+  modelCatalog: z.array(z.string().trim().min(1).max(180)).max(200).optional(),
   capabilities: z.array(z.enum(AGENT_CAPABILITIES)).min(1).max(12),
   notes: z.string().trim().max(600).optional(),
 }).superRefine((value, context) => {

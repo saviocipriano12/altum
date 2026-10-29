@@ -4,6 +4,9 @@ import { SiteShell } from "@/components/public/site-shell";
 import { notFound } from "next/navigation";
 import { buildFaqSchema, toJsonLdScript } from "@/lib/schema";
 import { getVerticalBySlug, verticals } from "@/lib/verticals";
+import { getPublicSolution, publicSolutions } from "@/lib/public-solutions";
+import { PublicSolutionPage } from "@/components/public/public-solution";
+import { buildMarketingMetadata } from "@/lib/public-site";
 
 type PageProps = {
   params: Promise<{
@@ -11,7 +14,11 @@ type PageProps = {
   }>;
 };
 
-const SITE_URL = (process.env.NEXT_PUBLIC_SITE_URL || "https://www.altumia.com.br").trim().replace(/\/+$/, "");
+const SITE_URL = (
+  process.env.NEXT_PUBLIC_SITE_URL || "https://www.altumia.com.br"
+)
+  .trim()
+  .replace(/\/+$/, "");
 
 const PILLAR_LINKS = [
   { href: "/automacao-com-ia", label: "Pilar 1: Automacao com IA" },
@@ -22,11 +29,25 @@ const PILLAR_LINKS = [
 export const dynamicParams = false;
 
 export async function generateStaticParams() {
-  return verticals.map((vertical) => ({ vertical: vertical.slug }));
+  return [
+    ...new Set([
+      ...verticals.map((item) => item.slug),
+      ...publicSolutions.map((item) => item.slug),
+    ]),
+  ].map((vertical) => ({ vertical }));
 }
 
-export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
+export async function generateMetadata({
+  params,
+}: PageProps): Promise<Metadata> {
   const { vertical } = await params;
+  const solution = getPublicSolution(vertical);
+  if (solution)
+    return buildMarketingMetadata({
+      title: solution.title,
+      description: solution.description,
+      path: `/solucoes/${solution.slug}`,
+    });
   const page = getVerticalBySlug(vertical);
   if (!page) return {};
 
@@ -57,6 +78,8 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
 
 export default async function VerticalPage({ params }: PageProps) {
   const { vertical } = await params;
+  const solution = getPublicSolution(vertical);
+  if (solution) return <PublicSolutionPage solution={solution} />;
   const page = getVerticalBySlug(vertical);
   if (!page) notFound();
 
@@ -97,90 +120,123 @@ export default async function VerticalPage({ params }: PageProps) {
 
   return (
     <SiteShell>
-    <div className="px-6 py-20 text-white">
-      <section className="mx-auto w-full max-w-4xl">
-        <Link href="/solucoes" className="mb-8 inline-block text-sm font-semibold text-[#60A5FA] hover:text-[#3B82F6]">
-          Voltar para solucoes
-        </Link>
+      <div className="px-6 py-20 text-[#292a2d]">
+        <section className="mx-auto w-full max-w-4xl">
+          <Link
+            href="/solucoes"
+            className="mb-8 inline-block text-sm font-semibold text-[#60A5FA] hover:text-[#3B82F6]"
+          >
+            Voltar para solucoes
+          </Link>
 
-        <p className="mb-3 text-sm uppercase tracking-[0.14em] text-[#60A5FA]">Vertical: {page.name}</p>
-        <h1 className="mb-4 text-4xl font-bold leading-tight md:text-5xl">{page.title}</h1>
-        <p className="mb-10 max-w-3xl text-lg text-white/75">{page.description}</p>
-
-        <section className="mb-8 rounded-2xl border border-white/10 bg-white/5 p-6 md:p-8">
-          <h2 className="mb-4 text-2xl font-semibold">Problemas comuns</h2>
-          <ul className="list-disc space-y-3 pl-6 text-white/85">
-            {page.commonProblems.map((problem) => (
-              <li key={problem}>{problem}</li>
-            ))}
-          </ul>
-        </section>
-
-        <section className="mb-8 rounded-2xl border border-white/10 bg-white/5 p-6 md:p-8">
-          <h2 className="mb-4 text-2xl font-semibold">Como resolvemos</h2>
-          <ul className="list-disc space-y-3 pl-6 text-white/85">
-            {page.howWeSolve.map((solution) => (
-              <li key={solution}>{solution}</li>
-            ))}
-          </ul>
-        </section>
-
-        <section className="mb-8 rounded-2xl border border-white/10 bg-white/5 p-6 md:p-8">
-          <h2 className="mb-4 text-2xl font-semibold">Exemplos de aplicacao</h2>
-          <ul className="list-disc space-y-3 pl-6 text-white/85">
-            {page.examples.map((example) => (
-              <li key={example}>{example}</li>
-            ))}
-          </ul>
-        </section>
-
-        <section className="mb-8 rounded-2xl border border-white/10 bg-white/5 p-6 md:p-8">
-          <h2 className="mb-4 text-2xl font-semibold">Pilares da implementacao</h2>
-          <p className="mb-4 text-white/75">Aprofunde nos pilares que sustentam a operacao. Essas paginas serao detalhadas na sequencia.</p>
-          <div className="grid gap-3 md:grid-cols-3">
-            {PILLAR_LINKS.map((pillar) => (
-              <Link
-                key={pillar.href}
-                href={pillar.href}
-                className="rounded-xl border border-white/15 bg-black/20 px-4 py-3 text-sm font-semibold text-white/90 transition-colors hover:border-[#60A5FA] hover:text-[#60A5FA]"
-              >
-                {pillar.label}
-              </Link>
-            ))}
-          </div>
-        </section>
-
-        <section className="mb-8 rounded-2xl border border-white/10 bg-white/5 p-6 md:p-8">
-          <h2 className="mb-4 text-2xl font-semibold">FAQ</h2>
-          <div className="space-y-4">
-            {faqs.map((faq) => (
-              <article key={faq.q} className="rounded-xl border border-white/10 bg-black/20 p-5">
-                <h3 className="mb-2 text-lg font-semibold">{faq.q}</h3>
-                <p className="text-white/75">{faq.a}</p>
-              </article>
-            ))}
-          </div>
-        </section>
-
-        <section className="rounded-2xl border border-[#60A5FA]/30 bg-[#60A5FA]/10 p-6 md:p-8">
-          <h2 className="mb-3 text-2xl font-semibold">Proximo passo</h2>
-          <p className="mb-5 text-white/85">
-            Se voce atua em {page.name.toLowerCase()} e quer aumentar previsibilidade comercial, podemos montar um plano com metas por etapa do funil.
+          <p className="mb-3 text-sm uppercase tracking-[0.14em] text-[#60A5FA]">
+            Vertical: {page.name}
           </p>
-          <div className="flex flex-wrap gap-3">
-            <Link href="/" className="rounded-full bg-[#60A5FA] px-5 py-2 text-sm font-semibold text-white hover:bg-[#3B82F6]">
-              Solicitar diagnostico
-            </Link>
-            <Link href="/blog" className="rounded-full border border-white/25 px-5 py-2 text-sm font-semibold text-white/90 hover:border-white">
-              Ler conteudo tecnico
-            </Link>
-          </div>
-        </section>
-      </section>
+          <h1 className="mb-4 text-4xl font-bold leading-tight md:text-5xl">
+            {page.title}
+          </h1>
+          <p className="mb-10 max-w-3xl text-lg text-slate-600">
+            {page.description}
+          </p>
 
-      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
-      <script type="application/ld+json" dangerouslySetInnerHTML={toJsonLdScript(faqJsonLd)} />
-    </div>
+          <section className="mb-8 rounded-2xl border border-slate-200 bg-white p-6 md:p-8">
+            <h2 className="mb-4 text-2xl font-semibold">Problemas comuns</h2>
+            <ul className="list-disc space-y-3 pl-6 text-slate-600">
+              {page.commonProblems.map((problem) => (
+                <li key={problem}>{problem}</li>
+              ))}
+            </ul>
+          </section>
+
+          <section className="mb-8 rounded-2xl border border-slate-200 bg-white p-6 md:p-8">
+            <h2 className="mb-4 text-2xl font-semibold">Como resolvemos</h2>
+            <ul className="list-disc space-y-3 pl-6 text-slate-600">
+              {page.howWeSolve.map((solution) => (
+                <li key={solution}>{solution}</li>
+              ))}
+            </ul>
+          </section>
+
+          <section className="mb-8 rounded-2xl border border-slate-200 bg-white p-6 md:p-8">
+            <h2 className="mb-4 text-2xl font-semibold">
+              Exemplos de aplicacao
+            </h2>
+            <ul className="list-disc space-y-3 pl-6 text-slate-600">
+              {page.examples.map((example) => (
+                <li key={example}>{example}</li>
+              ))}
+            </ul>
+          </section>
+
+          <section className="mb-8 rounded-2xl border border-slate-200 bg-white p-6 md:p-8">
+            <h2 className="mb-4 text-2xl font-semibold">
+              Pilares da implementacao
+            </h2>
+            <p className="mb-4 text-slate-600">
+              Aprofunde nos pilares que sustentam a operacao. Essas paginas
+              serao detalhadas na sequencia.
+            </p>
+            <div className="grid gap-3 md:grid-cols-3">
+              {PILLAR_LINKS.map((pillar) => (
+                <Link
+                  key={pillar.href}
+                  href={pillar.href}
+                  className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-600 transition-colors hover:border-[#60A5FA] hover:text-[#60A5FA]"
+                >
+                  {pillar.label}
+                </Link>
+              ))}
+            </div>
+          </section>
+
+          <section className="mb-8 rounded-2xl border border-slate-200 bg-white p-6 md:p-8">
+            <h2 className="mb-4 text-2xl font-semibold">FAQ</h2>
+            <div className="space-y-4">
+              {faqs.map((faq) => (
+                <article
+                  key={faq.q}
+                  className="rounded-xl border border-slate-200 bg-slate-50 p-5"
+                >
+                  <h3 className="mb-2 text-lg font-semibold">{faq.q}</h3>
+                  <p className="text-slate-600">{faq.a}</p>
+                </article>
+              ))}
+            </div>
+          </section>
+
+          <section className="rounded-2xl border border-[#60A5FA]/30 bg-[#60A5FA]/10 p-6 md:p-8">
+            <h2 className="mb-3 text-2xl font-semibold">Proximo passo</h2>
+            <p className="mb-5 text-slate-600">
+              Se voce atua em {page.name.toLowerCase()} e quer aumentar
+              previsibilidade comercial, podemos montar um plano com metas por
+              etapa do funil.
+            </p>
+            <div className="flex flex-wrap gap-3">
+              <Link
+                href="/"
+                className="rounded-full bg-[#60A5FA] px-5 py-2 text-sm font-semibold text-[#292a2d] hover:bg-[#3B82F6]"
+              >
+                Solicitar diagnostico
+              </Link>
+              <Link
+                href="/blog"
+                className="rounded-full border border-slate-200 px-5 py-2 text-sm font-semibold text-slate-600 hover:border-white"
+              >
+                Ler conteudo tecnico
+              </Link>
+            </div>
+          </section>
+        </section>
+
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+        />
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={toJsonLdScript(faqJsonLd)}
+        />
+      </div>
     </SiteShell>
   );
 }

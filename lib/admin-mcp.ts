@@ -21,6 +21,27 @@ export function isChatGptMetadataUrl(value: string) {
 export function isChatGptRedirect(value: string) {
   return value === "https://chatgpt.com/connector_platform_oauth_redirect" || /^https:\/\/chatgpt\.com\/connector\/oauth\/[A-Za-z0-9_-]{1,180}$/.test(value);
 }
+/**
+ * The ChatGPT connector returns to chatgpt.com. Codex Desktop is also an
+ * official OpenAI MCP client, but it completes OAuth through its loopback
+ * callback. Keep that exception tied to Codex's exact metadata document;
+ * verifyClientMetadata still verifies the redirect URI against that document.
+ */
+export function isOpenAiAdminRedirect(clientId: string, value: string) {
+  if (isChatGptRedirect(value)) return true;
+  if (clientId !== "https://chatgpt.com/oauth/codex/client.json") return false;
+  try {
+    const url = new URL(value);
+    // Codex may bind a per-session loopback port. The exact URI is still
+    // checked against the immutable OpenAI client metadata before a code is
+    // issued, so this is only a syntactic pre-check, never a trust decision.
+    return url.protocol === "http:" && (url.hostname === "127.0.0.1" || url.hostname === "localhost");
+  } catch { return false; }
+}
+/** Codex Desktop may hand its OAuth completion back to the ChatGPT host. */
+export function isCodexChatGptHostedRedirect(clientId: string, value: string) {
+  return clientId === "https://chatgpt.com/oauth/codex/client.json" && isChatGptRedirect(value);
+}
 export function adminMcpMetadata(origin: string) {
   return { issuer: origin + ADMIN_MCP_ISSUER_PATH, authorization_endpoint: origin + ADMIN_MCP_ISSUER_PATH + "/authorize", token_endpoint: origin + ADMIN_MCP_ISSUER_PATH + "/token", response_types_supported: ["code"], grant_types_supported: ["authorization_code", "refresh_token"], code_challenge_methods_supported: ["S256"], token_endpoint_auth_methods_supported: ["none"], scopes_supported: [...scopes, "offline_access"], client_id_metadata_document_supported: true, authorization_response_iss_parameter_supported: true };
 }

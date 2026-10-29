@@ -1,0 +1,5 @@
+{
+  "extends": "./tsconfig.json",
+  "include": ["app/cliente/painel/crm/page.tsx", "app/cliente/painel/pipeline/page.tsx", "tests/crm-pipeline-view.test.mts"],
+  "exclude": ["node_modules", ".qa-artifacts", ".next", "_benchmark"]
+}

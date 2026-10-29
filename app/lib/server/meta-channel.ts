@@ -1,7 +1,7 @@
 import { adminDb } from "@/app/lib/server/firebase-admin";
 import { decryptSecret } from "@/app/lib/server/secret-crypto";
 
-const VERSION = process.env.META_GRAPH_VERSION || "v21.0";
+const VERSION = process.env.META_GRAPH_VERSION?.trim() || "v21.0";
 
 export type MetaConversationChannelType = "instagram" | "messenger";
 export type MetaWebhookChannelType = MetaConversationChannelType | "meta_ads";
@@ -436,16 +436,16 @@ export async function fetchMetaConversationProfile(input: {
 
   const fieldSets =
     input.channel.type === "instagram"
-      ? ["name,username,profile_pic", "name,profile_pic", "username,profile_pic"]
+      ? ["name,username,profile_pic", "name,username", "username", "name"]
       : ["first_name,last_name,profile_pic", "name,profile_pic"];
 
   for (const fields of fieldSets) {
     const url = new URL(`https://graph.facebook.com/${VERSION}/${encodeURIComponent(userId)}`);
     url.searchParams.set("fields", fields);
-    url.searchParams.set("access_token", input.channel.accessToken);
-
-    const response = await fetch(url, { cache: "no-store" });
+    const response = await fetch(url, { cache: "no-store", headers: { Authorization: `Bearer ${input.channel.accessToken}` }, signal: AbortSignal.timeout(5000) }).catch(() => null);
+    if (!response) continue;
     const payload = (await response.json().catch(() => ({}))) as Record<string, unknown>;
+    if ((payload.error as { code?: number } | undefined)?.code === 190) return null;
     if (!response.ok) continue;
 
     const firstName = normalizeString(payload.first_name, 120);
@@ -456,7 +456,7 @@ export async function fetchMetaConversationProfile(input: {
     const username = normalizeString(payload.username, 180);
     const photoUrl = normalizeString(payload.profile_pic, 1200);
 
-    if (name || username || photoUrl) {
+    if (name || username) {
       return {
         name,
         username,

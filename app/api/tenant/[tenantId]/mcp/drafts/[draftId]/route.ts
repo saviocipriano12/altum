@@ -3,6 +3,9 @@ import { FieldValue } from "firebase-admin/firestore";
 import { adminDb } from "@/app/lib/server/firebase-admin";
 import { requireRequestUser, RouteAuthError } from "@/app/lib/server/route-auth";
 import { assertTenantAccess, assertTenantCapability, TenantAccessError } from "@/lib/server/tenant";
+import { crmDraftTypes, crmDraftFingerprint } from "@/lib/server/crm/draft-mutation";
+import { assertAssignedCommercialRecordAccess } from "@/lib/server/commercial-access";
+import {assertTransactionalTenantAuthority} from "@/lib/server/tenant-operation-authority";
 
 export const dynamic = "force-dynamic";
 
@@ -37,7 +40,34 @@ export async function PATCH(
       if (!["pending_review", "approved_pending_apply"].includes(String(data.status)) || data.appliedAt) {
         throw new RouteAuthError(409, "draft_not_reviewable", "Este rascunho já foi encerrado ou está em execução. Crie uma nova recomendação.");
       }
+      let crmReview: Record<string, unknown> = {};
+      if (data.type === "create_appointment") {
+        const reviewer = await assertTransactionalTenantAuthority(transaction, {tenantId, userId: user.uid, capability: "manage_settings", module: "crm"});
+        if (action === "approve") {
+          const proposed = data.proposedChange && typeof data.proposedChange === "object" ? data.proposedChange as Record<string, unknown> : {};
+          const leadId = clean(proposed.leadId, 180);
+          if (proposed.leadId !== undefined && (!leadId || leadId !== proposed.leadId || leadId.includes("/"))) throw new RouteAuthError(409, "invalid_draft_target", "Cliente do agendamento inválido.");
+          const lead = leadId ? await transaction.get(adminDb.collection("leads").doc(leadId)) : null;
+          if (lead && (!lead.exists || lead.data()?.tenantId !== tenantId)) throw new RouteAuthError(403, "draft_target_forbidden", "Cliente fora desta empresa.");
+          if (lead) assertAssignedCommercialRecordAccess(reviewer, user.uid, lead.data()!);
+          crmReview = {reviewDecision: "human_review", reviewedChangeFingerprint: crmDraftFingerprint(data),
+            ...(lead ? {reviewedLeadId: leadId, reviewedLeadVersion: lead.updateTime!, reviewedLeadGeneration: lead.createTime!} : {})};
+        }
+      }
+      if (action === "approve" && data.type === "create_lead") {
+        crmReview = { reviewDecision: "human_review", reviewedChangeFingerprint: crmDraftFingerprint(data) };
+      }
+      if (action === "approve" && crmDraftTypes.has(String(data.type))) {
+        const proposed = data.proposedChange && typeof data.proposedChange === "object" ? data.proposedChange as Record<string, unknown> : {};
+        const leadId = clean(proposed.leadId, 180);
+        if (!leadId || leadId !== proposed.leadId || leadId.includes("/")) throw new RouteAuthError(409, "invalid_draft_target", "Cliente do rascunho invalido.");
+        const lead = await transaction.get(adminDb.collection("leads").doc(leadId));
+        if (!lead.exists || lead.data()?.tenantId !== tenantId) throw new RouteAuthError(403, "draft_target_forbidden", "Cliente fora desta empresa.");
+        assertAssignedCommercialRecordAccess(membership, user.uid, lead.data()!);
+        crmReview = { reviewDecision: "human_review", reviewedLeadId: leadId, reviewedLeadVersion: lead.updateTime!, reviewedChangeFingerprint: crmDraftFingerprint(data) };
+      }
       transaction.set(ref, {
+        ...crmReview,
         status,
         reviewNotes: clean(body.notes, 800),
         reviewedAt: FieldValue.serverTimestamp(),

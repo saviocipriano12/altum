@@ -19,7 +19,7 @@ Antes de incorporar código: travar commit, conferir licença e dependências, r
 | [LTX Desktop](https://github.com/Lightricks/LTX-Desktop) | Vídeo local/híbrido | Tratar como executor local opcional, ligado por bridge autenticada. A Altum envia job e recebe status/artefato; não tenta instalar modelos ou usar GPU do usuário silenciosamente. | **Prioridade alta quando houver GPU compatível; alternativa privada a APIs.** |
 | [ComfyUI](https://github.com/comfyanonymous/ComfyUI) | Imagem e fluxos locais | Usar somente como processo externo opcional através da API/bridge, mantendo workflows aprovados e presets da Altum. Sua licença GPL requer revisão jurídica antes de qualquer incorporação. | **Prioridade alta para executor externo de imagem/edição privada.** |
 | [Remotion](https://github.com/remotion-dev/remotion) + FFmpeg | Vídeo previsível | Usar para carrosséis, legendas, cortes, motion, vídeo tipográfico, episódios e composições. É complementar ao vídeo generativo, não um substituto. | **Prioridade alta: integrar ao worker de mídia.** |
-| [FreeLLMAPI](https://github.com/xxy2026/freellmapi) | Roteador de texto, imagem e áudio | Rodar o serviço original como sidecar privado e usar seus contratos OpenAI-compatible: chat, embeddings, `/v1/images/generations`, `/v1/audio/speech`, catálogo de mídia, cooldown, rate-limit por chave e fallback. Vídeo continua em adaptadores próprios, pois este runtime não entrega geração de vídeo. | **Adotar como worker interno; nunca expor dashboard ou credenciais ao cliente.** |
+| [FreeLLMAPI](https://github.com/xxy2026/freellmapi) | Roteador de texto, visão de entrada e embeddings | Rodar o serviço original como sidecar privado e usar seus contratos OpenAI-compatible de chat, tools, visão de entrada, embeddings, catálogo, cooldown, rate-limit por chave e fallback. A versão fixada não implementa geração de imagem, voz ou vídeo. | **Adotar como gateway interno de linguagem; nunca expor dashboard ou credenciais ao cliente.** |
 | [OpenClaw](https://github.com/openclaw/openclaw) | Runtime privado de agentes | Manter um fork versionado e isolado, com bridge autenticado Altum↔OpenClaw para sessões, skills, tarefas e eventos. Não expor sua interface, gateway administrativo ou configuração de host. | **Runtime interno selecionado (MIT); bridge Altum próprio.** |
 | [Hermes](https://github.com/hermes-agent-org/hermes) | Skills, MCP e memória operacional | Reaproveitar os padrões de manifest de skill, filtro de ferramentas MCP, resumo de sessão e controle de capacidades. Visibilidade de skill não é sandbox: execução continua isolada pela Altum. | **Referência estrutural e possível fonte de skills curadas.** |
 | [browser-use](https://github.com/browser-use/browser-use) | Navegação e trabalho em sites | Oferecer como worker supervisionado: domínio permitido, plano no chat, screenshot/evidência, sessão isolada e parada obrigatória em login, CAPTCHA, pagamento, envio ou publicação. | **Fase de browser supervisionado; não liberar autonomia irrestrita.** |
@@ -33,7 +33,7 @@ Antes de incorporar código: travar commit, conferir licença e dependências, r
 Comando Altum (uma conversa e uma biblioteca)
   → Orquestradora + memória + políticas
     → router por modalidade/custo/qualidade/privacidade
-      → Texto, imagem e áudio: FreeLLMAPI / providers conectados
+      → Texto, visão de entrada e embeddings: FreeLLMAPI / providers conectados
       → Imagem e vídeo especializados: FAL / Replicate / Higgsfield / ComfyUI local
       → Vídeo: Higgsfield / FAL / LTX local / pipeline OpenMontage
       → Composição: Remotion + FFmpeg
@@ -93,9 +93,9 @@ Esta seção distingue **código que poderá ser incorporado ou chamado**, **int
 
 ### FreeLLMAPI — executar o serviço original, com adapter Altum (MIT)
 
-- Usar o runtime original como sidecar privado: `AltumRouter → FreeLLMAPI → providers` para chat, embeddings, imagem e áudio.
+- Usar o runtime original como sidecar privado: `AltumRouter → FreeLLMAPI → providers` para chat, tools, visão de entrada e embeddings.
 - Manter os contratos de fallback do projeto: candidatos por modalidade separados, ordem configurável, cooldown após `429`/`5xx`/timeout, rastreio de quota por chave, health check e telemetria de rota.
-- Integrar os endpoints já prontos `/v1/chat/completions`, `/v1/embeddings`, `/v1/images/generations` e `/v1/audio/speech`; a Altum apenas persiste o ativo, apresenta o progresso e aplica tenant/política/consentimento.
+- Integrar os endpoints já prontos `/v1/chat/completions`, `/v1/responses`, `/v1/models` e `/v1/embeddings`. Geração de imagem, voz e vídeo permanece em adaptadores específicos até o upstream suportá-las.
 - **Não copiar/expor:** dashboard React, autenticação single-user, billing ou UX de configuração. A Altum fornece sua própria camada de tenant/política/auditoria.
 
 ### OpenClaw — runtime interno versionado (MIT)

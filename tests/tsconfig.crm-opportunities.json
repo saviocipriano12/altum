@@ -1,0 +1,6 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": { "incremental": false },
+  "include": ["./crm-opportunities.emulator.mts", "../lib/server/crm/opportunities.ts", "../app/api/tenant/[tenantId]/leads/[leadId]/opportunities/route.ts"],
+  "exclude": ["../node_modules", "../.next", "../.qa-artifacts"]
+}

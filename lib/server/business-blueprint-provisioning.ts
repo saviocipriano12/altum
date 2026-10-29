@@ -16,10 +16,16 @@ export async function applyBusinessBlueprint(input: {
   const tenantKey = safeId(input.tenantId);
   const pipelineRef = adminDb.collection("pipeline").doc(input.tenantId);
   const automationRefs = input.blueprint.automations.map((item) => adminDb.collection("automations").doc(`blueprint_${tenantKey}_${item.key}`));
-  const [pipelineSnap, ...automationSnaps] = await Promise.all([pipelineRef.get(), ...automationRefs.map((ref) => ref.get())]);
+  return adminDb.runTransaction(async (transaction) => {
+  const [pipelineSnap, legacyPipelines, ...automationSnaps] = await Promise.all([
+    transaction.get(pipelineRef),
+    transaction.get(adminDb.collection("pipeline").where("tenantId", "==", input.tenantId).limit(1)),
+    ...automationRefs.map((ref) => transaction.get(ref)),
+  ]);
   const existingPipeline = pipelineSnap.exists ? (pipelineSnap.data() as Record<string, unknown>) : null;
-  const canManagePipeline = !existingPipeline || existingPipeline.blueprintManaged === true;
-  const batch = adminDb.batch();
+  const canManagePipeline = (!existingPipeline && legacyPipelines.empty) ||
+    (existingPipeline?.tenantId === input.tenantId && existingPipeline.blueprintManaged === true && existingPipeline.customizationSource !== "manual");
+  const batch = transaction;
 
   if (canManagePipeline) {
     batch.set(pipelineRef, {
@@ -102,7 +108,6 @@ export async function applyBusinessBlueprint(input: {
     automationCount: input.blueprint.automations.length,
     createdAt: FieldValue.serverTimestamp(),
   });
-  await batch.commit();
-
   return { pipelineApplied: canManagePipeline, pipelinePreserved: !canManagePipeline, automationsCreated, automationsUpdated, knowledgeDocsCreated: knowledgeDocs.length };
+  });
 }

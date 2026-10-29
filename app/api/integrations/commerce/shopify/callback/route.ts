@@ -9,6 +9,11 @@ import {
 } from "@/lib/server/commerce/oauth";
 import { syncCommerceConnection } from "@/lib/server/commerce/sync";
 import { ensureShopifyWebhookSubscriptions } from "@/lib/server/commerce/shopify-webhooks";
+import { assertTenantAccess, assertTenantCapability } from "@/lib/server/tenant";
+import { assertTenantModule } from "@/lib/server/tenant-entitlements";
+import { missingShopifyScopes } from "@/lib/shopify-connection";
+
+export const maxDuration = 300;
 
 function clean(value: unknown, max = 1000) {
   return typeof value === "string" ? value.trim().slice(0, max) : "";
@@ -31,6 +36,9 @@ export async function GET(req: Request) {
     const oauthState = await consumeCommerceOAuthState(state, "shopify");
     redirectPath = oauthState.redirectPath;
     if (shop !== oauthState.shopDomain) throw new Error("shopify_oauth_shop_mismatch");
+    const membership = await assertTenantAccess(oauthState.userId, oauthState.tenantId);
+    assertTenantCapability(membership, "manage_channels");
+    await assertTenantModule(oauthState.tenantId, "commerce");
     const tokenResponse = await fetch(`https://${shop}/admin/oauth/access_token`, {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" },
@@ -40,6 +48,7 @@ export async function GET(req: Request) {
     const tokenData = (await tokenResponse.json().catch(() => ({}))) as { access_token?: unknown; scope?: unknown };
     const accessToken = clean(tokenData.access_token, 12000);
     if (!tokenResponse.ok || !accessToken) throw new Error("shopify_oauth_token_exchange_failed");
+    if (missingShopifyScopes(env.scopes, clean(tokenData.scope, 1000)).length) throw new Error("shopify_oauth_scopes_missing");
     const connection = await saveManagedCommerceConnection({
       provider: "shopify",
       tenantId: oauthState.tenantId,
@@ -49,6 +58,7 @@ export async function GET(req: Request) {
       storeUrl: `https://${shop}`,
       accessToken,
       scope: clean(tokenData.scope, 1000),
+      connectionId: oauthState.connectionId,
     });
 
     let syncWarning = "";

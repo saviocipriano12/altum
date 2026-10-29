@@ -18,6 +18,17 @@ import {
   type AiEvaluationPreview,
   type AiEvaluationRunItem,
 } from "@/lib/ai-evaluation";
+import {
+  compareAiEvaluationRuns,
+  selectAiEvaluationReferenceBaseline,
+  type AiEvaluationComparableResult,
+  type AiEvaluationComparableRun,
+} from "@/lib/ai-evaluation-baseline";
+import {
+  summarizeAiEvaluationStability,
+  type AiEvaluationOutcomeRun,
+} from "@/lib/ai-evaluation-stability";
+import { buildAiEvaluationContextFingerprint } from "@/lib/ai-evaluation-context";
 
 type SubmittedResult = {
   scenarioId?: string;
@@ -28,6 +39,7 @@ type SubmittedResult = {
 type Body = {
   results?: SubmittedResult[];
   source?: string;
+  learningRecommendationFingerprint?: string;
 };
 
 function clean(value: unknown, max = 240) {
@@ -63,7 +75,63 @@ function publicRun(id: string, data: Record<string, unknown>) {
     summary: data.summary || null,
     results: Array.isArray(data.results) ? data.results : [],
     scenarioVersion: clean(data.scenarioVersion, 40) || AI_EVALUATION_SCENARIO_VERSION,
+    baselineComparison: data.baselineComparison || null,
+    stability: data.stability || null,
+    tenantContextFingerprint: clean(data.tenantContextFingerprint, 160) || null,
+    learningRecommendationFingerprint: clean(data.learningRecommendationFingerprint, 160) || null,
     createdAt: data.createdAt || null,
+  };
+}
+
+function toComparableRun(
+  id: string,
+  tenantId: string,
+  scenarioVersion: string,
+  summary: ReturnType<typeof summarizeAiEvaluation>,
+  results: AiEvaluationComparableResult[]
+): AiEvaluationComparableRun {
+  return { id, tenantId, scenarioVersion, summary, results };
+}
+
+function storedComparableRun(
+  id: string,
+  data: Record<string, unknown>
+): AiEvaluationComparableRun | null {
+  if (!data.summary || !Array.isArray(data.results)) return null;
+  const tenantId = clean(data.tenantId, 120);
+  const scenarioVersion = clean(data.scenarioVersion, 40);
+  if (!tenantId || !scenarioVersion) return null;
+  const results = data.results
+    .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === "object")
+    .map((item) => ({
+      scenarioId: clean(item.scenarioId, 80),
+      passed: item.passed === true,
+      error: clean(item.error, 240) || null,
+      latencyMs: typeof item.latencyMs === "number" ? item.latencyMs : null,
+      estimatedCostUsd:
+        typeof item.estimatedCostUsd === "number" ? item.estimatedCostUsd : null,
+    }));
+  return toComparableRun(
+    id,
+    tenantId,
+    scenarioVersion,
+    data.summary as ReturnType<typeof summarizeAiEvaluation>,
+    results
+  );
+}
+
+function storedOutcomeRun(id: string, data: Record<string, unknown>): AiEvaluationOutcomeRun | null {
+  const scenarioVersion = clean(data.scenarioVersion, 40);
+  if (!scenarioVersion || !Array.isArray(data.results)) return null;
+  return {
+    id,
+    scenarioVersion,
+    results: data.results
+      .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === "object")
+      .map((item) => ({
+        scenarioId: clean(item.scenarioId, 80),
+        passed: item.passed === true,
+      })),
   };
 }
 
@@ -114,6 +182,7 @@ export async function POST(req: Request, context: { params: Promise<{ tenantId: 
     assertTenantCapability(membership, "manage_ai");
 
     const body = (await req.json()) as Body;
+    const requestedLearningFingerprint = clean(body.learningRecommendationFingerprint, 160);
     const submitted = Array.isArray(body.results) ? body.results : [];
     const uniqueScenarioIds = new Set(submitted.map((item) => clean(item.scenarioId, 80)).filter(Boolean));
     const expectedScenarioIds = new Set(AI_EVALUATION_SCENARIOS.map((scenario) => scenario.id));
@@ -176,6 +245,8 @@ export async function POST(req: Request, context: { params: Promise<{ tenantId: 
         ? "avaliacao_sem_resposta_do_modelo"
         : preview.runtime.providerFallbackTriggered
           ? "avaliacao_com_fallback_de_provedor"
+          : requestedLearningFingerprint && preview.runtime.learningRecommendationFingerprint !== requestedLearningFingerprint
+            ? "recomendacao_de_aprendizado_nao_aplicada_na_prova"
           : null;
       return {
         scenarioId,
@@ -211,9 +282,99 @@ export async function POST(req: Request, context: { params: Promise<{ tenantId: 
       latencyMs: typeof item.preview?.runtime?.latencyMs === "number" ? item.preview.runtime.latencyMs : null,
       estimatedCostUsd:
         typeof item.preview?.runtime?.estimatedCostUsd === "number" ? item.preview.runtime.estimatedCostUsd : null,
+      tenantContextFingerprint: clean(item.preview?.runtime?.tenantContextFingerprint, 160) || null,
+      roleContractFingerprint: clean(item.preview?.runtime?.roleContractFingerprint, 160) || null,
+      roleContractVersion: clean(item.preview?.runtime?.roleContractVersion, 80) || null,
+      effectiveAssistantRole: clean(item.preview?.runtime?.effectiveAssistantRole, 40) || null,
+      specialistSupervisorVersion: clean(item.preview?.runtime?.specialistSupervisorVersion, 80) || null,
+      specialistExecutionVersion: clean(item.preview?.runtime?.specialistExecutionVersion, 80) || null,
+      actionPlanVersion: clean(item.preview?.runtime?.actionPlanVersion, 80) || null,
+      actionPlanFingerprint: clean(item.preview?.runtime?.actionPlanFingerprint, 160) || null,
+      actionPlanExecutionMode: clean(item.preview?.runtime?.actionPlanExecutionMode, 40) || null,
+      actionPlanReadySteps: (item.preview?.runtime?.actionPlanReadySteps || []).map((step) => clean(step, 80)).filter(Boolean).slice(0, 20),
+      actionPlanApprovalSteps: (item.preview?.runtime?.actionPlanApprovalSteps || []).map((step) => clean(step, 80)).filter(Boolean).slice(0, 20),
+      actionPlanBlockedSteps: (item.preview?.runtime?.actionPlanBlockedSteps || []).map((step) => clean(step, 80)).filter(Boolean).slice(0, 20),
+      responseComposerVersion: clean(item.preview?.runtime?.responseComposerVersion, 80) || null,
+      responseValidationStatus: clean(item.preview?.runtime?.responseValidationStatus, 40) || null,
+      learningRecommendationFingerprint: clean(item.preview?.runtime?.learningRecommendationFingerprint, 160) || null,
+      specialistSupervisorMode: clean(item.preview?.runtime?.specialistSupervisorMode, 40) || null,
+      specialistSupervisorReason: clean(item.preview?.runtime?.specialistSupervisorReason, 120) || null,
+      specialistOutputStatus: clean(item.preview?.runtime?.specialistOutputStatus, 40) || null,
+      specialistBlockedReasons: (item.preview?.runtime?.specialistBlockedReasons || [])
+        .map((reason) => clean(reason, 120))
+        .filter(Boolean)
+        .slice(0, 12),
+      roleReadiness: clean(item.preview?.runtime?.roleReadiness, 40) || null,
+      missingRoleSignals: (item.preview?.runtime?.missingRoleSignals || [])
+        .map((signal) => clean(signal, 80))
+        .filter(Boolean)
+        .slice(0, 12),
     }));
 
     const ref = adminDb.collection("ai_evaluation_runs").doc();
+    const candidateRun = toComparableRun(
+      ref.id,
+      tenantId,
+      AI_EVALUATION_SCENARIO_VERSION,
+      summary,
+      persistedResults
+    );
+    const previousSnap = await adminDb
+      .collection("ai_evaluation_runs")
+      .where("tenantId", "==", tenantId)
+      .limit(30)
+      .get();
+    const baselineRun = selectAiEvaluationReferenceBaseline(
+      previousSnap.docs.flatMap((doc) => {
+        const run = storedComparableRun(doc.id, doc.data() as Record<string, unknown>);
+        return run ? [{ run, createdAtMs: toMillis(doc.data().createdAt) }] : [];
+      }),
+      { tenantId, scenarioVersion: AI_EVALUATION_SCENARIO_VERSION }
+    );
+    const baselineComparison = compareAiEvaluationRuns(baselineRun, candidateRun);
+    const tenantContextFingerprint = buildAiEvaluationContextFingerprint(
+      persistedResults.map((result) => ({
+        scenarioId: result.scenarioId,
+        tenantContextFingerprint: result.tenantContextFingerprint,
+        roleContractFingerprint: result.roleContractFingerprint,
+        effectiveAssistantRole: result.effectiveAssistantRole,
+        specialistSupervisorVersion: result.specialistSupervisorVersion,
+        specialistExecutionVersion: result.specialistExecutionVersion,
+        actionPlanVersion: result.actionPlanVersion,
+        responseComposerVersion: result.responseComposerVersion,
+        learningRecommendationFingerprint: result.learningRecommendationFingerprint,
+      }))
+    );
+    const previousStabilityRuns = tenantContextFingerprint
+      ? previousSnap.docs
+          .map((doc) => ({
+            run: storedOutcomeRun(doc.id, doc.data() as Record<string, unknown>),
+            scenarioVersion: clean(doc.data().scenarioVersion, 40),
+            fingerprint: clean(doc.data().tenantContextFingerprint, 160),
+            createdAtMs: toMillis(doc.data().createdAt),
+          }))
+          .filter((item): item is { run: AiEvaluationOutcomeRun; scenarioVersion: string; fingerprint: string; createdAtMs: number } =>
+            Boolean(item.run) &&
+            item.scenarioVersion === AI_EVALUATION_SCENARIO_VERSION &&
+            item.fingerprint === tenantContextFingerprint
+          )
+          .sort((a, b) => b.createdAtMs - a.createdAtMs)
+          .slice(0, 2)
+          .reverse()
+          .map((item) => item.run)
+      : [];
+    const stability = summarizeAiEvaluationStability([
+      ...previousStabilityRuns,
+      {
+        id: ref.id,
+        scenarioVersion: AI_EVALUATION_SCENARIO_VERSION,
+        results: persistedResults.map((result) => ({
+          scenarioId: result.scenarioId,
+          passed: result.passed,
+        })),
+      },
+    ]);
+
     await ref.set({
       tenantId,
       createdBy: user.uid,
@@ -221,6 +382,10 @@ export async function POST(req: Request, context: { params: Promise<{ tenantId: 
       scenarioVersion: AI_EVALUATION_SCENARIO_VERSION,
       summary,
       results: persistedResults,
+      baselineComparison,
+      tenantContextFingerprint,
+      stability,
+      learningRecommendationFingerprint: requestedLearningFingerprint || null,
       createdAt: FieldValue.serverTimestamp(),
     });
 
@@ -233,6 +398,10 @@ export async function POST(req: Request, context: { params: Promise<{ tenantId: 
         scenarioVersion: AI_EVALUATION_SCENARIO_VERSION,
         summary,
         results: persistedResults,
+        baselineComparison,
+        tenantContextFingerprint,
+        stability,
+        learningRecommendationFingerprint: requestedLearningFingerprint || null,
         createdAt: Date.now(),
       },
     });

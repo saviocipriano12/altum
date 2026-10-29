@@ -1,5 +1,7 @@
 import { FieldValue } from "firebase-admin/firestore";
+import { purchaseConversationWindow } from "./purchase-conversation-window";
 import { adminDb } from "@/app/lib/server/firebase-admin";
+import { withCommercialTaskIndex } from "@/lib/crm-task-index";
 import { normalizePipelineStageId } from "@/lib/pipeline";
 import { buildLeadHandoffContext } from "@/lib/server/crm/handoff";
 import { buildLeadStagePolicy, comparePipelineStages, loadTenantPipelineConfig } from "@/lib/server/crm/pipeline";
@@ -8,6 +10,10 @@ import { buildLeadSchedulingAdapter } from "@/lib/server/crm/scheduling";
 import { runPipelineStageSideEffects } from "@/lib/server/crm/stage-effects";
 import { getTenantSettings } from "@/lib/server/tenant";
 import { deriveSalesJourney } from "@/lib/sales-journey";
+import { commitAutomaticLeadPatch, isCrmFieldManuallyOwned } from "@/lib/server/crm/field-ownership";
+import { matchesConversationCommercialFence, type ConversationCommercialFence } from "@/lib/server/crm/conversation-commercial-context";
+import { prepareConversationProjectionEffects, type ConversationProjectionTask } from "@/lib/server/crm/conversation-projection-effects";
+import { conversationStageTransitionId, processConversationStageTransition } from "@/lib/server/crm/conversation-stage-transition";
 
 type GenericRow = { id: string } & Record<string, unknown>;
 
@@ -63,13 +69,14 @@ async function listRelatedChats(tenantId: string, leadId: string, phone: string)
 
   const unique = new Map<string, Record<string, unknown>>();
   for (const doc of byLeadSnap.docs) {
-    unique.set(doc.id, { id: doc.id, ...(doc.data() as Record<string, unknown>) });
+    unique.set(doc.id, { ...(doc.data() as Record<string, unknown>), id: doc.id });
   }
   for (const doc of byPhoneSnap?.docs || []) {
-    unique.set(doc.id, { id: doc.id, ...(doc.data() as Record<string, unknown>) });
+    unique.set(doc.id, { ...(doc.data() as Record<string, unknown>), id: doc.id });
   }
 
-  return Array.from(unique.values())
+  const windows = await Promise.all(Array.from(unique.values()).map(chat => purchaseConversationWindow(tenantId, leadId, chat as GenericRow)));
+  return windows.flatMap(window => window ? [window.chat] : [])
     .sort((a, b) => toTime(b.lastMessageTime || b.updatedAt) - toTime(a.lastMessageTime || a.updatedAt))
     .slice(0, 8);
 }
@@ -122,7 +129,7 @@ async function ensureLeadTask(input: {
   });
   if (exists) return null;
 
-  const ref = await adminDb.collection("lead_tasks").add({
+  const ref = await adminDb.collection("lead_tasks").add(withCommercialTaskIndex({
     tenantId: input.tenantId,
     leadId: input.leadId,
     title: input.title,
@@ -137,7 +144,7 @@ async function ensureLeadTask(input: {
     createdByName: input.actorName || "CRM Automation",
     createdAt: FieldValue.serverTimestamp(),
     updatedAt: FieldValue.serverTimestamp(),
-  });
+  }));
 
   await adminDb.collection("leads").doc(input.leadId).collection("events").add({
     type: "crm_task_created",
@@ -212,7 +219,9 @@ export async function syncLeadCommercialState(input: {
   actorName?: string | null;
   allowStageAdvance?: boolean;
   preserveManualScore?: boolean;
+  conversationFence?: ConversationCommercialFence;
 }) {
+  if (input.conversationFence && (input.conversationFence.tenantId !== input.tenantId || input.conversationFence.leadId !== input.leadId)) return null;
   const leadRef = adminDb.collection("leads").doc(input.leadId);
   const leadSnap = await leadRef.get();
   if (!leadSnap.exists) {
@@ -266,13 +275,15 @@ export async function syncLeadCommercialState(input: {
     updatedAt: FieldValue.serverTimestamp(),
   };
 
-  if (!input.preserveManualScore || cleanText(lead.scoreSource, 20) !== "manual") {
+  if (cleanText(lead.scoreSource, 20) !== "manual") {
     patch.score = analysis.qualification.score;
     patch.scoreSource = "ai";
   }
 
   const shouldAdvanceStage =
     input.allowStageAdvance !== false &&
+    analysis.stages.some((item) => item.id === analysis.qualification.recommendedStage) &&
+    !isCrmFieldManuallyOwned(lead, "pipelineStage") &&
     !analysis.stages.find((item) => item.id === currentStage)?.isTerminal &&
     comparePipelineStages(currentStage, analysis.qualification.recommendedStage, analysis.stages) > 0;
 
@@ -282,33 +293,7 @@ export async function syncLeadCommercialState(input: {
     patch.stageUpdatedAt = FieldValue.serverTimestamp();
   }
 
-  await leadRef.set(patch, { merge: true });
-
-  if (shouldAdvanceStage) {
-    await leadRef.collection("events").add({
-      type: "crm_stage_auto_advanced",
-      title: "CRM avancou stage automaticamente",
-      detail: `${currentStage} -> ${analysis.qualification.recommendedStage}`,
-      reasonCode: "qualification_stage_upgrade",
-      actorId: input.actorId || "crm_automation",
-      actorName: input.actorName || "CRM Automation",
-      createdAt: FieldValue.serverTimestamp(),
-    });
-    await runPipelineStageSideEffects({
-      tenantId: input.tenantId,
-      leadId: input.leadId,
-      previousStage: currentStage,
-      nextStage: analysis.qualification.recommendedStage,
-      actorId: input.actorId || "crm_automation",
-      actorName: input.actorName || "CRM Automation",
-      source: "crm_auto_stage_advance",
-      metadata: {
-        reasonCode: "qualification_stage_upgrade",
-        score: analysis.qualification.score,
-      },
-    });
-  }
-
+  const taskPlan: ConversationProjectionTask[] = [];
   const policyStageId = shouldAdvanceStage ? analysis.qualification.recommendedStage : analysis.stagePolicy.stageId;
   const policyStage = analysis.stages.find((item) => item.id === policyStageId) || analysis.stages[0];
   const journey = analysis.salesJourney;
@@ -321,36 +306,55 @@ export async function syncLeadCommercialState(input: {
         : journey.action === "post_sale_checkin" || journey.action === "suggest_next_offer"
           ? "pos_venda"
           : "follow_up";
-    await ensureLeadTask({
-      tenantId: input.tenantId,
-      leadId: input.leadId,
+    taskPlan.push({
       title: `${journey.actionLabel}: ${cleanText(lead.nome, 140) || "contato"}`,
       type: journeyTaskType,
       priority: journey.urgency === "now" || analysis.qualification.score >= 70 ? "high" : "medium",
       dueAt: journeyDueAt,
-      actorId: input.actorId,
-      actorName: input.actorName,
       reasonCode: `sales_journey_${journey.action}`,
       taskKey: buildTaskKey(`sales_journey_${journey.action}`, policyStage.id),
-      existingTasks,
     });
   }
 
   if (analysis.handoff.status === "ready") {
-    await ensureLeadTask({
-      tenantId: input.tenantId,
-      leadId: input.leadId,
+    taskPlan.push({
       title: `Assumir handoff comercial de ${cleanText(lead.nome, 140) || "lead"}`,
       type: "alerta_humano",
       priority: "high",
       dueAt: new Date(),
-      actorId: input.actorId,
-      actorName: input.actorName,
       reasonCode: analysis.handoff.reasonCode,
       taskKey: buildTaskKey(analysis.handoff.reasonCode, "handoff"),
-      existingTasks,
     });
   }
 
-  return analysis;
+  const committed = await commitAutomaticLeadPatch({ tenantId: input.tenantId, leadId: input.leadId,
+    expectedVersion: leadSnap.updateTime!, patch,
+    ...(input.conversationFence ? {
+      verifyContext: (tx: FirebaseFirestore.Transaction) => matchesConversationCommercialFence(tx, input.conversationFence!),
+      prepareEffects: (tx: FirebaseFirestore.Transaction, current: FirebaseFirestore.DocumentData) => prepareConversationProjectionEffects(tx, current, {
+        fence: input.conversationFence!, stages: analysis.stages, tasks: taskPlan,
+        actorId: input.actorId || "crm_automation", actorName: input.actorName || "CRM Automation",
+        ...(shouldAdvanceStage ? { stageChange: { previous: currentStage, next: analysis.qualification.recommendedStage } } : {}),
+      }),
+    } : {}) });
+  if (!committed) return null;
+
+  if (shouldAdvanceStage) {
+    if (!input.conversationFence) await leadRef.collection("events").add({
+      type: "crm_stage_auto_advanced", title: "CRM avancou stage automaticamente",
+      detail: `${currentStage} -> ${analysis.qualification.recommendedStage}`, reasonCode: "qualification_stage_upgrade",
+      actorId: input.actorId || "crm_automation", actorName: input.actorName || "CRM Automation", createdAt: FieldValue.serverTimestamp(),
+    });
+    if (input.conversationFence) await processConversationStageTransition(conversationStageTransitionId(input.conversationFence), input.tenantId);
+    else await runPipelineStageSideEffects({
+      tenantId: input.tenantId, leadId: input.leadId, previousStage: currentStage, nextStage: analysis.qualification.recommendedStage,
+      actorId: input.actorId || "crm_automation", actorName: input.actorName || "CRM Automation", source: "crm_auto_stage_advance",
+      metadata: { reasonCode: "qualification_stage_upgrade", score: analysis.qualification.score },
+    });
+  }
+  if (!input.conversationFence) for (const task of taskPlan) await ensureLeadTask({
+    tenantId: input.tenantId, leadId: input.leadId, ...task, actorId: input.actorId, actorName: input.actorName, existingTasks,
+  });
+
+  return { ...analysis, stageAdvanced: shouldAdvanceStage };
 }

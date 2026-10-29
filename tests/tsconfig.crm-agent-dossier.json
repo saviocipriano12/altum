@@ -1,0 +1,6 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {"incremental": false},
+  "include": ["./crm-agent-dossier.emulator.mts", "../lib/server/ai/lead-dossier.ts", "../lib/server/ai/agent.ts"],
+  "exclude": ["../node_modules", "../.next", "../.qa-artifacts"]
+}

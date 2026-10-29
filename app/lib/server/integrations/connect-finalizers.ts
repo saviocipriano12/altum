@@ -1,7 +1,8 @@
 import { FieldValue } from "firebase-admin/firestore";
 import { adminDb } from "@/app/lib/server/firebase-admin";
 import { encryptSecret, decryptSecret } from "@/app/lib/server/secret-crypto";
-import { normalizeConnectionStatus } from "@/app/lib/server/integration-oauth";
+import { normalizeConnectionStatus, getMetaEnv } from "@/app/lib/server/integration-oauth";
+import { mergeMetaWebhookFields } from "@/lib/meta-webhook-fields";
 import { runTenantCampaignSync } from "@/lib/server/campaigns/tenant-sync";
 
 type MetaTokenPayload = {
@@ -51,9 +52,15 @@ async function subscribePageWebhooks(input: {
   pageAccessToken: string;
   graphVersion: string;
 }) {
-  const fields = resolveMetaWebhookFields(input.channelType);
+  const endpoint = `https://graph.facebook.com/${input.graphVersion}/${encodeURIComponent(input.pageId)}/subscribed_apps`;
+  const existingResponse = await fetch(endpoint, { headers: { Authorization: `Bearer ${input.pageAccessToken}` }, cache: "no-store", signal: AbortSignal.timeout(15_000) });
+  const existingPayload = await existingResponse.json() as { data?: Array<{ id?: string; subscribed_fields?: string[] }> };
+  if (!existingResponse.ok) throw new Error(withMetaPermissionHint(resolveGraphError(existingPayload, "Falha ao conferir recebimento de mensagens.")));
+  const appId = getMetaEnv().appId;
+  const ownSubscription = existingPayload.data?.find(app => app.id === appId);
+  const fields = mergeMetaWebhookFields(ownSubscription?.subscribed_fields, resolveMetaWebhookFields(input.channelType));
   const response = await fetch(
-    `https://graph.facebook.com/${input.graphVersion}/${encodeURIComponent(input.pageId)}/subscribed_apps`,
+    endpoint,
     {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
@@ -62,10 +69,11 @@ async function subscribePageWebhooks(input: {
         subscribed_fields: fields,
       }),
       cache: "no-store",
+      signal: AbortSignal.timeout(15_000),
     }
   );
   const payload = (await response.json().catch(() => ({}))) as Record<string, unknown>;
-  if (!response.ok) {
+  if (!response.ok || payload.success !== true) {
     throw new Error(withMetaPermissionHint(resolveGraphError(payload, "Falha ao assinar webhook da Meta.")));
   }
 }

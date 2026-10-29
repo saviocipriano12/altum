@@ -10,6 +10,9 @@ import { dispatchLeadConversionEvents } from "@/lib/server/pixels/conversions";
 import { upsertLeadCommercialDossier } from "@/lib/server/ai/lead-dossier";
 import { assertTenantModule } from "@/lib/server/tenant-entitlements";
 import { assertLeadCommercialAccess } from "@/lib/server/commercial-access";
+import { commitManualLeadPatch, ManualLeadUpdateConflict } from "@/lib/server/crm/manual-update";
+import { processManualStageTransition } from "@/lib/server/crm/manual-stage-transition";
+import { InvalidPipelineStageError, TenantPipelineConfigurationError } from "@/lib/server/crm/pipeline";
 
 type Body = {
   stage?: string;
@@ -86,7 +89,7 @@ export async function POST(
     }
 
     const body = (await req.json()) as Body;
-    const stage = normalizePipelineStageId(clean(body.stage, 80) || "captado");
+    const stage = normalizePipelineStageId(clean(body.stage, 80), "");
     const status = clean(body.status, 80);
 
     if (!stage) {
@@ -103,6 +106,8 @@ export async function POST(
     if ((leadData.tenantId || "") !== tenantId) {
       return NextResponse.json({ error: "Lead fora do tenant informado." }, { status: 403 });
     }
+    // Record access must precede all writes and conversion/automation effects.
+    await assertLeadCommercialAccess({ membership, userId: user.uid, tenantId, leadId });
     const forceStageMove = body.force === true;
     const stageValidation = validateStageContext({
       targetStage: stage,
@@ -143,28 +148,26 @@ export async function POST(
       };
     }
 
-    await Promise.all([
-      leadRef.set(patch, { merge: true }),
-      leadRef.collection("events").add({
+    const mutation = await commitManualLeadPatch({ tenantId, leadId, expectedVersion: leadSnap.updateTime!,
+      stageAuthorization: "edit_leads_or_manage_pipeline",
+      patch, fields: ["pipelineStage"], actorId: user.uid, actorName: user.name,
+      detail: !stageValidation.ok && forceStageMove
+        ? `${previousStage} -> ${stage} (override: ${stageValidation.missingFields.join(", ")})`
+        : `${previousStage} -> ${stage}`,
+      audit: {
         type: !stageValidation.ok && forceStageMove ? "stage_change_forced" : "stage_change",
         title: !stageValidation.ok && forceStageMove ? "Stage atualizado com override" : "Stage atualizado",
-        detail:
-          !stageValidation.ok && forceStageMove
-            ? `${previousStage} -> ${stage} (override: ${stageValidation.missingFields.join(", ")})`
-            : `${previousStage} -> ${stage}`,
-        previousStage,
-        nextStage: stage,
         forced: !stageValidation.ok && forceStageMove,
         missingFields: !stageValidation.ok && forceStageMove ? stageValidation.missingFields : [],
-        actorId: user.uid,
-        actorName: user.name,
-        createdAt: FieldValue.serverTimestamp(),
-      }),
-    ]);
+      },
+    });
+
+    if (mutation.stageTransitionId) await processManualStageTransition(mutation.stageTransitionId, tenantId);
 
     await runPipelineStageSideEffects({
       tenantId,
       leadId,
+      skipAutomations: true,
       previousStage,
       nextStage: stage,
       actorId: user.uid,
@@ -193,7 +196,6 @@ export async function POST(
         console.error("Falha ao disparar conversao de lead qualificado:", error);
       });
     }
-    await assertLeadCommercialAccess({ membership, userId: user.uid, tenantId, leadId });
 
     if (stage === "ganho") {
       await dispatchLeadConversionEvents({
@@ -217,6 +219,11 @@ export async function POST(
 
     return NextResponse.json({ ok: true, tenantId, leadId, previousStage, stage });
   } catch (error) {
+    if (error instanceof InvalidPipelineStageError) return NextResponse.json({ error: error.message, code: "invalid_pipeline_stage" }, { status: 400 });
+    if (error instanceof TenantPipelineConfigurationError) return NextResponse.json({ error: error.message, code: "pipeline_configuration_invalid" }, { status: 409 });
+    if (error instanceof ManualLeadUpdateConflict) {
+      return NextResponse.json({ error: error.message, code: "lead_update_conflict" }, { status: 409 });
+    }
     if (error instanceof RouteAuthError) {
       return NextResponse.json({ error: error.message, code: error.code }, { status: error.status });
     }

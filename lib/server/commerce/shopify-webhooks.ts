@@ -2,6 +2,7 @@ import { FieldValue } from "firebase-admin/firestore";
 import { adminDb } from "@/app/lib/server/firebase-admin";
 
 const SHOPIFY_COMMERCE_TOPICS = [
+  "APP_UNINSTALLED",
   "PRODUCTS_CREATE",
   "PRODUCTS_UPDATE",
   "CHECKOUTS_CREATE",
@@ -63,6 +64,7 @@ export async function ensureShopifyWebhookSubscriptions(input: {
   callback.searchParams.set("tenantId", input.tenantId);
   callback.searchParams.set("connectionId", input.connectionId);
   const uri = callback.toString();
+  const uninstallUri = new URL("/api/integrations/commerce/shopify/uninstall", input.appBaseUrl).toString();
 
   const listed = await graphql({
     shopDomain: input.shopDomain,
@@ -77,8 +79,7 @@ export async function ensureShopifyWebhookSubscriptions(input: {
     : [];
   const existing = new Set(
     nodes
-      .filter((node) => clean(node.uri, 2000) === uri)
-      .map((node) => clean(node.topic, 100))
+      .map((node) => `${clean(node.topic, 100)}|${clean(node.uri, 2000)}`)
       .filter(Boolean)
   );
 
@@ -86,7 +87,8 @@ export async function ensureShopifyWebhookSubscriptions(input: {
   const alreadyPresent: ShopifyTopic[] = [];
   const failed: Array<{ topic: ShopifyTopic; error: string }> = [];
   for (const topic of SHOPIFY_COMMERCE_TOPICS) {
-    if (existing.has(topic)) {
+    const topicUri = topic === "APP_UNINSTALLED" ? uninstallUri : uri;
+    if (existing.has(`${topic}|${topicUri}`)) {
       alreadyPresent.push(topic);
       continue;
     }
@@ -100,7 +102,7 @@ export async function ensureShopifyWebhookSubscriptions(input: {
             userErrors { field message }
           }
         }`,
-        variables: { topic, subscription: { uri } },
+        variables: { topic, subscription: { uri: topicUri } },
       });
       const mutation = record(data.webhookSubscriptionCreate);
       const userErrors = Array.isArray(mutation.userErrors) ? mutation.userErrors as Array<Record<string, unknown>> : [];
